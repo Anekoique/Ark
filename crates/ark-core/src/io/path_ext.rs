@@ -1,0 +1,138 @@
+//! Extension trait that wraps stdlib `std::fs` calls with Ark's `Error::Io`.
+//!
+//! Every Ark module that touches the filesystem goes through this trait. The
+//! goal is to remove the `map_err(|e| Error::io(path, e))` boilerplate that
+//! would otherwise clutter every call site.
+
+use std::{fs, io::ErrorKind, path::Path};
+
+use crate::error::{Error, Result};
+
+/// File-system helpers that automatically attach the offending path to I/O
+/// errors, distinguish the "file doesn't exist" case from real failures, and
+/// expose a small vocabulary of idempotent removes.
+pub trait PathExt {
+    /// Read file bytes, or `None` if the file doesn't exist.
+    fn read_optional(&self) -> Result<Option<Vec<u8>>>;
+
+    /// Read file as UTF-8 text, or `None` if the file doesn't exist.
+    fn read_text_optional(&self) -> Result<Option<String>>;
+
+    /// Read file bytes (errors if missing).
+    fn read_bytes(&self) -> Result<Vec<u8>>;
+
+    /// Write bytes to the file. Creates parent directories.
+    fn write_bytes(&self, contents: &[u8]) -> Result<()>;
+
+    /// `create_dir_all` with proper error wrapping.
+    fn ensure_dir(&self) -> Result<()>;
+
+    /// Remove this file if it exists. Returns `true` if a file was removed.
+    fn remove_if_exists(&self) -> Result<bool>;
+
+    /// Remove this directory if it exists and is empty. Non-empty directories
+    /// are a no-op (returns `false`).
+    fn remove_dir_if_empty(&self) -> Result<bool>;
+
+    /// Remove this directory tree unconditionally. Returns `true` if it existed.
+    fn remove_dir_all(&self) -> Result<bool>;
+}
+
+impl<T: AsRef<Path>> PathExt for T {
+    fn read_optional(&self) -> Result<Option<Vec<u8>>> {
+        let path = self.as_ref();
+        match fs::read(path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(Error::io(path, e)),
+        }
+    }
+
+    fn read_text_optional(&self) -> Result<Option<String>> {
+        let path = self.as_ref();
+        match fs::read_to_string(path) {
+            Ok(text) => Ok(Some(text)),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(Error::io(path, e)),
+        }
+    }
+
+    fn read_bytes(&self) -> Result<Vec<u8>> {
+        let path = self.as_ref();
+        fs::read(path).map_err(|e| Error::io(path, e))
+    }
+
+    fn write_bytes(&self, contents: &[u8]) -> Result<()> {
+        let path = self.as_ref();
+        if let Some(parent) = path.parent() {
+            parent.ensure_dir()?;
+        }
+        fs::write(path, contents).map_err(|e| Error::io(path, e))
+    }
+
+    fn ensure_dir(&self) -> Result<()> {
+        let path = self.as_ref();
+        fs::create_dir_all(path).map_err(|e| Error::io(path, e))
+    }
+
+    fn remove_if_exists(&self) -> Result<bool> {
+        let path = self.as_ref();
+        match fs::remove_file(path) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(Error::io(path, e)),
+        }
+    }
+
+    fn remove_dir_if_empty(&self) -> Result<bool> {
+        let path = self.as_ref();
+        match fs::remove_dir(path) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+            Err(e) if is_not_empty_error(&e) => Ok(false),
+            Err(e) => Err(Error::io(path, e)),
+        }
+    }
+
+    fn remove_dir_all(&self) -> Result<bool> {
+        let path = self.as_ref();
+        match fs::remove_dir_all(path) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(Error::io(path, e)),
+        }
+    }
+}
+
+fn is_not_empty_error(e: &std::io::Error) -> bool {
+    matches!(e.raw_os_error(), Some(66 | 39 | 145)) || e.to_string().contains("not empty")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_optional_returns_none_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(tmp.path().join("absent").read_optional().unwrap().is_none());
+    }
+
+    #[test]
+    fn write_bytes_creates_parents() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nested = tmp.path().join("a/b/c.txt");
+        nested.write_bytes(b"hi").unwrap();
+        assert_eq!(nested.read_bytes().unwrap(), b"hi");
+    }
+
+    #[test]
+    fn remove_dir_if_empty_skips_non_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("d");
+        dir.ensure_dir().unwrap();
+        dir.join("x").write_bytes(b"").unwrap();
+        assert!(!dir.remove_dir_if_empty().unwrap());
+        assert!(dir.exists());
+    }
+}

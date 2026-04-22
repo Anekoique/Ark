@@ -1,0 +1,41 @@
+[workspace]
+members = [
+  "crates/ark-cli",
+  "crates/ark-core",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/Anekoique/ark"
+
+# Config for 'dist'
+[workspace.metadata.dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.30.3"
+# CI backends to support
+ci = "github"
+# Allow manual edits to generated CI workflows (needed for NPM_TOKEN wiring)
+allow-dirty = ["ci"]
+# The installers to generate for each app
+installers = ["shell", "powershell", "npm"]
+# npm package name = <scope>/<package>
+npm-package = "ark"
+npm-scope = "@anekoique"
+# Which actions to run on pull requests
+pr-run-mode = "skip"
+# Publish jobs to run in CI
+publish-jobs = ["npm"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
+# Whether to install an updater program
+install-updater = false
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
