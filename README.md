@@ -2,7 +2,7 @@
 
 An Agent Harness and Development Workflow Designed to Orchestrate AI-driven Programming Tasks.
 
-Use a simple cli `ark` define your ai-workflow and manage your coding-agent.
+Use the simple CLI `ark` to define your AI workflow and manage your coding agent.
 
 > Current status: Ark is experimental and currently only supports Claude Code.
 
@@ -76,12 +76,12 @@ See `.ark/workflow.md` for the full workflow.
 
 `ark` has four commands for managing its presence in a project:
 
-| Command | What it does |
-|---|---|
-| `ark init` | Scaffold `.ark/` and Claude Code integration from the embedded templates. |
-| `ark load` | Restore from `.ark.db` if present, otherwise scaffold like `init`. |
+| Command      | What it does                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| `ark init`   | Scaffold `.ark/` and Claude Code integration from the embedded templates.                      |
+| `ark load`   | Restore from `.ark.db` if present, otherwise scaffold like `init`.                             |
 | `ark unload` | Snapshot everything under `.ark/` + managed blocks into `.ark.db`, then delete the live files. |
-| `ark remove` | Wipe Ark fully: `.ark/`, `.claude/commands/ark/`, managed blocks, and `.ark.db`. |
+| `ark remove` | Wipe Ark fully: `.ark/`, `.claude/commands/ark/`, managed blocks, and `.ark.db`.               |
 
 ## Inspiration
 

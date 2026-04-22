@@ -4,18 +4,18 @@
 
 **Some ideas**
 - Quick install and uninstall (ark load & ark unload)
-- AI workflow with `DESIGN(BrainStorm) -> PLAN(REVIEW) -> EXECUTE -> REVIEW` 
+- AI workflow with `DESIGN(BrainStorm) -> PLAN(REVIEW) -> EXECUTE -> REVIEW`
   (/ark:design -> /ark:plan -> /ark:execute -> /ark:review) (draft -> plan -> spec)
-  draft proposed task 
-    -> split and organize subtasks 
-    -> PLAN task and dispath SUBPLAN to subtask
+  draft proposed task
+    -> split and organize subtasks
+    -> PLAN task and dispatch SUBPLAN to subtask
     -> call codex/create subagent claude to review
     -> pass with limited loop and execute
-    -> call codex/create subagent claude to review 
-    -> FINAL REVIEW with higher request 
+    -> call codex/create subagent claude to review
+    -> FINAL REVIEW with higher request
     (previous mainly about function, currently include code quality / organization / abstract design)
     -> final commit and record spec/log/mm to archive
-- Memory and log System (day drive or task drive?) (/ark:mem /ark:log) 
+- Memory and log System (day drive or task drive?) (/ark:mem /ark:log)
   managed by ark mems / ark logs
 - Consider stello (Agent Cognitive Topology Engine) or streamlined
 - Multi-agent Orchestrate.

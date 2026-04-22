@@ -1,18 +1,18 @@
 {
   "version": "0.1.0",
-  "installed_at": "2026-04-22T08:34:05.086412Z",
+  "installed_at": "2026-04-22T09:27:51.933597Z",
   "files": [
-    "/Users/anekoique/Agent/Ark/.ark/workflow.md",
-    "/Users/anekoique/Agent/Ark/.ark/templates/PLAN.md",
-    "/Users/anekoique/Agent/Ark/.ark/templates/PRD.md",
-    "/Users/anekoique/Agent/Ark/.ark/templates/REVIEW.md",
-    "/Users/anekoique/Agent/Ark/.ark/templates/SPEC.md",
-    "/Users/anekoique/Agent/Ark/.ark/templates/VERIFY.md",
-    "/Users/anekoique/Agent/Ark/.ark/specs/INDEX.md",
-    "/Users/anekoique/Agent/Ark/.ark/specs/project/INDEX.md",
-    "/Users/anekoique/Agent/Ark/.ark/specs/features/INDEX.md",
-    "/Users/anekoique/Agent/Ark/.claude/commands/ark/design.md",
-    "/Users/anekoique/Agent/Ark/.claude/commands/ark/quick.md"
+    ".ark/workflow.md",
+    ".ark/templates/PLAN.md",
+    ".ark/templates/PRD.md",
+    ".ark/templates/REVIEW.md",
+    ".ark/templates/SPEC.md",
+    ".ark/templates/VERIFY.md",
+    ".ark/specs/INDEX.md",
+    ".ark/specs/project/INDEX.md",
+    ".ark/specs/features/INDEX.md",
+    ".claude/commands/ark/design.md",
+    ".claude/commands/ark/quick.md"
   ],
   "managed_blocks": [
     {
