@@ -1,0 +1,18 @@
+[package]
+name = "ark-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A simple CLI agent harness and development workflow for orchestrating AI-driven programming tasks"
+homepage = "https://github.com/Anekoique/ark"
+
+[[bin]]
+name = "ark"
+path = "src/main.rs"
+
+[dependencies]
+ark-core = { path = "../ark-core" }
+
+anyhow = "1.0.102"
+clap = { version = "4.6.1", features = ["derive"] }

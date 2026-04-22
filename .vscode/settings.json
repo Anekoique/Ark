@@ -1,0 +1,46 @@
+{
+  "// editor": "Match rustfmt + Cargo conventions",
+  "editor.formatOnSave": true,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
+  "// rust-analyzer": "Use the workspace's pinned toolchain; surface clippy on save",
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.check.allTargets": true,
+  "rust-analyzer.check.extraArgs": [
+    "--workspace",
+    "--",
+    "-D",
+    "warnings"
+  ],
+  "rust-analyzer.cargo.allTargets": true,
+  "rust-analyzer.imports.granularity.group": "crate",
+  "rust-analyzer.imports.prefix": "crate",
+  "rust-analyzer.completion.callable.snippets": "fill_arguments",
+  "rust-analyzer.inlayHints.bindingModeHints.enable": true,
+  "rust-analyzer.inlayHints.closureReturnTypeHints.enable": "with_block",
+  "rust-analyzer.inlayHints.lifetimeElisionHints.enable": "skip_trivial",
+  "// language": "Defer to rust-analyzer for .rs; let other types use defaults",
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.tabSize": 4
+  },
+  "[toml]": {
+    "editor.defaultFormatter": "tamasfe.even-better-toml",
+    "editor.tabSize": 2
+  },
+  "[markdown]": {
+    "editor.tabSize": 2,
+    "editor.wordWrap": "on"
+  },
+  "[json]": {
+    "editor.tabSize": 2
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/Cargo.lock": true,
+  },
+  "files.watcherExclude": {
+    "**/target/**": true
+  }
+}
