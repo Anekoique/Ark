@@ -24,6 +24,29 @@
 - System level / project level management?
 - A General purpose to harness and control the coding-agents and improve coding works.
 
+[Worflow enhancement]
+
+- Currently REVIEW will ask for self-review or spawn an sub-agent for review. We should add configurable options for invoking codex review, human review, or creating sub-agent reviews.
+  Human intervention during circulation.
+- Provide user-defined workflows like building blocks, instead of predefined ones.
+  Add Workspace support. See trellis.
+- Better memory(spec and tasks) management, learn idea stello.
+- Add a spec extraction mechanism through docs/codes to support older projects.
+- Add Hook support which useful for codebase-overview before any tasks.
+  ...
+
+[Cli enhancement]
+
+- Cli extensions for memory management (ark mem) , task management (ark task) which provide cli tools for Agent invoke directoly without understanding natural language.
+- Convenience management to coding-agent settings (cross-platform) with simple cli. Consider a ark skill add apply skill to all platforms or manage skill through ./ark/skills. See cc-switch.
+  ...
+
+[Platform support]
+
+- Add agent and more commands to .claude
+- Add support for codex, opencode...
+  ...
+
 ## Phase 0: Basic Framework.
 
 Ship the minimum scaffold: `ark init`, template set, three-tier workflow.

@@ -10,8 +10,12 @@ use std::{
 };
 
 use ark_core::{
-    InitOptions, LoadOptions, RemoveOptions, UnloadOptions, WriteMode, init, load, remove, unload,
+    InitOptions, Layout, LoadOptions, PathExt, RemoveOptions, SpecExtractOptions,
+    SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions, TaskPhaseOptions, TaskPromoteOptions,
+    Tier, UnloadOptions, WriteMode, init, load, remove, spec_extract, spec_register, task_archive,
+    task_execute, task_new, task_plan, task_promote, task_review, task_verify, unload,
 };
+use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -36,6 +40,10 @@ enum Command {
     Unload(TargetArgs),
     /// Remove Ark from the project, including any `.ark.db` snapshot.
     Remove(TargetArgs),
+    /// Internal commands invoked by the Ark workflow and slash commands.
+    /// Not covered by semver — prefer the slash commands over calling these directly.
+    #[command(hide = true)]
+    Agent(AgentArgs),
 }
 
 #[derive(clap::Args)]
@@ -130,8 +138,242 @@ impl Command {
                 announce("removing ark from", &root);
                 render(remove(RemoveOptions::new(root))?);
             }
+            Self::Agent(a) => a.dispatch()?,
         }
         Ok(())
+    }
+}
+
+// ===== `ark agent` =====
+//
+// Hidden namespace packaging the structural workflow operations as Rust
+// subcommands. Not covered by semver.
+
+#[derive(clap::Args)]
+struct AgentArgs {
+    #[command(subcommand)]
+    command: AgentCommand,
+}
+
+#[derive(Subcommand)]
+enum AgentCommand {
+    /// Task-lifecycle operations.
+    Task(TaskArgs),
+    /// Feature-SPEC operations.
+    Spec(SpecArgs),
+}
+
+#[derive(clap::Args)]
+struct TaskArgs {
+    #[command(subcommand)]
+    command: TaskCommand,
+}
+
+#[derive(Subcommand)]
+enum TaskCommand {
+    /// Scaffold a new task directory with PRD + task.toml.
+    New(TaskNewCliArgs),
+    /// Transition: -> Plan.
+    Plan(TaskSlugArgs),
+    /// Transition: -> Review (deep tier).
+    Review(TaskSlugArgs),
+    /// Transition: -> Execute.
+    Execute(TaskSlugArgs),
+    /// Transition: -> Verify.
+    Verify(TaskSlugArgs),
+    /// Transition: -> Archived; deep tier extracts + registers SPEC.
+    Archive(TaskSlugArgs),
+    /// Change tier mid-flight. Does not rewrite artifacts.
+    Promote(TaskPromoteCliArgs),
+}
+
+#[derive(clap::Args)]
+struct TaskNewCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug (filesystem-safe identifier).
+    #[arg(long)]
+    slug: String,
+    /// One-line title.
+    #[arg(long)]
+    title: String,
+    /// quick | standard | deep
+    #[arg(long, value_parser = parse_tier)]
+    tier: Tier,
+}
+
+#[derive(clap::Args)]
+struct TaskSlugArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug. Defaults to the value in `.ark/tasks/.current`.
+    #[arg(long)]
+    slug: Option<String>,
+}
+
+#[derive(clap::Args)]
+struct TaskPromoteCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    #[arg(long)]
+    slug: Option<String>,
+    /// Target tier.
+    #[arg(long = "to", value_parser = parse_tier)]
+    to: Tier,
+}
+
+#[derive(clap::Args)]
+struct SpecArgs {
+    #[command(subcommand)]
+    command: SpecCommand,
+}
+
+#[derive(Subcommand)]
+enum SpecCommand {
+    /// Extract the final PLAN's `## Spec` section into specs/features/<slug>/SPEC.md.
+    Extract(SpecExtractCliArgs),
+    /// Upsert a row in specs/features/INDEX.md.
+    Register(SpecRegisterCliArgs),
+}
+
+#[derive(clap::Args)]
+struct SpecExtractCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    #[arg(long)]
+    slug: Option<String>,
+    /// Optional explicit PLAN path. Default: highest-NN `NN_PLAN.md`.
+    #[arg(long)]
+    plan: Option<PathBuf>,
+}
+
+#[derive(clap::Args)]
+struct SpecRegisterCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    #[arg(long)]
+    feature: String,
+    #[arg(long)]
+    scope: String,
+    #[arg(long = "from-task")]
+    from_task: String,
+    /// Override the registration date (YYYY-MM-DD). Default: today UTC.
+    #[arg(long)]
+    date: Option<String>,
+}
+
+fn parse_tier(s: &str) -> Result<Tier, String> {
+    match s {
+        "quick" => Ok(Tier::Quick),
+        "standard" => Ok(Tier::Standard),
+        "deep" => Ok(Tier::Deep),
+        other => Err(format!(
+            "unknown tier `{other}`; expected quick | standard | deep"
+        )),
+    }
+}
+
+impl AgentArgs {
+    fn dispatch(self) -> anyhow::Result<()> {
+        match self.command {
+            AgentCommand::Task(a) => a.command.dispatch(),
+            AgentCommand::Spec(a) => a.command.dispatch(),
+        }
+    }
+}
+
+impl TaskCommand {
+    fn dispatch(self) -> anyhow::Result<()> {
+        match self {
+            Self::New(a) => {
+                let root = a.target.resolve();
+                render(task_new(TaskNewOptions {
+                    project_root: root,
+                    slug: a.slug,
+                    title: a.title,
+                    tier: a.tier,
+                })?);
+            }
+            Self::Plan(a) => run_phase(a, task_plan)?,
+            Self::Review(a) => run_phase(a, task_review)?,
+            Self::Execute(a) => run_phase(a, task_execute)?,
+            Self::Verify(a) => run_phase(a, task_verify)?,
+            Self::Archive(a) => {
+                let root = a.target.resolve();
+                let slug = resolve_slug(&root, a.slug)?;
+                render(task_archive(TaskArchiveOptions {
+                    project_root: root,
+                    slug,
+                })?);
+            }
+            Self::Promote(a) => {
+                let root = a.target.resolve();
+                let slug = resolve_slug(&root, a.slug)?;
+                render(task_promote(TaskPromoteOptions {
+                    project_root: root,
+                    slug,
+                    to: a.to,
+                })?);
+            }
+        }
+        Ok(())
+    }
+}
+
+fn run_phase(
+    a: TaskSlugArgs,
+    f: impl FnOnce(TaskPhaseOptions) -> ark_core::Result<ark_core::TaskPhaseSummary>,
+) -> anyhow::Result<()> {
+    let root = a.target.resolve();
+    let slug = resolve_slug(&root, a.slug)?;
+    render(f(TaskPhaseOptions {
+        project_root: root,
+        slug,
+    })?);
+    Ok(())
+}
+
+impl SpecCommand {
+    fn dispatch(self) -> anyhow::Result<()> {
+        match self {
+            Self::Extract(a) => {
+                let root = a.target.resolve();
+                let slug = resolve_slug(&root, a.slug)?;
+                render(spec_extract(SpecExtractOptions {
+                    project_root: root,
+                    slug,
+                    plan_override: a.plan,
+                })?);
+            }
+            Self::Register(a) => {
+                let root = a.target.resolve();
+                let date = match a.date {
+                    Some(s) => NaiveDate::parse_from_str(&s, "%Y-%m-%d")
+                        .map_err(|e| anyhow::anyhow!("invalid --date `{s}`: {e}"))?,
+                    None => chrono::Utc::now().date_naive(),
+                };
+                render(spec_register(SpecRegisterOptions {
+                    project_root: root,
+                    feature: a.feature,
+                    scope: a.scope,
+                    from_task: a.from_task,
+                    date,
+                })?);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Resolve `--slug` with fallback to `.ark/tasks/.current`.
+fn resolve_slug(root: &Path, explicit: Option<String>) -> anyhow::Result<String> {
+    if let Some(slug) = explicit {
+        return Ok(slug);
+    }
+    let current = Layout::new(root).tasks_current();
+    match current.read_text_optional()? {
+        Some(text) if !text.trim().is_empty() => Ok(text.trim().to_string()),
+        _ => Err(ark_core::Error::NoCurrentTask { path: current }.into()),
     }
 }
 

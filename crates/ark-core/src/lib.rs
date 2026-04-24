@@ -12,7 +12,21 @@ pub mod templates;
 
 pub use commands::{
     InitOptions, InitSummary, LoadOptions, LoadSummary, RemoveOptions, RemoveSummary,
-    UnloadOptions, UnloadSummary, init, load, remove, unload,
+    UnloadOptions, UnloadSummary,
+    agent::{
+        Phase, Status, TaskToml, Tier,
+        spec::{
+            SpecExtractOptions, SpecExtractSummary, SpecRegisterOptions, SpecRegisterSummary,
+            spec_extract, spec_register,
+        },
+        task::{
+            TaskArchiveOptions, TaskArchiveSummary, TaskNewOptions, TaskNewSummary,
+            TaskPhaseOptions, TaskPhaseSummary, TaskPromoteOptions, TaskPromoteSummary,
+            task_archive, task_execute, task_new, task_plan, task_promote, task_review,
+            task_verify,
+        },
+    },
+    init, load, remove, unload,
 };
 pub use error::{Error, Result};
 pub use io::{PathExt, WriteMode};

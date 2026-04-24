@@ -7,6 +7,8 @@ argument-hint: "<title>"
 
 Create a quick-tier task for a trivial, reversible change. No clarifying questions, no PLAN, and no separate VERIFY.md artifact.
 
+Structural operations (task dir creation, phase transitions, archive moves) are handled by `ark agent` — do not hand-edit `task.toml` or move directories with `mv`.
+
 ## Preconditions
 
 - `.ark/` is initialized.
@@ -24,19 +26,7 @@ cat .ark/specs/project/INDEX.md
 
 Project specs listed in `specs/project/INDEX.md` apply to every task — read each `SPEC.md` referenced there before touching code.
 
-### 2. Derive slug and create task directory
-
-Turn the title into a slug: lowercase, hyphen-separated, ASCII, ≤40 chars.
-
-```bash
-SLUG="<derive-from-title>"
-mkdir -p ".ark/tasks/$SLUG"
-echo "$SLUG" > .ark/tasks/.current
-```
-
-If `.ark/tasks/$SLUG/` already exists, stop — pick a more specific name.
-
-### 3. Scan feature specs index
+### 2. Scan feature specs index
 
 ```bash
 cat .ark/specs/features/INDEX.md
@@ -44,33 +34,29 @@ cat .ark/specs/features/INDEX.md
 
 Identify any feature SPEC this change touches. You'll record them in PRD's `[**Related Specs**]`.
 
-### 4. Write PRD
+### 3. Create the task
 
-Copy `.ark/templates/PRD.md` into the task dir and fill it in:
+Turn the title into a slug: lowercase, hyphen-separated, ASCII, ≤40 chars.
 
 ```bash
-cp .ark/templates/PRD.md .ark/tasks/$SLUG/PRD.md
+ark agent task new --slug <slug> --title "<title>" --tier quick
 ```
 
-Fill four sections:
+This scaffolds `.ark/tasks/<slug>/` with `PRD.md` + `task.toml`, and points `.ark/tasks/.current` at the new slug. Refuses if the slug already exists.
+
+### 4. Fill the PRD
+
+Edit `.ark/tasks/<slug>/PRD.md`:
 - **What** — one-line description
 - **Why** — the reason
 - **Outcome** — observable success criteria (doubles as verification checklist for quick tier)
 - **Related Specs** — any `specs/features/<name>/SPEC.md` this change touches (or leave blank)
 
-### 5. Write `task.toml`
+### 5. Advance to execute
 
-```toml
-id = "<slug>"
-title = "<title>"
-tier = "quick"
-phase = "execute"
-status = "in_progress"
-created_at = "<ISO-8601 UTC>"
-updated_at = "<ISO-8601 UTC>"
+```bash
+ark agent task execute
 ```
-
-Write it to `.ark/tasks/$SLUG/task.toml`.
 
 ### 6. Implement the change
 
@@ -86,17 +72,16 @@ The user commits. Do not run `git commit` — show the diff and let the user dec
 
 ### 9. Archive
 
-Once the user confirms the commit succeeded:
-
-```bash
-ARCHIVE_DIR=".ark/tasks/archive/$(date -u +%Y-%m)"
-mkdir -p "$ARCHIVE_DIR"
-mv ".ark/tasks/$SLUG" "$ARCHIVE_DIR/"
-rm -f .ark/tasks/.current
-```
-
-Update `task.toml` before moving to set `phase = "archived"` and add `archived_at = "<ISO-8601 UTC>"`.
+Once the user confirms the commit succeeded, tell the user: "Run `/ark:archive` to close out the task." Do NOT archive automatically. See `/ark:archive`.
 
 ## If the task grows mid-flight
 
 Stop. Tell the user: "This change is larger than quick-tier scope. Recommend promoting to standard (`/ark:design`) — I'll preserve the PRD as historical context." Wait for user decision.
+
+To promote mid-flight:
+
+```bash
+ark agent task promote --to standard
+```
+
+Then continue from Phase 2 of `/ark:design` (write PLAN, etc.). Existing artifacts are preserved — the agent decides what to reshape.

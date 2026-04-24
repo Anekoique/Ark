@@ -1,7 +1,7 @@
 //! `ark load` — bring Ark into a project.
 //!
-//! - Snapshot present → restore every captured file and block, delete the
-//!   snapshot, and strip its `.gitignore` entry.
+//! - Snapshot present → restore every captured file and block, then delete
+//!   the snapshot.
 //! - No snapshot → scaffold from embedded templates (behaves like `init`).
 //! - `.ark/` already present → error unless `force = true` (then wipe first).
 
@@ -93,7 +93,6 @@ fn restore(layout: &Layout, snapshot: Snapshot) -> Result<LoadSummary> {
     })?;
 
     Snapshot::remove(layout.root())?;
-    Snapshot::remove_ignored(layout.root())?;
 
     Ok(LoadSummary::Restored {
         files: snapshot.files.len(),
@@ -134,11 +133,7 @@ mod tests {
         assert!(tmp.path().join(".ark/workflow.md").is_file());
         assert_eq!(std::fs::read_to_string(&user_file).unwrap(), "user work\n");
         assert!(!tmp.path().join(SNAPSHOT_FILENAME).exists());
-
-        let gi = tmp.path().join(".gitignore");
-        if gi.exists() {
-            assert!(!std::fs::read_to_string(&gi).unwrap().contains(".ark.db"));
-        }
+        assert!(!tmp.path().join(".gitignore").exists());
 
         let claude = std::fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
         assert!(claude.contains("<!-- ARK:START -->"));

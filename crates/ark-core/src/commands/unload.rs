@@ -1,8 +1,8 @@
 //! `ark unload` — freeze Ark state into `.ark.db` and remove live artifacts.
 //!
 //! Captures every file under Ark-owned directories and every managed block
-//! Ark installed, then deletes the live footprint. `.ark.db` is added to
-//! `.gitignore` automatically.
+//! Ark installed, then deletes the live footprint. Ignoring `.ark.db` in
+//! version control is the user's responsibility.
 //!
 //! Pair with `ark load` to restore. `ark remove` discards `.ark.db` entirely.
 
@@ -32,7 +32,6 @@ impl UnloadOptions {
 pub struct UnloadSummary {
     pub files_captured: usize,
     pub blocks_captured: usize,
-    pub gitignore_updated: bool,
 }
 
 impl fmt::Display for UnloadSummary {
@@ -41,11 +40,7 @@ impl fmt::Display for UnloadSummary {
             f,
             "captured {} file(s) and {} managed block(s) into .ark.db",
             self.files_captured, self.blocks_captured,
-        )?;
-        if self.gitignore_updated {
-            write!(f, "\nadded .ark.db to .gitignore")?;
-        }
-        Ok(())
+        )
     }
 }
 
@@ -97,9 +92,6 @@ pub fn unload(opts: UnloadOptions) -> Result<UnloadSummary> {
         parent.remove_dir_if_empty()?;
     }
 
-    // 5. Update .gitignore.
-    summary.gitignore_updated = Snapshot::ensure_ignored(layout.root())?;
-
     Ok(summary)
 }
 
@@ -134,12 +126,11 @@ mod tests {
 
         assert!(summary.files_captured > 0);
         assert_eq!(summary.blocks_captured, 1);
-        assert!(summary.gitignore_updated);
 
         assert!(!tmp.path().join(".ark").exists());
         assert!(!tmp.path().join(".claude/commands/ark").exists());
         assert!(tmp.path().join(SNAPSHOT_FILENAME).exists());
-        assert!(tmp.path().join(".gitignore").exists());
+        assert!(!tmp.path().join(".gitignore").exists());
     }
 
     #[test]

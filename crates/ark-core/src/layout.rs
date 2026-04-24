@@ -26,6 +26,17 @@ pub const MANAGED_MARKER: &str = "ARK";
 /// template files populate them. Users and the workflow fill these later.
 pub const EMPTY_DIRS: &[&str] = &[".ark/tasks", ".ark/tasks/archive"];
 
+/// Subdirectories and files under `.ark/` that the `agent` namespace manipulates.
+pub const TASKS_DIR: &str = ".ark/tasks";
+pub const TASKS_ARCHIVE_DIR: &str = ".ark/tasks/archive";
+pub const TASKS_CURRENT_FILE: &str = ".ark/tasks/.current";
+pub const SPECS_FEATURES_DIR: &str = ".ark/specs/features";
+pub const SPECS_FEATURES_INDEX_FILE: &str = ".ark/specs/features/INDEX.md";
+pub const ARK_TEMPLATES_DIR: &str = ".ark/templates";
+
+/// Marker used for the feature-spec roster in `specs/features/INDEX.md`.
+pub const FEATURES_MARKER: &str = "ARK:FEATURES";
+
 /// Body written into the managed `CLAUDE.md` block.
 pub const MANAGED_BLOCK_BODY: &str = "\
 Ark is installed in this project. Use `/ark:quick` or `/ark:design` to start tasks.
@@ -92,6 +103,46 @@ impl Layout {
             });
         }
         Ok(self.root.join(relative))
+    }
+
+    /// `<root>/.ark/tasks/`
+    pub fn tasks_dir(&self) -> PathBuf {
+        self.root.join(TASKS_DIR)
+    }
+
+    /// `<root>/.ark/tasks/archive/`
+    pub fn tasks_archive_dir(&self) -> PathBuf {
+        self.root.join(TASKS_ARCHIVE_DIR)
+    }
+
+    /// `<root>/.ark/tasks/.current`
+    pub fn tasks_current(&self) -> PathBuf {
+        self.root.join(TASKS_CURRENT_FILE)
+    }
+
+    /// `<root>/.ark/tasks/<slug>/`
+    pub fn task_dir(&self, slug: &str) -> PathBuf {
+        self.tasks_dir().join(slug)
+    }
+
+    /// `<root>/.ark/specs/features/`
+    pub fn specs_features_dir(&self) -> PathBuf {
+        self.root.join(SPECS_FEATURES_DIR)
+    }
+
+    /// `<root>/.ark/specs/features/<feature>/`
+    pub fn specs_feature_dir(&self, feature: &str) -> PathBuf {
+        self.specs_features_dir().join(feature)
+    }
+
+    /// `<root>/.ark/specs/features/INDEX.md`
+    pub fn specs_features_index(&self) -> PathBuf {
+        self.root.join(SPECS_FEATURES_INDEX_FILE)
+    }
+
+    /// `<root>/.ark/templates/`
+    pub fn ark_templates_dir(&self) -> PathBuf {
+        self.root.join(ARK_TEMPLATES_DIR)
     }
 
     /// Directories whose full contents are captured by `unload` and restored by
