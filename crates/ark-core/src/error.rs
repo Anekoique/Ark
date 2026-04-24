@@ -70,8 +70,23 @@ pub enum Error {
     #[error("invalid spec field `{field}`: {reason}")]
     InvalidSpecField { field: String, reason: &'static str },
 
+    #[error("invalid task field `{field}`: {reason}")]
+    InvalidTaskField { field: String, reason: &'static str },
+
     #[error("managed block corrupt in {path}: marker `{marker}` has START without END")]
     ManagedBlockCorrupt { path: PathBuf, marker: String },
+
+    #[error(
+        "refusing to downgrade: project is at {project_version}, CLI is {cli_version}; pass \
+         --allow-downgrade to proceed"
+    )]
+    DowngradeRefused {
+        project_version: String,
+        cli_version: String,
+    },
+
+    #[error("unsafe path in installation manifest {path:?}: {reason}")]
+    UnsafeManifestPath { path: PathBuf, reason: &'static str },
 }
 
 impl Error {

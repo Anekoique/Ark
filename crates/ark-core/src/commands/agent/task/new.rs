@@ -11,7 +11,7 @@ use chrono::Utc;
 
 use crate::{
     commands::agent::{
-        state::{Phase, TaskToml, Tier},
+        state::{Phase, TaskToml, Tier, validate_slug, validate_title},
         template::copy_template,
     },
     error::{Error, Result},
@@ -47,6 +47,9 @@ impl fmt::Display for TaskNewSummary {
 }
 
 pub fn task_new(opts: TaskNewOptions) -> Result<TaskNewSummary> {
+    validate_slug(&opts.slug)?;
+    validate_title(&opts.title)?;
+
     let layout = Layout::new(&opts.project_root);
     let task_dir = layout.task_dir(&opts.slug);
 
@@ -139,6 +142,37 @@ mod tests {
         })
         .unwrap_err();
         assert!(matches!(err, Error::TaskAlreadyExists { .. }));
+    }
+
+    #[test]
+    fn rejects_path_traversal_slug() {
+        let tmp = tempfile::tempdir().unwrap();
+        for bad in ["../escape", "/abs", "a/b", "."] {
+            let err = task_new(TaskNewOptions {
+                project_root: tmp.path().to_path_buf(),
+                slug: bad.into(),
+                title: "t".into(),
+                tier: Tier::Quick,
+            })
+            .unwrap_err();
+            assert!(
+                matches!(err, Error::InvalidTaskField { .. }),
+                "expected reject for {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_title() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = task_new(TaskNewOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "ok".into(),
+            title: "A | B".into(),
+            tier: Tier::Quick,
+        })
+        .unwrap_err();
+        assert!(matches!(err, Error::InvalidTaskField { .. }));
     }
 
     #[test]

@@ -11,7 +11,7 @@ use crate::{
             extract::{SpecExtractOptions, spec_extract},
             register::{SpecRegisterOptions, spec_register},
         },
-        state::{Phase, TaskToml, Tier, check_transition},
+        state::{Phase, TaskToml, Tier, check_transition, validate_slug},
     },
     error::{Error, Result},
     io::PathExt,
@@ -49,6 +49,8 @@ impl fmt::Display for TaskArchiveSummary {
 }
 
 pub fn task_archive(opts: TaskArchiveOptions) -> Result<TaskArchiveSummary> {
+    validate_slug(&opts.slug)?;
+
     let layout = Layout::new(&opts.project_root);
     let task_dir = layout.task_dir(&opts.slug);
 
@@ -60,37 +62,53 @@ pub fn task_archive(opts: TaskArchiveOptions) -> Result<TaskArchiveSummary> {
     check_transition(toml.tier, toml.phase, Phase::Archived)?;
 
     let tier = toml.tier;
-    let mut deep_spec_promoted = false;
 
+    // Reserve the archive path before any mutation. If the destination already
+    // exists (same-slug re-archive in the same month), fail cleanly with the
+    // task dir untouched and no partial side effects.
+    let now = Utc::now();
+    let yyyy_mm = now.format("%Y-%m").to_string();
+    let archive_parent = layout.tasks_archive_dir().join(&yyyy_mm);
+    archive_parent.ensure_dir()?;
+    let archive_path = archive_parent.join(&opts.slug);
+    if archive_path.exists() {
+        return Err(Error::TaskAlreadyExists {
+            slug: format!("archive/{yyyy_mm}/{}", opts.slug),
+        });
+    }
+
+    // Rename first. Everything after this point operates on `archive_path`; if
+    // a later step fails, the task is at the archive path (still recoverable)
+    // rather than wedged between states with partial side effects.
+    task_dir.rename_to(&archive_path)?;
+
+    toml.phase = Phase::Archived;
+    toml.archived_at = Some(now);
+    toml.updated_at = now;
+    toml.save(&archive_path)?;
+
+    // Deep-tier SPEC promotion runs from the archive path. If extract/register
+    // fail, the task is archived but the promotion didn't happen — the SPEC
+    // file and INDEX row don't reference an unarchived task, which is the
+    // invariant we care about. The user can hand-run `ark agent spec extract`
+    // / `register` to complete promotion.
+    let mut deep_spec_promoted = false;
     if tier == Tier::Deep {
-        // Side effects run before rename so a failure leaves the task dir intact.
         spec_extract(SpecExtractOptions {
             project_root: opts.project_root.clone(),
             slug: opts.slug.clone(),
             plan_override: None,
+            task_dir_override: Some(archive_path.clone()),
         })?;
         spec_register(SpecRegisterOptions {
             project_root: opts.project_root.clone(),
             feature: opts.slug.clone(),
             scope: toml.title.clone(),
             from_task: opts.slug.clone(),
-            date: Utc::now().date_naive(),
+            date: now.date_naive(),
         })?;
         deep_spec_promoted = true;
     }
-
-    let now = Utc::now();
-    toml.phase = Phase::Archived;
-    toml.archived_at = Some(now);
-    toml.updated_at = now;
-    toml.save(&task_dir)?;
-
-    let yyyy_mm = now.format("%Y-%m").to_string();
-    let archive_parent = layout.tasks_archive_dir().join(&yyyy_mm);
-    archive_parent.ensure_dir()?;
-    let archive_path = archive_parent.join(&opts.slug);
-
-    task_dir.rename_to(&archive_path)?;
 
     let current_path = layout.tasks_current();
     if let Some(current_text) = current_path.read_text_optional()?

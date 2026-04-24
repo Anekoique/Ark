@@ -11,8 +11,8 @@ pub mod state;
 pub mod templates;
 
 pub use commands::{
-    InitOptions, InitSummary, LoadOptions, LoadSummary, RemoveOptions, RemoveSummary,
-    UnloadOptions, UnloadSummary,
+    ConflictChoice, ConflictPolicy, InitOptions, InitSummary, LoadOptions, LoadSummary, Prompter,
+    RemoveOptions, RemoveSummary, UnloadOptions, UnloadSummary, UpgradeOptions, UpgradeSummary,
     agent::{
         Phase, Status, TaskToml, Tier,
         spec::{
@@ -26,8 +26,8 @@ pub use commands::{
             task_verify,
         },
     },
-    init, load, remove, unload,
+    init, load, remove, unload, upgrade,
 };
 pub use error::{Error, Result};
-pub use io::{PathExt, WriteMode};
+pub use io::{PathExt, WriteMode, hash_bytes};
 pub use layout::Layout;

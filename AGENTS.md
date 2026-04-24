@@ -43,6 +43,7 @@ ark-core/src/
     ├── load.rs         # restore from .ark.db OR scaffold
     ├── unload.rs       # capture into .ark.db, remove live files
     ├── remove.rs       # unconditional wipe
+    ├── upgrade.rs      # refresh embedded templates to current CLI version
     └── agent/          # `ark agent` namespace (hidden CLI, not semver)
         ├── state.rs    #   TaskToml + legal-transition table
         ├── task/       #   task lifecycle (new/plan/review/execute/verify/archive)
@@ -62,7 +63,7 @@ ark-core/src/
 - Extract SPEC bodies from PLANs and upsert rows in `specs/features/INDEX.md`'s managed block.
 
 **Not** this layer's responsibility:
-- Rare lifecycle operations — iteration and task reopening — the workflow doc tells the agent to hand-edit these. Tier changes are not supported mid-flight; discard and restart.
+- Rare lifecycle operations — iteration and task reopening — the workflow doc tells the agent to hand-edit these. Tier promotion is supported mid-flight via `ark agent task promote`; other ad hoc lifecycle edits remain manual.
 - Artifact content (PRD prose, PLAN sections, REVIEW verdicts) — agent's judgment.
 - Git / GH operations — agent uses them directly.
 - Consistency checks / doctoring — reviewer judgment.
@@ -104,12 +105,13 @@ Round-trip must preserve user-edited and user-added files under `.ark/` and `.cl
 
 ## Lifecycle Model (what `ark` does)
 
-| Command | Effect |
-|---|---|
-| `ark init` | Scaffold `.ark/` + `.claude/commands/ark/` from embedded templates; insert `<!-- ARK -->` block in `CLAUDE.md`; record artifacts in `.ark/.installed.json`. |
-| `ark load` | If `.ark.db` exists → restore from snapshot and remove it. Otherwise → behave like `init`. Refuses if `.ark/` exists; `--force` wipes first. |
-| `ark unload` | Capture every file under owned dirs and every recorded managed block into `.ark.db`; remove the live footprint. Ignoring `.ark.db` in VCS is the user's responsibility. |
-| `ark remove` | Unconditional wipe of `.ark/`, `.claude/commands/ark/`, managed blocks, and `.ark.db`. |
+| Command      | Effect                                                                                                                                                                  |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ark init`    | Scaffold `.ark/` + `.claude/commands/ark/` from embedded templates; insert `<!-- ARK -->` block in `CLAUDE.md`; record artifacts in `.ark/.installed.json`.             |
+| `ark load`    | If `.ark.db` exists → restore from snapshot and remove it. Otherwise → behave like `init`. Refuses if `.ark/` exists; `--force` wipes first.                            |
+| `ark unload`  | Capture every file under owned dirs and every recorded managed block into `.ark.db`; remove the live footprint. Ignoring `.ark.db` in VCS is the user's responsibility. |
+| `ark remove`  | Unconditional wipe of `.ark/`, `.claude/commands/ark/`, managed blocks, and `.ark.db`.                                                                                  |
+| `ark upgrade` | Refresh embedded templates to the current CLI version; user-modified files are preserved (prompt) or overridden by `--force` / `--skip-modified` / `--create-new`.      |
 
 User-authored files inside owned dirs (`.ark/tasks/...`, custom slash commands) survive an `unload` → `load` round-trip losslessly.
 

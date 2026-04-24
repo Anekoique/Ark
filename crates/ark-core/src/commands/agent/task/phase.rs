@@ -10,7 +10,7 @@ use chrono::Utc;
 
 use crate::{
     commands::agent::{
-        state::{Phase, TaskToml, check_transition},
+        state::{Phase, TaskToml, check_transition, validate_slug},
         template::copy_template,
     },
     error::{Error, Result},
@@ -53,6 +53,8 @@ pub fn task_verify(opts: TaskPhaseOptions) -> Result<TaskPhaseSummary> {
 }
 
 fn transition(opts: TaskPhaseOptions, to: Phase) -> Result<TaskPhaseSummary> {
+    validate_slug(&opts.slug)?;
+
     let layout = Layout::new(&opts.project_root);
     let task_dir = layout.task_dir(&opts.slug);
 
@@ -64,16 +66,20 @@ fn transition(opts: TaskPhaseOptions, to: Phase) -> Result<TaskPhaseSummary> {
     let from = toml.phase;
     check_transition(toml.tier, from, to)?;
 
-    toml.phase = to;
-    toml.updated_at = Utc::now();
-    toml.save(&task_dir)?;
-
+    // Seed the artifact before persisting the phase: if the template write
+    // fails, the toml on disk still reflects the old phase and the caller can
+    // retry the same transition. Saving first would advance the phase and
+    // leave a missing artifact that no legal transition can re-seed.
     if let Some((template, filename)) = artifact_for(to, toml.iteration) {
         let path = task_dir.join(filename);
         if !path.exists() {
             copy_template(template, &path)?;
         }
     }
+
+    toml.phase = to;
+    toml.updated_at = Utc::now();
+    toml.save(&task_dir)?;
 
     Ok(TaskPhaseSummary {
         slug: opts.slug,
@@ -159,6 +165,17 @@ mod tests {
             .read_bytes()
             .unwrap();
         assert_eq!(before, after);
+    }
+
+    #[test]
+    fn rejects_path_traversal_slug() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = task_plan(TaskPhaseOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "../escape".into(),
+        })
+        .unwrap_err();
+        assert!(matches!(err, Error::InvalidTaskField { .. }));
     }
 
     #[test]

@@ -24,9 +24,9 @@
 - System level / project level management?
 - A General purpose to harness and control the coding-agents and improve coding works.
 
-[Worflow enhancement]
+[Workflow enhancement]
 
-- Currently REVIEW will ask for self-review or spawn an sub-agent for review. We should add configurable options for invoking codex review, human review, or creating sub-agent reviews.
+- Currently REVIEW will ask for self-review or spawn a sub-agent for review. We should add configurable options for invoking codex review, human review, or creating sub-agent reviews.
   Human intervention during circulation.
 - Provide user-defined workflows like building blocks, instead of predefined ones.
   Add Workspace support. See trellis.

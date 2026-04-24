@@ -9,7 +9,7 @@ pub mod fs;
 pub mod path_ext;
 
 pub use fs::{
-    WriteMode, WriteOutcome, read_managed_block, remove_managed_block, update_managed_block,
-    walk_files, write_file,
+    WriteMode, WriteOutcome, read_managed_block, remove_managed_block, scan_managed_markers,
+    splice_managed_block, update_managed_block, walk_files, write_file,
 };
-pub use path_ext::PathExt;
+pub use path_ext::{PathExt, hash_bytes};

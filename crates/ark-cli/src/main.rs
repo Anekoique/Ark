@@ -5,15 +5,17 @@
 
 use std::{
     fmt::Display,
+    io::{BufRead, IsTerminal},
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
 use ark_core::{
-    InitOptions, Layout, LoadOptions, PathExt, RemoveOptions, SpecExtractOptions,
-    SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions, TaskPhaseOptions, TaskPromoteOptions,
-    Tier, UnloadOptions, WriteMode, init, load, remove, spec_extract, spec_register, task_archive,
-    task_execute, task_new, task_plan, task_promote, task_review, task_verify, unload,
+    ConflictChoice, ConflictPolicy, InitOptions, Layout, LoadOptions, PathExt, Prompter,
+    RemoveOptions, SpecExtractOptions, SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions,
+    TaskPhaseOptions, TaskPromoteOptions, Tier, UnloadOptions, UpgradeOptions, WriteMode, init,
+    load, remove, spec_extract, spec_register, task_archive, task_execute, task_new, task_plan,
+    task_promote, task_review, task_verify, unload, upgrade,
 };
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
@@ -40,6 +42,8 @@ enum Command {
     Unload(TargetArgs),
     /// Remove Ark from the project, including any `.ark.db` snapshot.
     Remove(TargetArgs),
+    /// Refresh embedded templates to the current CLI version.
+    Upgrade(UpgradeArgs),
     /// Internal commands invoked by the Ark workflow and slash commands.
     /// Not covered by semver — prefer the slash commands over calling these directly.
     #[command(hide = true)]
@@ -64,6 +68,41 @@ struct LoadArgs {
     /// Wipe any existing `.ark/` before loading (otherwise errors if loaded).
     #[arg(long)]
     force: bool,
+}
+
+#[derive(clap::Args)]
+#[group(id = "policy", multiple = false)]
+struct UpgradeArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+
+    /// Overwrite user-modified files without prompting.
+    #[arg(long, group = "policy")]
+    force: bool,
+    /// Preserve user-modified files without prompting.
+    #[arg(long, group = "policy")]
+    skip_modified: bool,
+    /// Write updated template as `<path>.new` without prompting.
+    #[arg(long, group = "policy")]
+    create_new: bool,
+    /// Allow proceeding when CLI version < project version.
+    #[arg(long)]
+    allow_downgrade: bool,
+}
+
+impl UpgradeArgs {
+    fn policy(&self) -> ConflictPolicy {
+        // Exclusivity is enforced by clap's `ArgGroup`, so at most one flag is set.
+        if self.force {
+            ConflictPolicy::Force
+        } else if self.skip_modified {
+            ConflictPolicy::Skip
+        } else if self.create_new {
+            ConflictPolicy::CreateNew
+        } else {
+            ConflictPolicy::Interactive
+        }
+    }
 }
 
 /// Shared `-C DIR` flag used by every subcommand.
@@ -138,9 +177,52 @@ impl Command {
                 announce("removing ark from", &root);
                 render(remove(RemoveOptions::new(root))?);
             }
+            Self::Upgrade(a) => {
+                let policy = a.policy();
+                let root = a.target.resolve();
+                if matches!(policy, ConflictPolicy::Interactive) && !std::io::stdin().is_terminal()
+                {
+                    eprintln!(
+                        "note: stdin is not a terminal; defaulting user-modified files to \
+                         preserve. Use --force/--skip-modified/--create-new for non-interactive \
+                         control."
+                    );
+                }
+                let opts = UpgradeOptions::new(root.clone())
+                    .with_policy(policy)
+                    .with_allow_downgrade(a.allow_downgrade);
+                let mut prompter = StdioPrompter;
+                announce("upgrading ark in", &root);
+                render(upgrade(opts, &mut prompter)?);
+            }
             Self::Agent(a) => a.dispatch()?,
         }
         Ok(())
+    }
+}
+
+/// Reads a single line from stdin per conflict. On non-TTY stdin, short-circuits
+/// to Skip. The one-shot "not a terminal" note is emitted by the `Upgrade`
+/// dispatch arm, not here — constructors should not have I/O side effects.
+struct StdioPrompter;
+
+impl Prompter for StdioPrompter {
+    fn prompt(&mut self, relative_path: &Path) -> ark_core::Result<ConflictChoice> {
+        if !std::io::stdin().is_terminal() {
+            return Ok(ConflictChoice::Skip);
+        }
+        eprint!(
+            "{}: [o]verwrite / [s]kip / [c]reate .new? ",
+            relative_path.display()
+        );
+        let mut line = String::new();
+        let stdin = std::io::stdin();
+        stdin.lock().read_line(&mut line).ok();
+        Ok(match line.trim() {
+            "o" | "O" | "y" | "Y" => ConflictChoice::Overwrite,
+            "c" | "C" => ConflictChoice::CreateNew,
+            _ => ConflictChoice::Skip,
+        })
     }
 }
 
@@ -343,6 +425,7 @@ impl SpecCommand {
                     project_root: root,
                     slug,
                     plan_override: a.plan,
+                    task_dir_override: None,
                 })?);
             }
             Self::Register(a) => {
