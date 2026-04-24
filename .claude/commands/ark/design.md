@@ -14,6 +14,8 @@ Parse `$ARGUMENTS`:
 - If it contains `--deep`, tier = `deep`, title = remainder.
 - Otherwise, tier = `standard`, title = `$ARGUMENTS`.
 
+Structural operations (creating task dirs, phase transitions, archive moves, SPEC extraction, index upserts) are handled by the `ark agent` CLI — do not hand-edit `task.toml` or move directories with `mv`. Artifact bodies (PRD prose, PLAN sections, REVIEW findings) are yours to write.
+
 ## Preconditions
 
 - `.ark/` is initialized.
@@ -55,53 +57,33 @@ Identify any feature SPEC relevant to the task.
 
 Do not proceed until the user confirms direction.
 
-### 1.4 Create task directory
+### 1.4 Create the task
 
 Derive slug from title: lowercase, hyphen-separated, ASCII, ≤40 chars.
 
 ```bash
-SLUG="<derive-from-title>"
-mkdir -p ".ark/tasks/$SLUG"
-echo "$SLUG" > .ark/tasks/.current
+ark agent task new --slug <slug> --title "<title>" --tier {standard|deep}
 ```
 
-Refuse if `.ark/tasks/$SLUG/` already exists.
+This scaffolds `.ark/tasks/<slug>/` with `PRD.md` + `task.toml` (`phase = design`, `iteration = 0`), and points `.ark/tasks/.current` at the new slug. Refuses if the slug already exists.
 
-### 1.5 Write PRD
+### 1.5 Fill the PRD
 
-```bash
-cp .ark/templates/PRD.md .ark/tasks/$SLUG/PRD.md
-```
-
-Fill:
+Edit `.ark/tasks/<slug>/PRD.md`:
 - **What** — one-line description
 - **Why** — the reason
 - **Outcome** — observable success criteria
 - **Related Specs** — feature specs this task touches (list each path with one line on how it interacts)
 
-### 1.6 Write `task.toml`
-
-```toml
-id = "<slug>"
-title = "<title>"
-tier = "standard"   # or "deep"
-phase = "plan"
-status = "in_progress"
-iteration = 0
-max_iterations = 3   # deep only — agent judges based on complexity; omit for standard
-created_at = "<ISO-8601 UTC>"
-updated_at = "<ISO-8601 UTC>"
-```
-
-Write to `.ark/tasks/$SLUG/task.toml`.
-
 ## Phase 2 — PLAN
 
-### 2.1 Copy PLAN template
+### 2.1 Advance phase
 
 ```bash
-cp .ark/templates/PLAN.md .ark/tasks/$SLUG/00_PLAN.md
+ark agent task plan
 ```
+
+This transitions `task.toml.phase` to `Plan` and seeds `00_PLAN.md` from the embedded PLAN template.
 
 ### 2.2 Fill the PLAN
 
@@ -120,23 +102,21 @@ Using the PRD and related specs as input, fill `00_PLAN.md`:
 
 ### 2.3 Advance
 
-**Standard tier:** set `task.toml.phase = "execute"`. Skip to Phase 4.
+**Standard tier:** `ark agent task execute` — skip to Phase 4.
 
-**Deep tier:** set `task.toml.phase = "review"` and proceed to Phase 3.
+**Deep tier:** `ark agent task review` — proceed to Phase 3.
 
 ## Phase 3 — REVIEW (deep tier only — plan review loop)
 
-### 3.1 Copy REVIEW template
+### 3.1 Review is seeded
 
-```bash
-cp .ark/templates/REVIEW.md .ark/tasks/$SLUG/00_REVIEW.md
-```
+`ark agent task review` (called in 2.3) has already transitioned to Review and seeded `00_REVIEW.md`.
 
 ### 3.2 Act as reviewer
 
 Ideally, this is a fresh agent or a reviewer model. For this command, ask the user: *"Should I self-review, or will you run the reviewer?"*
 
-If self-review: switch framing — *you are now the reviewer*. Read 00_PLAN.md critically against the PRD and project specs. Fill 00_REVIEW.md with:
+If self-review: switch framing — *you are now the reviewer*. Read the latest `NN_PLAN.md` critically against the PRD and project specs. Fill the matching `NN_REVIEW.md` with:
 
 - Verdict (Approved / Approved with Revisions / Rejected)
 - Blocking / Non-blocking counts
@@ -147,18 +127,25 @@ If self-review: switch framing — *you are now the reviewer*. Read 00_PLAN.md c
 
 If verdict is *Rejected* or *Approved with Revisions*:
 
-1. Increment iteration: `NN = 01`, `02`, ...
-2. Copy PLAN template to `NN_PLAN.md`
-3. Fill the `Response Matrix` in `## Log` — every prior CRITICAL/HIGH finding must appear with Accepted/Rejected/Deferred + reasoning
-4. Revise the relevant sections
-5. Copy REVIEW template to `NN_REVIEW.md` and review again
-6. Repeat until verdict is *Approved* (zero open CRITICAL)
+1. Copy `.ark/templates/PLAN.md` to `NN+1_PLAN.md` (next iteration number).
+2. Copy `.ark/templates/REVIEW.md` to `NN+1_REVIEW.md`.
+3. Edit `task.toml`: bump `iteration` to `NN+1`, set `phase = "plan"`, update `updated_at`.
+4. Fill `NN+1_PLAN.md`:
+   - Fill the `Response Matrix` in `## Log` — every prior CRITICAL/HIGH finding must appear with Accepted/Rejected/Deferred + reasoning.
+   - Revise the relevant sections.
+5. `ark agent task review` — transition back to Review, ready for the next review pass.
+6. Fill `NN+1_REVIEW.md` with the next verdict.
+7. Repeat until verdict is *Approved* (zero open CRITICAL).
 
 **Max iterations** is recorded in `task.toml.max_iterations` (agent-judged — typically 3–5 for deep). If exhausted without approval, halt and ask the user how to proceed.
 
 ### 3.4 Advance
 
-When the latest REVIEW is *Approved* with zero open CRITICAL, set `task.toml.phase = "execute"`.
+When the latest REVIEW is *Approved* with zero open CRITICAL:
+
+```bash
+ark agent task execute
+```
 
 ## Phase 4 — EXECUTE
 
@@ -174,17 +161,17 @@ Run whatever checks the project enforces (tests, lints, builds). Implementation 
 
 ### 4.3 Advance
 
-Once code is committed: set `task.toml.phase = "verify"`.
+Once code is committed:
+
+```bash
+ark agent task verify
+```
+
+This transitions to Verify and seeds `VERIFY.md` from the embedded template.
 
 ## Phase 5 — VERIFY
 
-### 5.1 Copy VERIFY template
-
-```bash
-cp .ark/templates/VERIFY.md .ark/tasks/$SLUG/VERIFY.md
-```
-
-### 5.2 Act as verifier
+### 5.1 Act as verifier
 
 Ideally a fresh agent or reviewer model. If self-verifying, apply the **higher quality bar**: this is not just "does it work" — it covers plan fidelity, correctness, code quality, organization, abstraction, and SPEC drift.
 
@@ -195,48 +182,9 @@ Fill VERIFY.md:
 
 **VERIFY does not loop.** Single-pass gate.
 
-### 5.3 Decide
+### 5.2 Decide
 
-- **Approved / Approved with Follow-ups** → proceed to Phase 6 (archive). If follow-ups exist, report them to the user; they can create new tasks for them.
-- **Rejected** → halt. Summarize findings to the user and ask how to proceed (create fix tasks, promote tier, accept with acknowledgement, discard).
+- **Approved / Approved with Follow-ups** → report the verdict to the user. If follow-ups exist, list them; they can create new tasks. Tell the user: "Run `/ark:archive` to close out the task." Do NOT archive automatically.
+- **Rejected** → halt. Summarize findings to the user and ask how to proceed (create fix tasks, promote tier via `ark agent task promote`, accept with acknowledgement, discard).
 
-## Phase 6 — ARCHIVE
-
-### 6.1 Update task.toml
-
-Set `phase = "archived"`, add `archived_at = "<ISO-8601 UTC>"`.
-
-### 6.2 Deep-tier only: extract SPEC
-
-Take the `## Spec` section from the final PLAN (highest NN). Write it to:
-
-```bash
-mkdir -p .ark/specs/features/$SLUG
-cp .ark/templates/SPEC.md .ark/specs/features/$SLUG/SPEC.md
-# Fill SPEC.md from the final PLAN's ## Spec section
-```
-
-If the task modified an existing feature SPEC, append a `[**CHANGELOG**]` entry instead of overwriting.
-
-Then update the managed block in `specs/features/INDEX.md`:
-
-```
-<!-- ARK:FEATURES:START -->
-| <feature> | <one-line scope> | <YYYY-MM-DD> from task `<slug>` |
-<!-- ARK:FEATURES:END -->
-```
-
-Append the new row (or update the existing row's Promoted date if this task revised an existing feature).
-
-### 6.3 Move task directory
-
-```bash
-ARCHIVE_DIR=".ark/tasks/archive/$(date -u +%Y-%m)"
-mkdir -p "$ARCHIVE_DIR"
-mv ".ark/tasks/$SLUG" "$ARCHIVE_DIR/"
-rm -f .ark/tasks/.current
-```
-
-### 6.4 Report to user
-
-Summarize: tier, final verdict, any follow-ups, promoted SPEC path (deep), archive location.
+Archival is a separate user-invoked step. See `/ark:archive`.

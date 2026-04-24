@@ -2,17 +2,14 @@
 
 Feature specifications extracted from deep-tier tasks on archive. Layout: `<feature>/SPEC.md`.
 
+The table below is managed by `ark agent spec register` — new rows appear when a deep-tier task is archived with a promoted SPEC. Do not hand-edit rows between the markers; edit outside the block or let the CLI do it.
+
 ## Index
 
 <!-- ARK:FEATURES:START -->
-`{No feature specs yet. Ark appends a row here when a deep-tier task is archived with a promoted SPEC.}`
-<!-- ARK:FEATURES:END -->
-
-Format once populated:
-
 | Feature | Scope | Promoted |
 |---------|-------|----------|
-| `{oauth}` | `{OAuth provider integration and token lifecycle}` | `{2026-04-20 from task `oauth`}` |
+<!-- ARK:FEATURES:END -->
 
 ---
 

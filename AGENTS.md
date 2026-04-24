@@ -37,13 +37,35 @@ ark-core/src/
 │   └── fs.rs           # write_file, walk_files, managed-block ops
 ├── state/
 │   ├── manifest.rs     # .ark/.installed.json
-│   └── snapshot.rs     # .ark.db + gitignore protocol
+│   └── snapshot.rs     # .ark.db capture/restore
 └── commands/
     ├── init.rs         # scaffold from templates
     ├── load.rs         # restore from .ark.db OR scaffold
     ├── unload.rs       # capture into .ark.db, remove live files
-    └── remove.rs       # unconditional wipe
+    ├── remove.rs       # unconditional wipe
+    └── agent/          # `ark agent` namespace (hidden CLI, not semver)
+        ├── state.rs    #   TaskToml + legal-transition table
+        ├── task/       #   task lifecycle (new/plan/review/execute/verify/archive)
+        ├── spec/       #   feature SPEC extract + register
+        └── template.rs #   internal helper: extract embedded templates
 ```
+
+### The `ark agent` namespace
+
+`ark agent` is a **hidden** top-level subcommand (`#[command(hide = true)]`) that packages the structural workflow mutations as typed Rust commands. Callers are the shipped slash commands (`templates/claude/commands/ark/*.md`) and the workflow doc; end users should prefer those.
+
+**Stability policy:** the CLI surface under `ark agent` is **not covered by semver**. The contract is internal — the binary and its shipped templates version together, not against external callers. `ark --help` does not list `agent`; `ark agent --help` renders its children with a stability banner.
+
+**Responsibilities of this layer:**
+- Create task directories (`task new`) and move them on archive (`task archive`) — whenever the operation touches filesystem structure that has to be correct.
+- Transition phases (`task plan` / `review` / `execute` / `verify` / `archive`) — the state machine enforces legality per tier.
+- Extract SPEC bodies from PLANs and upsert rows in `specs/features/INDEX.md`'s managed block.
+
+**Not** this layer's responsibility:
+- Rare lifecycle operations — iteration and task reopening — the workflow doc tells the agent to hand-edit these. Tier changes are not supported mid-flight; discard and restart.
+- Artifact content (PRD prose, PLAN sections, REVIEW verdicts) — agent's judgment.
+- Git / GH operations — agent uses them directly.
+- Consistency checks / doctoring — reviewer judgment.
 
 ## Build, Test, Lint
 
@@ -85,9 +107,9 @@ Round-trip must preserve user-edited and user-added files under `.ark/` and `.cl
 | Command | Effect |
 |---|---|
 | `ark init` | Scaffold `.ark/` + `.claude/commands/ark/` from embedded templates; insert `<!-- ARK -->` block in `CLAUDE.md`; record artifacts in `.ark/.installed.json`. |
-| `ark load` | If `.ark.db` exists → restore from snapshot (and remove the snapshot + its `.gitignore` line). Otherwise → behave like `init`. Refuses if `.ark/` exists; `--force` wipes first. |
-| `ark unload` | Capture every file under owned dirs and every recorded managed block into `.ark.db`; remove the live footprint; add `.ark.db` to `.gitignore`. |
-| `ark remove` | Unconditional wipe of `.ark/`, `.claude/commands/ark/`, managed blocks, `.ark.db`, and the `.gitignore` entry. |
+| `ark load` | If `.ark.db` exists → restore from snapshot and remove it. Otherwise → behave like `init`. Refuses if `.ark/` exists; `--force` wipes first. |
+| `ark unload` | Capture every file under owned dirs and every recorded managed block into `.ark.db`; remove the live footprint. Ignoring `.ark.db` in VCS is the user's responsibility. |
+| `ark remove` | Unconditional wipe of `.ark/`, `.claude/commands/ark/`, managed blocks, and `.ark.db`. |
 
 User-authored files inside owned dirs (`.ark/tasks/...`, custom slash commands) survive an `unload` → `load` round-trip losslessly.
 
@@ -102,7 +124,7 @@ User-authored files inside owned dirs (`.ark/tasks/...`, custom slash commands) 
 
 ## What Not to Do
 
-- Don't add files just to host one function. Single-responsibility helpers belong in the module that owns the responsibility (see `Snapshot`'s gitignore protocol, `Marker` private to `io/fs.rs`).
+- Don't add files just to host one function. Single-responsibility helpers belong in the module that owns the responsibility (see `Marker` private to `io/fs.rs`).
 - Don't introduce `crate::*::*` paths that bypass `layout::Layout` for path computation.
 - Don't shell out to git, `mv`, or `rm` from Rust code — use `PathExt`.
 - Don't mutate `reference/` or commit anything from `target/`.

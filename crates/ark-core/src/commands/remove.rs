@@ -28,7 +28,6 @@ pub struct RemoveSummary {
     pub removed_claude_commands: bool,
     pub removed_snapshot: bool,
     pub blocks_removed: usize,
-    pub gitignore_updated: bool,
 }
 
 impl fmt::Display for RemoveSummary {
@@ -80,9 +79,8 @@ pub fn remove(opts: RemoveOptions) -> Result<RemoveSummary> {
         .iter()
         .try_for_each(|p| p.remove_dir_if_empty().map(|_| ()))?;
 
-    // 3. Snapshot and its gitignore entry.
+    // 3. Snapshot.
     summary.removed_snapshot = Snapshot::remove(layout.root())?;
-    summary.gitignore_updated = Snapshot::remove_ignored(layout.root())?;
 
     Ok(summary)
 }
@@ -110,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_also_nukes_snapshot_and_gitignore() {
+    fn remove_also_nukes_snapshot() {
         let tmp = tempfile::tempdir().unwrap();
         init(InitOptions::new(tmp.path())).unwrap();
         unload(UnloadOptions::new(tmp.path())).unwrap();
@@ -118,7 +116,6 @@ mod tests {
 
         let summary = remove(RemoveOptions::new(tmp.path())).unwrap();
         assert!(summary.removed_snapshot);
-        assert!(summary.gitignore_updated);
     }
 
     #[test]

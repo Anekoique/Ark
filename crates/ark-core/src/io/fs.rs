@@ -74,17 +74,27 @@ pub fn read_managed_block(path: impl AsRef<Path>, marker: &str) -> Result<Option
 
 /// Insert or replace a delimited managed block in a text file. Creates the
 /// file if it doesn't exist. Returns `true` once written.
+///
+/// Errors with [`Error::ManagedBlockCorrupt`] if the file contains a START
+/// marker without a matching END — appending a fresh block in that case would
+/// silently duplicate the marker and yield garbled state on subsequent reads.
 pub fn update_managed_block(path: impl AsRef<Path>, marker: &str, body: &str) -> Result<bool> {
     let path = path.as_ref();
     let m = Marker::new(marker);
     let block = m.render(body);
-    let new_contents = path
-        .read_text_optional()?
-        .map(|text| {
-            m.replace_in(&text, body)
-                .unwrap_or_else(|| append_block(&text, &block))
-        })
-        .unwrap_or(block);
+    let new_contents = match path.read_text_optional()? {
+        None => block,
+        Some(text) => match m.replace_in(&text, body) {
+            Some(replaced) => replaced,
+            None if text.contains(&m.start()) => {
+                return Err(Error::ManagedBlockCorrupt {
+                    path: path.to_path_buf(),
+                    marker: marker.to_string(),
+                });
+            }
+            None => append_block(&text, &block),
+        },
+    };
     path.write_bytes(new_contents.as_bytes())?;
     Ok(true)
 }
@@ -280,6 +290,14 @@ mod tests {
         std::fs::write(tmp.path(), "<!-- ARK:START -->\nbody\n<!-- ARK:END -->\n").unwrap();
         assert!(remove_managed_block(tmp.path(), "ARK").unwrap());
         assert!(!tmp.path().exists());
+    }
+
+    #[test]
+    fn update_managed_block_errors_on_orphan_start() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "<!-- ARK:START -->\nbody\nno-end-here\n").unwrap();
+        let err = update_managed_block(tmp.path(), "ARK", "new body").unwrap_err();
+        assert!(matches!(err, Error::ManagedBlockCorrupt { .. }));
     }
 
     #[test]
