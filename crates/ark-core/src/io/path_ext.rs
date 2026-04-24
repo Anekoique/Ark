@@ -4,9 +4,22 @@
 //! goal is to remove the `map_err(|e| Error::io(path, e))` boilerplate that
 //! would otherwise clutter every call site.
 
-use std::{fs, io::ErrorKind, path::Path};
+use std::{fmt::Write as _, fs, io::ErrorKind, path::Path};
+
+use sha2::{Digest, Sha256};
 
 use crate::error::{Error, Result};
+
+/// Hex-lowercase SHA-256 of `contents`.
+pub fn hash_bytes(contents: &[u8]) -> String {
+    let digest = Sha256::digest(contents);
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        // Writing into a pre-allocated String cannot fail.
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
 
 /// File-system helpers that automatically attach the offending path to I/O
 /// errors, distinguish the "file doesn't exist" case from real failures, and
@@ -46,6 +59,9 @@ pub trait PathExt {
     /// Rename/move this path to `dest`. Fails loud on cross-device moves; no
     /// copy+delete fallback.
     fn rename_to(&self, dest: impl AsRef<Path>) -> Result<()>;
+
+    /// Hex-lowercase SHA-256 of the file contents, or `None` if the file is missing.
+    fn hash_sha256(&self) -> Result<Option<String>>;
 }
 
 impl<T: AsRef<Path> + ?Sized> PathExt for T {
@@ -127,6 +143,10 @@ impl<T: AsRef<Path> + ?Sized> PathExt for T {
         let src = self.as_ref();
         fs::rename(src, dest.as_ref()).map_err(|e| Error::io(src, e))
     }
+
+    fn hash_sha256(&self) -> Result<Option<String>> {
+        Ok(self.read_optional()?.as_deref().map(hash_bytes))
+    }
 }
 
 fn is_not_empty_error(e: &std::io::Error) -> bool {
@@ -196,6 +216,31 @@ mod tests {
             tmp.path().join("absent").read_text().unwrap_err(),
             Error::Io { .. }
         ));
+    }
+
+    #[test]
+    fn hash_bytes_matches_known_vector() {
+        assert_eq!(
+            hash_bytes(b"hello"),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
+
+    #[test]
+    fn hash_sha256_returns_none_for_missing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(tmp.path().join("absent").hash_sha256().unwrap().is_none());
+    }
+
+    #[test]
+    fn hash_sha256_hashes_existing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("a.txt");
+        path.write_bytes(b"hello").unwrap();
+        assert_eq!(
+            path.hash_sha256().unwrap().as_deref(),
+            Some(hash_bytes(b"hello").as_str())
+        );
     }
 
     #[test]

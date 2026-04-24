@@ -1,6 +1,6 @@
 {
-  "version": "0.1.0",
-  "installed_at": "2026-04-22T09:27:51.933597Z",
+  "version": "0.1.1",
+  "installed_at": "2026-04-24T11:01:42.907464Z",
   "files": [
     ".ark/workflow.md",
     ".ark/templates/PLAN.md",
@@ -12,12 +12,27 @@
     ".ark/specs/project/INDEX.md",
     ".ark/specs/features/INDEX.md",
     ".claude/commands/ark/design.md",
-    ".claude/commands/ark/quick.md"
+    ".claude/commands/ark/quick.md",
+    ".claude/commands/ark/archive.md"
   ],
   "managed_blocks": [
     {
       "file": "CLAUDE.md",
       "marker": "ARK"
     }
-  ]
+  ],
+  "hashes": {
+    ".ark/specs/INDEX.md": "0e404d5c47fd687afe97aa94f55ade016ecb729b671a7a97f1ccd9f55e67c246",
+    ".ark/specs/features/INDEX.md": "104a8bf200becda933d631f6e10520a24979c74f1cf3a1dd635a741079c2e5be",
+    ".ark/specs/project/INDEX.md": "f86637904e7555607f8fc7613a7c7f04a45ef7b86f81ff5e4b7a328bd91b17e6",
+    ".ark/templates/PLAN.md": "9ed190a058dd289299d1ff7dfe09908df88d7e2035ed4798bf9d4e531cc94bd8",
+    ".ark/templates/PRD.md": "ec3ff89b872f90084379eba7bf97ddf6cdc9bcb7d175be663cd0a1df07e24dae",
+    ".ark/templates/REVIEW.md": "4959ae0d8571f878745de7cf283f4992c5f1e8dfc3b3e3efed115fabf86868e5",
+    ".ark/templates/SPEC.md": "fa8c1e8511cc73a31ea69d42576d9831f7384e969571535d00e73bfb382ee547",
+    ".ark/templates/VERIFY.md": "fc9adabe1afaac579e60d2d8568426a7b701266c3c9c6b0eae6b528a94b7dd19",
+    ".ark/workflow.md": "05ef69fc70395969d691e1970a81bbb80b20ffaa7acaf2b0f8b0321febf39168",
+    ".claude/commands/ark/archive.md": "44def83405f5152eb206b6f024a8f06141a1e4f398ee3f7020b8b80fff2537f1",
+    ".claude/commands/ark/design.md": "c5b7312be0b8c4570c90881dbefd25dfbb1e4c09156f2980f4341530cbd46aa5",
+    ".claude/commands/ark/quick.md": "69e64987de5611119bdbd6cb0d2c7956d81e5dffbb42267b3cc1766275262785"
+  }
 }

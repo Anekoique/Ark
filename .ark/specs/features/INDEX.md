@@ -10,6 +10,8 @@ The table below is managed by `ark agent spec register` — new rows appear when
 | Feature | Scope | Promoted |
 |---------|-------|----------|
 | `ark-agent-namespace` | add `ark agent` tool for agents to invoke | 2026-04-24 from task `ark-agent-namespace` |
+| `ark-upgrade` | add `ark upgrade` support | 2026-04-24 from task `ark-upgrade` |
+
 <!-- ARK:FEATURES:END -->
 
 ---

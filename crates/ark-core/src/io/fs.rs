@@ -72,6 +72,36 @@ pub fn read_managed_block(path: impl AsRef<Path>, marker: &str) -> Result<Option
         .and_then(|text| Marker::new(marker).extract_body(&text)))
 }
 
+/// Replace the body between `<!-- {marker}:START -->` and `<!-- {marker}:END -->`
+/// in `text` with `body`. Returns `None` if the marker pair is not present.
+pub fn splice_managed_block(text: &str, marker: &str, body: &str) -> Option<String> {
+    Marker::new(marker).replace_in(text, body)
+}
+
+/// Return every `ARK:*` marker name whose START+END pair appears in `text`, in
+/// document order, de-duplicated. Used by upgrade to discover which regions of
+/// a desired template should be reconciled against on-disk content.
+pub fn scan_managed_markers(text: &str) -> Vec<String> {
+    const PREFIX: &str = "<!-- ARK:";
+    const END: &str = ":END -->";
+    let mut names = Vec::new();
+    let mut rest = text;
+    while let Some(pos) = rest.find(PREFIX) {
+        let tail = &rest[pos + PREFIX.len()..];
+        let Some(colon) = tail.find(":START -->") else {
+            break;
+        };
+        let name = &tail[..colon];
+        let full = format!("ARK:{name}");
+        // Only accept pairs: confirm a matching END appears later in the file.
+        if text.contains(&format!("<!-- {full}{END}")) && !names.contains(&full) {
+            names.push(full);
+        }
+        rest = &tail[colon..];
+    }
+    names
+}
+
 /// Insert or replace a delimited managed block in a text file. Creates the
 /// file if it doesn't exist. Returns `true` once written.
 ///

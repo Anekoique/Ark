@@ -92,8 +92,6 @@ Promote mid-flight with `ark agent task promote --to <tier>`; prior artifacts ar
        └─────┬──────┘  code quality, organization, abstraction
              │         rejected → halt for user decision
              ▼
-             │         
-             ▼
        ┌────────────┐
        │  ARCHIVE   │  move to tasks/archive/YYYY-MM/;
        └────────────┘  deep: extract SPEC → specs/features/<name>/

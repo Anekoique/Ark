@@ -117,6 +117,58 @@ pub fn check_transition(tier: Tier, from: Phase, to: Phase) -> Result<()> {
     }
 }
 
+/// Reject slugs that would escape `.ark/tasks/` or be unsafe as a file-system
+/// component. Called at every `ark agent` entry point that joins a user-supplied
+/// slug into a path.
+///
+/// Rules: non-empty; no path separators (`/`, `\`); no `..` / `.`; no absolute
+/// root; no leading/trailing whitespace; ASCII printable non-whitespace only.
+pub fn validate_slug(slug: &str) -> Result<()> {
+    let invalid = |reason: &'static str| Error::InvalidTaskField {
+        field: "slug".into(),
+        reason,
+    };
+    if slug.is_empty() {
+        return Err(invalid("empty"));
+    }
+    if slug.trim() != slug {
+        return Err(invalid("leading or trailing whitespace"));
+    }
+    if slug == "." || slug == ".." {
+        return Err(invalid("reserved name"));
+    }
+    for ch in slug.chars() {
+        match ch {
+            '/' | '\\' => return Err(invalid("contains path separator")),
+            c if c.is_ascii_control() => return Err(invalid("contains control character")),
+            c if c.is_whitespace() => return Err(invalid("contains whitespace")),
+            c if !c.is_ascii() => return Err(invalid("non-ASCII character")),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Reject task titles that can't round-trip through `spec_register` as the
+/// feature-scope column (which forbids `|` and newlines). Keeps deep-tier
+/// archive from failing on titles that were accepted at creation time.
+pub fn validate_title(title: &str) -> Result<()> {
+    let invalid = |reason: &'static str| Error::InvalidTaskField {
+        field: "title".into(),
+        reason,
+    };
+    if title.trim().is_empty() {
+        return Err(invalid("empty"));
+    }
+    if title.contains('|') {
+        return Err(invalid("contains `|`"));
+    }
+    if title.contains('\n') || title.contains('\r') {
+        return Err(invalid("contains newline"));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +275,55 @@ mod tests {
                     "archived should be terminal for {tier:?} → {to:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn validate_slug_accepts_ordinary() {
+        for slug in ["ok", "task-1", "a_b_c", "feat-42"] {
+            assert!(validate_slug(slug).is_ok(), "{slug}");
+        }
+    }
+
+    #[test]
+    fn validate_slug_rejects_traversal_and_separators() {
+        for bad in [
+            "",
+            ".",
+            "..",
+            "../escape",
+            "/abs",
+            "a/b",
+            "a\\b",
+            "has space",
+            "\ttab",
+            "bad\n",
+            "a/b/c",
+            " leading",
+            "trailing ",
+            "emoji😀",
+        ] {
+            assert!(
+                matches!(validate_slug(bad), Err(Error::InvalidTaskField { .. })),
+                "expected reject for {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_title_accepts_ordinary() {
+        for t in ["demo", "Add feature X", "fix: handle edge case"] {
+            assert!(validate_title(t).is_ok(), "{t}");
+        }
+    }
+
+    #[test]
+    fn validate_title_rejects_pipe_and_newlines() {
+        for bad in ["", "   ", "A | B", "line1\nline2", "carriage\rreturn"] {
+            assert!(
+                matches!(validate_title(bad), Err(Error::InvalidTaskField { .. })),
+                "expected reject for {bad:?}"
+            );
         }
     }
 

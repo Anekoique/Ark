@@ -14,7 +14,7 @@ Parse `$ARGUMENTS`:
 - If it contains `--deep`, tier = `deep`, title = remainder.
 - Otherwise, tier = `standard`, title = `$ARGUMENTS`.
 
-Structural operations (creating task dirs, phase transitions, archive moves, SPEC extraction, index upserts) are handled by the `ark agent` CLI — do not hand-edit `task.toml` or move directories with `mv`. Artifact bodies (PRD prose, PLAN sections, REVIEW findings) are yours to write.
+Structural operations (creating task dirs, phase transitions, archive moves, SPEC extraction, index upserts) are handled by the `ark agent` CLI — do not hand-edit `task.toml` or move directories with `mv`, except where this command later explicitly instructs a deep-tier iteration or reopen update (for example, bumping `iteration` and resetting `phase`). Artifact bodies (PRD prose, PLAN sections, REVIEW findings) are yours to write.
 
 ## Preconditions
 

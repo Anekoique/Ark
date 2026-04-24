@@ -1,0 +1,9 @@
+id = "ark-upgrade"
+title = "add `ark upgrade` support"
+tier = "deep"
+phase = "archived"
+iteration = 2
+max_iterations = 3
+created_at = "2026-04-24T07:22:32.504530Z"
+updated_at = "2026-04-24T10:06:02.129947Z"
+archived_at = "2026-04-24T10:06:02.129947Z"

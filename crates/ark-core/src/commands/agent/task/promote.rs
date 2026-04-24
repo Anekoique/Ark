@@ -10,7 +10,7 @@ use std::{fmt, path::PathBuf};
 use chrono::Utc;
 
 use crate::{
-    commands::agent::state::{Phase, TaskToml, Tier},
+    commands::agent::state::{Phase, TaskToml, Tier, validate_slug},
     error::{Error, Result},
     layout::Layout,
 };
@@ -40,6 +40,8 @@ impl fmt::Display for TaskPromoteSummary {
 }
 
 pub fn task_promote(opts: TaskPromoteOptions) -> Result<TaskPromoteSummary> {
+    validate_slug(&opts.slug)?;
+
     let layout = Layout::new(&opts.project_root);
     let task_dir = layout.task_dir(&opts.slug);
 
@@ -60,9 +62,12 @@ pub fn task_promote(opts: TaskPromoteOptions) -> Result<TaskPromoteSummary> {
 
     toml.tier = opts.to;
     toml.updated_at = Utc::now();
-    if opts.to == Tier::Deep && toml.max_iterations.is_none() {
-        toml.max_iterations = Some(3);
-    }
+    // Keep `max_iterations` consistent with tier semantics: it is Deep-only
+    // metadata. Seed on promote-into-Deep; clear on promote-out-of-Deep.
+    toml.max_iterations = match opts.to {
+        Tier::Deep => Some(toml.max_iterations.unwrap_or(3)),
+        _ => None,
+    };
     toml.save(&task_dir)?;
 
     Ok(TaskPromoteSummary {
@@ -178,6 +183,48 @@ mod tests {
         })
         .unwrap_err();
         assert!(matches!(err, Error::IllegalPhaseTransition { .. }));
+    }
+
+    #[test]
+    fn deep_to_standard_clears_max_iterations() {
+        let tmp = tempfile::tempdir().unwrap();
+        task_new(TaskNewOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+            title: "t".into(),
+            tier: Tier::Deep,
+        })
+        .unwrap();
+        assert_eq!(
+            TaskToml::load(&tmp.path().join(".ark/tasks/demo"))
+                .unwrap()
+                .max_iterations,
+            Some(3),
+        );
+        task_promote(TaskPromoteOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+            to: Tier::Standard,
+        })
+        .unwrap();
+        assert_eq!(
+            TaskToml::load(&tmp.path().join(".ark/tasks/demo"))
+                .unwrap()
+                .max_iterations,
+            None,
+        );
+    }
+
+    #[test]
+    fn rejects_path_traversal_slug() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = task_promote(TaskPromoteOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "../escape".into(),
+            to: Tier::Deep,
+        })
+        .unwrap_err();
+        assert!(matches!(err, Error::InvalidTaskField { .. }));
     }
 
     #[test]

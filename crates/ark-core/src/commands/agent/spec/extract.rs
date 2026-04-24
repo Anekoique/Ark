@@ -14,7 +14,7 @@ use std::{
 use chrono::Utc;
 
 use crate::{
-    commands::agent::state::{TaskToml, Tier},
+    commands::agent::state::{TaskToml, Tier, validate_slug},
     error::{Error, Result},
     io::PathExt,
     layout::Layout,
@@ -26,6 +26,10 @@ pub struct SpecExtractOptions {
     pub slug: String,
     /// Optional explicit plan path; defaults to highest-NN `NN_PLAN.md`.
     pub plan_override: Option<PathBuf>,
+    /// Optional task directory override. Used by `task archive` which operates
+    /// on the archived task path (`tasks/archive/YYYY-MM/<slug>/`) rather than
+    /// the active path (`tasks/<slug>/`). Defaults to the active path.
+    pub task_dir_override: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,8 +52,13 @@ impl fmt::Display for SpecExtractSummary {
 }
 
 pub fn spec_extract(opts: SpecExtractOptions) -> Result<SpecExtractSummary> {
+    validate_slug(&opts.slug)?;
+
     let layout = Layout::new(&opts.project_root);
-    let task_dir = layout.task_dir(&opts.slug);
+    let task_dir = opts
+        .task_dir_override
+        .clone()
+        .unwrap_or_else(|| layout.task_dir(&opts.slug));
 
     if !task_dir.exists() {
         return Err(Error::TaskNotFound { slug: opts.slug });
@@ -221,6 +230,7 @@ mod tests {
             project_root: tmp.path().to_path_buf(),
             slug: "demo".into(),
             plan_override: None,
+            task_dir_override: None,
         })
         .unwrap();
         assert!(!s.was_update);
@@ -240,6 +250,7 @@ mod tests {
             project_root: tmp.path().to_path_buf(),
             slug: "demo".into(),
             plan_override: None,
+            task_dir_override: None,
         })
         .unwrap();
 
@@ -252,6 +263,7 @@ mod tests {
             project_root: tmp.path().to_path_buf(),
             slug: "demo".into(),
             plan_override: None,
+            task_dir_override: None,
         })
         .unwrap();
         assert!(s.was_update);
@@ -275,6 +287,7 @@ mod tests {
             project_root: tmp.path().to_path_buf(),
             slug: "demo".into(),
             plan_override: None,
+            task_dir_override: None,
         })
         .unwrap_err();
         assert!(matches!(
@@ -294,6 +307,7 @@ mod tests {
             project_root: tmp.path().to_path_buf(),
             slug: "demo".into(),
             plan_override: None,
+            task_dir_override: None,
         })
         .unwrap_err();
         assert!(matches!(err, Error::SpecSectionMissing { .. }));

@@ -138,7 +138,7 @@ fn extract(
         let relative = dest
             .strip_prefix(project_root)
             .expect("dest under project root");
-        manifest.record_file(relative);
+        manifest.record_file_with_hash(relative, entry.contents);
         summary.record(outcome);
         Ok(())
     })
@@ -222,6 +222,24 @@ mod tests {
         let summary = init(InitOptions::new(tmp.path()).with_mode(WriteMode::Skip)).unwrap();
         assert!(summary.skipped > 0);
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "user edit\n");
+    }
+
+    #[test]
+    fn init_populates_manifest_hashes() {
+        use crate::io::hash_bytes;
+
+        let tmp = tempfile::tempdir().unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+
+        let manifest = Manifest::read(tmp.path()).unwrap().unwrap();
+        assert!(!manifest.hashes.is_empty());
+        for file in &manifest.files {
+            let on_disk = std::fs::read(tmp.path().join(file)).unwrap();
+            let recorded = manifest
+                .hash_for(file)
+                .unwrap_or_else(|| panic!("no hash for {}", file.display()));
+            assert_eq!(recorded, hash_bytes(&on_disk));
+        }
     }
 
     #[test]
