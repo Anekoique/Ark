@@ -14,14 +14,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Whitespace-in-secret guard: GitHub stores secrets verbatim including any
+      # trailing newline from paste, which the Anthropic SDK rejects as an
+      # invalid HTTP header value. Strip it before passing to the action.
+      - name: Sanitize OAuth token
+        id: token
+        env:
+          RAW: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          CLEAN="$(printf '%s' "$RAW" | tr -d '\r\n \t')"
+          echo "::add-mask::$CLEAN"
+          echo "value=$CLEAN" >> "$GITHUB_OUTPUT"
+
       - uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_code_oauth_token: ${{ steps.token.outputs.value }}
+          # Create a progress-tracking PR comment Claude updates as it runs;
+          # this is how agent-mode review output surfaces on the PR.
+          track_progress: true
           prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
             Review this PR for code quality, potential bugs, security issues, and Rust best practices.
             Focus on:
             - Correctness and edge cases
             - Error handling (prefer crate::error::Result over panics/unwrap)
             - Filesystem safety (prefer io::PathExt over std::fs::*)
             - Adherence to conventions in AGENTS.md
-            Provide constructive, actionable feedback. Skip trivial style nits already enforced by rustfmt/clippy.
+
+            Post a top-level review comment (or inline comments where specific) with your findings. Skip trivial style nits already enforced by rustfmt/clippy. If you find nothing actionable, post a short "LGTM, no findings" comment so the review is visible.
