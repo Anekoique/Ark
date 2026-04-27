@@ -10,11 +10,9 @@ use std::{fmt, path::PathBuf};
 use crate::{
     commands::init::{InitOptions, InitSummary, init},
     error::{Error, Result},
-    io::{
-        PathExt, WriteMode, ark_session_start_hook_entry, update_managed_block,
-        update_settings_hook, write_file,
-    },
+    io::{PathExt, WriteMode, update_managed_block, write_file},
     layout::Layout,
+    platforms::{CLAUDE_PLATFORM, PLATFORMS, Platform},
     state::Snapshot,
 };
 
@@ -95,22 +93,18 @@ fn restore(layout: &Layout, snapshot: Snapshot) -> Result<LoadSummary> {
         update_managed_block(target, &b.marker, &b.body).map(|_| ())
     })?;
 
-    // ark-context C-18: restore Ark-owned hook entries by re-applying via
-    // update_settings_hook. The captured `entry` body is the source of
-    // truth — but because the entry's identity-key value is also the
-    // canonical value, this collapses to "re-apply canonical entry" in
-    // practice.
+    // ark-context C-18 / codex-support C-22: restore Ark-owned hook entries.
+    // Replay each captured entry, then overwrite with the canonical shape so
+    // the on-disk hook is independent of snapshot age. For legacy snapshots
+    // (no `hook_bodies`) we treat Claude as installed-by-default — Claude
+    // shipped first and predates the manifest-prefix invariant.
     for hb in &snapshot.hook_bodies {
-        let target = layout.resolve_safe(&hb.path)?;
-        update_settings_hook(target, hb.entry.clone())?;
+        hb.apply(layout)?;
     }
-
-    // Even when a snapshot lacks a hook entry (older `.ark.db` written
-    // before this version), ensure the canonical Ark hook is applied. This
-    // mirrors `init`'s post-scaffold call — the only difference is that
-    // `restore` may have just installed user-customized files alongside.
-    if snapshot.hook_bodies.is_empty() {
-        update_settings_hook(layout.claude_settings(), ark_session_start_hook_entry())?;
+    for platform in canonical_targets(&snapshot) {
+        if let Some(spec) = platform.hook_file {
+            spec.apply_canonical(layout)?;
+        }
     }
 
     Snapshot::remove(layout.root())?;
@@ -119,6 +113,23 @@ fn restore(layout: &Layout, snapshot: Snapshot) -> Result<LoadSummary> {
         files: snapshot.files.len(),
         blocks: snapshot.managed_blocks.len(),
     })
+}
+
+/// Platforms whose canonical hook entries to (re-)apply post-restore.
+///
+/// Modern snapshots: every platform with files under its `dest_dir`. Legacy
+/// snapshots (no `hook_bodies`, no per-platform prefix invariant): default to
+/// Claude, which shipped first.
+fn canonical_targets(snapshot: &Snapshot) -> Vec<&'static Platform> {
+    let modern: Vec<_> = PLATFORMS
+        .iter()
+        .copied()
+        .filter(|p| p.is_in_snapshot(snapshot))
+        .collect();
+    if !modern.is_empty() || !snapshot.hook_bodies.is_empty() {
+        return modern;
+    }
+    vec![&CLAUDE_PLATFORM]
 }
 
 #[cfg(test)]
@@ -321,5 +332,59 @@ mod tests {
         let summary = load(LoadOptions::new(tmp.path()).with_force(true)).unwrap();
         assert!(matches!(summary, LoadSummary::Fresh(_)));
         assert!(tmp.path().join(".ark/workflow.md").is_file());
+    }
+
+    /// codex-support C-18: source-scan invariant for `load.rs`.
+    #[test]
+    fn load_source_no_bare_std_fs_or_dot_path_literals() {
+        crate::commands::tests_common::assert_source_clean(include_str!("load.rs"));
+    }
+
+    /// V-IT-16 (codex-support G-9, C-22): after `load` replays
+    /// `snapshot.hook_bodies`, the canonical re-apply phase rewrites each
+    /// installed platform's hook entry to the *current* shape. Even when the
+    /// snapshot carries a stale entry (e.g. older `timeout`), post-load disk
+    /// state matches the current `entry_builder` output.
+    #[test]
+    fn load_after_replay_re_applies_canonical_entries() {
+        use crate::{
+            io::ARK_CONTEXT_HOOK_COMMAND,
+            state::{Snapshot, SnapshotHookBody},
+        };
+
+        let tmp = tempfile::tempdir().unwrap();
+        // Hand-craft a snapshot that mimics a Codex-installed project from
+        // an older Ark version. The hook entry here uses a stale `timeout`
+        // value (5 instead of the current canonical 30) to prove the
+        // canonical re-apply normalizes it.
+        let mut snap = Snapshot::new();
+        snap.add_file(".codex/skills/ark-quick/SKILL.md", b"# stub\n");
+        snap.add_hook_body(SnapshotHookBody {
+            path: PathBuf::from(".codex/hooks.json"),
+            json_pointer: "/hooks/SessionStart".to_string(),
+            identity_key: "command".to_string(),
+            identity_value: ARK_CONTEXT_HOOK_COMMAND.to_string(),
+            entry: serde_json::json!({
+                "matcher": "",
+                "hooks": [{
+                    "type": "command",
+                    "command": ARK_CONTEXT_HOOK_COMMAND,
+                    "timeout": 5,
+                }],
+            }),
+        });
+        snap.write(tmp.path()).unwrap();
+
+        load(LoadOptions::new(tmp.path())).unwrap();
+
+        let hooks: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join(".codex/hooks.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            hooks["hooks"]["SessionStart"][0]["hooks"][0]["timeout"],
+            serde_json::json!(30),
+            "canonical re-apply must normalize stale timeout to current value",
+        );
     }
 }

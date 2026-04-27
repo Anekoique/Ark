@@ -41,11 +41,11 @@ How work flows from intent to archive. Read before starting any task.
 
 ## 3. Tiers
 
-| Tier     | Command              | Artifacts                                                               | Path through states                                  |
-| -------- | -------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------- |
-| Quick    | `/ark:quick`         | `PRD.md`                                                                | design → execute → archived                          |
-| Standard | `/ark:design`        | `PRD.md`, `PLAN.md`, `VERIFY.md`                                        | design → plan → execute → verify → archived          |
-| Deep     | `/ark:design --deep` | `PRD.md`, `NN_PLAN.md`, `NN_REVIEW.md`, `VERIFY.md`, promoted `SPEC.md` | design → plan ⇄ review → execute → verify → archived |
+| Tier     | Claude command       | Codex skill   | Artifacts                                                               | Path through states                                  |
+| -------- | -------------------- | ------------- | ----------------------------------------------------------------------- | ---------------------------------------------------- |
+| Quick    | `/ark:quick`         | `ark-quick`   | `PRD.md`                                                                | design → execute → archived                          |
+| Standard | `/ark:design`        | `ark-design`  | `PRD.md`, `PLAN.md`, `VERIFY.md`                                        | design → plan → execute → verify → archived          |
+| Deep     | `/ark:design --deep` | `ark-design`  | `PRD.md`, `NN_PLAN.md`, `NN_REVIEW.md`, `VERIFY.md`, promoted `SPEC.md` | design → plan ⇄ review → execute → verify → archived |
 
 PRD captures *what we're building and why*. PLAN elaborates *how*. VERIFY checks the shipped code against PRD's Outcome and PLAN's Validation.
 

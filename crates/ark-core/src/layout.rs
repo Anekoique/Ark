@@ -40,6 +40,24 @@ pub const ARK_TEMPLATES_DIR: &str = ".ark/templates";
 /// only as far as the Ark `SessionStart` hook entry; user-owned otherwise).
 pub const CLAUDE_SETTINGS_FILE: &str = ".claude/settings.json";
 
+/// Root directory for Codex integration (relative to project root).
+pub const CODEX_DIR: &str = ".codex";
+
+/// `<project>/.codex/skills/` — where Codex skill folders are extracted.
+pub const CODEX_SKILLS_DIR: &str = ".codex/skills";
+
+/// `<project>/.codex/hooks.json` — Codex hook configuration. Ark manages only
+/// its `SessionStart` entry; user-owned otherwise.
+pub const CODEX_HOOKS_FILE: &str = ".codex/hooks.json";
+
+/// `<project>/.codex/config.toml` — project-scoped Codex defaults. Wholly
+/// Ark-owned (not hash-tracked; re-applied unconditionally).
+pub const CODEX_CONFIG_FILE: &str = ".codex/config.toml";
+
+/// Project-root file carrying the Codex-side managed block (parallel to
+/// [`CLAUDE_MD`]).
+pub const AGENTS_MD: &str = "AGENTS.md";
+
 /// Marker used for the feature-spec roster in `specs/features/INDEX.md`.
 pub const FEATURES_MARKER: &str = "ARK:FEATURES";
 
@@ -161,6 +179,31 @@ impl Layout {
         self.root.join(CLAUDE_SETTINGS_FILE)
     }
 
+    /// `<root>/.codex/`
+    pub fn codex_dir(&self) -> PathBuf {
+        self.root.join(CODEX_DIR)
+    }
+
+    /// `<root>/.codex/skills/`
+    pub fn codex_skills_dir(&self) -> PathBuf {
+        self.root.join(CODEX_SKILLS_DIR)
+    }
+
+    /// `<root>/.codex/hooks.json`
+    pub fn codex_hooks_file(&self) -> PathBuf {
+        self.root.join(CODEX_HOOKS_FILE)
+    }
+
+    /// `<root>/.codex/config.toml`
+    pub fn codex_config_file(&self) -> PathBuf {
+        self.root.join(CODEX_CONFIG_FILE)
+    }
+
+    /// `<root>/AGENTS.md`
+    pub fn agents_md(&self) -> PathBuf {
+        self.root.join(AGENTS_MD)
+    }
+
     /// `<root>/.ark/templates/`
     pub fn ark_templates_dir(&self) -> PathBuf {
         self.root.join(ARK_TEMPLATES_DIR)
@@ -188,8 +231,16 @@ impl Layout {
 
     /// Directories whose full contents are captured by `unload` and restored by
     /// `load`. User edits and additions under these survive a round-trip.
-    pub fn owned_dirs(&self) -> [PathBuf; 2] {
-        [self.ark_dir(), self.claude_commands_ark_dir()]
+    ///
+    /// `.codex/` joins the set whether or not Codex is installed in this project
+    /// — `walk_files` on a missing directory yields an empty vec, so the
+    /// Claude-only case is silently a no-op for the third entry.
+    pub fn owned_dirs(&self) -> [PathBuf; 3] {
+        [
+            self.ark_dir(),
+            self.claude_commands_ark_dir(),
+            self.codex_dir(),
+        ]
     }
 
     /// Parent directories we opportunistically prune after removing ark content,

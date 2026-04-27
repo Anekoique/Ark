@@ -129,6 +129,54 @@ pub fn update_managed_block(path: impl AsRef<Path>, marker: &str, body: &str) ->
     Ok(true)
 }
 
+/// Splice every `ARK:*` managed-block body from the file at `path` into
+/// `template`, returning the merged bytes. If `path` doesn't exist, returns
+/// the template bytes unchanged. If `template` carries no managed blocks,
+/// returns the template bytes unchanged.
+///
+/// This lets `init` and `upgrade` write embedded templates without clobbering
+/// managed-block content that other commands (e.g. `spec register`) wrote
+/// into the live file. The block bodies in the embedded template act as
+/// fallbacks; the on-disk body always wins when present.
+pub fn merge_managed_blocks(path: impl AsRef<Path>, template: &[u8]) -> Result<Vec<u8>> {
+    let path = path.as_ref();
+    let Ok(text) = std::str::from_utf8(template) else {
+        return Ok(template.to_vec());
+    };
+    let markers = scan_managed_markers(text);
+    if markers.is_empty() {
+        return Ok(template.to_vec());
+    }
+    let Some(on_disk) = path.read_text_optional()? else {
+        return Ok(template.to_vec());
+    };
+    let mut spliced = text.to_string();
+    for marker in &markers {
+        if let Some(body) = extract_block_body_for_splice(&on_disk, marker)
+            && let Some(new_text) = splice_managed_block(&spliced, marker, body)
+        {
+            spliced = new_text;
+        }
+    }
+    Ok(spliced.into_bytes())
+}
+
+/// Extract the body between START/END tags, trimming exactly one leading and
+/// one trailing `\n`. Round-trip-safe with `splice_managed_block` /
+/// `Marker::render` (which write `\n{body}\n`); does NOT collapse interior
+/// blank lines, so a body like "row\n\n" survives a splice round-trip
+/// byte-identically. Distinct from [`Marker::extract_body`], which trims
+/// *all* leading/trailing newlines and is appropriate when the caller only
+/// wants a clean string for human consumption.
+fn extract_block_body_for_splice<'a>(text: &'a str, marker: &str) -> Option<&'a str> {
+    let m = Marker::new(marker);
+    let span = m.locate(text)?;
+    let body = &text[span.body];
+    let body = body.strip_prefix('\n').unwrap_or(body);
+    let body = body.strip_suffix('\n').unwrap_or(body);
+    Some(body)
+}
+
 /// Remove a managed block from a text file if present. If the resulting file
 /// would be effectively empty, deletes it so no Ark-orphaned file lingers.
 /// Returns `true` if the block was present and removed.
@@ -148,22 +196,45 @@ pub fn remove_managed_block(path: impl AsRef<Path>, marker: &str) -> Result<bool
     Ok(true)
 }
 
-// === settings.json — Ark hook entry helpers (ark-context C-17) ===
+// === Hook-file helpers — Ark hook entry surgery (ark-context C-17, codex-support C-19/C-22/C-25) ===
 
 /// Canonical command string identifying the Ark-owned `SessionStart` hook
-/// entry within `.claude/settings.json`. Used as the identity key for
-/// upserts via [`update_settings_hook`] and removals via
-/// [`remove_settings_hook`]. Per ark-context C-11.
+/// entry within a platform's hook file (`.claude/settings.json`,
+/// `.codex/hooks.json`). Used as the identity value for upserts via
+/// [`update_hook_file`] and removals via [`remove_hook_file`].
 pub const ARK_CONTEXT_HOOK_COMMAND: &str = "ark context --scope session --format json";
 
-/// Build the canonical Ark `SessionStart` hook entry. Single source of truth
-/// for the entry's contents — `init` / `load` / `upgrade` all call into
-/// [`update_settings_hook`] with this value.
+/// Specification for a JSON-array hook region in a config file. Carried by
+/// `Platform::hook_file` so the platform-iteration plumbing in
+/// `init`/`upgrade`/`load`/`unload`/`remove` can drive each platform's
+/// hook surface from one descriptor.
+#[derive(Debug, Clone, Copy)]
+pub struct HookFileSpec {
+    /// Project-relative path to the JSON file (e.g. `.claude/settings.json`).
+    pub path: &'static str,
+    /// Array key under root `hooks` carrying the Ark entry. Both shipping
+    /// platforms use `"SessionStart"`; future platforms with the same JSON
+    /// shape pass a different key.
+    pub hooks_array_key: &'static str,
+    /// Field name used to identify Ark's entry within the array. Both
+    /// shipping platforms use `"command"`.
+    pub identity_key: &'static str,
+    /// Value of `identity_key` Ark uses to find its own entry.
+    pub identity_value: &'static str,
+    /// Builds the canonical Ark entry. Called by `init` / `load` / `upgrade`.
+    pub entry_builder: fn() -> serde_json::Value,
+}
+
+/// Build the canonical Ark Claude Code `SessionStart` hook entry.
 ///
 /// Schema follows Claude Code's hooks contract: each `SessionStart` array
 /// entry is a `{matcher, hooks: [...]}` wrapper. The empty matcher matches
 /// every session-start event. The inner `hooks[0].command` is the identity
 /// key Ark uses to detect (and replace) its own entry across runs.
+///
+/// Note: `timeout` is in **milliseconds** (Claude Code's hook schema). 5000
+/// is the existing canonical value (per ark-context C-15). Codex's hook
+/// schema uses seconds, not milliseconds — see [`ark_codex_hook_entry`].
 pub fn ark_session_start_hook_entry() -> serde_json::Value {
     serde_json::json!({
         "matcher": "",
@@ -177,24 +248,54 @@ pub fn ark_session_start_hook_entry() -> serde_json::Value {
     })
 }
 
-/// Insert or replace the Ark-owned `SessionStart` hook entry in
-/// `.claude/settings.json`. Idempotent: callable on every `init` / `load` /
-/// `upgrade` without surprise. Preserves unrelated keys and sibling
-/// `SessionStart` entries.
+/// Build the canonical Ark Codex `SessionStart` hook entry.
 ///
-/// Identity is derived from the inner `entry.hooks[*].command` matching
-/// `ARK_CONTEXT_HOOK_COMMAND` (Claude Code's hooks schema wraps each entry
-/// in `{matcher, hooks: [...]}`).
+/// Schema follows Codex's hooks contract (parallel to Claude's). Note:
+/// `timeout` is in **seconds**, not milliseconds — Codex's hook schema
+/// (`developers.openai.com/codex/hooks`) defaults to 600 seconds when
+/// omitted. 30 seconds gives `ark context` more than enough budget.
+/// Per codex-support C-25.
+pub fn ark_codex_hook_entry() -> serde_json::Value {
+    serde_json::json!({
+        "matcher": "",
+        "hooks": [
+            {
+                "type": "command",
+                "command": ARK_CONTEXT_HOOK_COMMAND,
+                "timeout": 30,
+            }
+        ],
+    })
+}
+
+/// Insert or replace the Ark-owned hook entry in a platform hook file.
+/// Idempotent: callable on every `init` / `load` / `upgrade` without
+/// surprise. Preserves unrelated keys and sibling entries in the array.
 ///
-/// Per ark-context C-17: the file is *not* hash-tracked. This helper is the
-/// single source of truth for the Ark entry's contents.
+/// `hooks_array_key` selects the array under root `hooks` (e.g.
+/// `"SessionStart"`). `identity_key` selects the field within an entry
+/// that identifies Ark's own (e.g. `"command"`). Identity is derived from
+/// the inner `entry.hooks[*][identity_key]` (Claude/Codex hook wrapper
+/// shape `{matcher, hooks: [...]}`).
+///
+/// Per codex-support C-19: `hooks_array_key` must match `[A-Za-z0-9_-]+`.
+/// Both shipping platforms pass `"SessionStart"`.
+///
+/// Per ark-context C-17 / codex-support C-11: the file is *not* hash-
+/// tracked. Re-applied unconditionally on every init/load/upgrade.
 ///
 /// Returns `Ok(true)` if a write happened, `Ok(false)` if the on-disk JSON
 /// already encoded the canonical entry byte-identically (idempotence skip).
-pub fn update_settings_hook(path: impl AsRef<Path>, entry: serde_json::Value) -> Result<bool> {
+pub fn update_hook_file(
+    path: impl AsRef<Path>,
+    entry: serde_json::Value,
+    hooks_array_key: &str,
+    identity_key: &str,
+) -> Result<bool> {
+    validate_hooks_array_key(hooks_array_key)?;
     let path = path.as_ref();
     let mut root = read_settings_or_empty(path)?;
-    upsert_session_start_entry(&mut root, entry)?;
+    upsert_hook_entry(&mut root, entry, hooks_array_key, identity_key)?;
     let serialized = render_settings_json(&root);
     let on_disk = path.read_optional()?;
     if on_disk.as_deref() == Some(serialized.as_bytes()) {
@@ -204,22 +305,28 @@ pub fn update_settings_hook(path: impl AsRef<Path>, entry: serde_json::Value) ->
     Ok(true)
 }
 
-/// Remove the Ark-owned `SessionStart` entry by identity value. Returns
-/// `Ok(true)` if an entry was removed, `Ok(false)` if absent. The
-/// `SessionStart` array is left in place even if it becomes empty so users
-/// can re-add siblings without re-init.
+/// Remove the Ark-owned hook entry by identity value. Returns `Ok(true)`
+/// if an entry was removed, `Ok(false)` if absent. The hook array is left
+/// in place even if it becomes empty so users can re-add siblings without
+/// re-init.
 ///
-/// `identity_value` is matched against `entry.hooks[*].command`.
-pub fn remove_settings_hook(path: impl AsRef<Path>, identity_value: &str) -> Result<bool> {
+/// `identity_value` is matched against `entry.hooks[*][identity_key]`.
+pub fn remove_hook_file(
+    path: impl AsRef<Path>,
+    identity_value: &str,
+    hooks_array_key: &str,
+    identity_key: &str,
+) -> Result<bool> {
+    validate_hooks_array_key(hooks_array_key)?;
     let path = path.as_ref();
     let Some(mut root) = read_settings_json(path)? else {
         return Ok(false);
     };
-    let Some(array) = navigate_session_start(&mut root) else {
+    let Some(array) = navigate_hook_array(&mut root, hooks_array_key) else {
         return Ok(false);
     };
     let before = array.len();
-    array.retain(|e| !entry_carries_command(e, identity_value));
+    array.retain(|e| !entry_carries_command(e, identity_value, identity_key));
     if array.len() == before {
         return Ok(false);
     }
@@ -230,41 +337,89 @@ pub fn remove_settings_hook(path: impl AsRef<Path>, identity_value: &str) -> Res
 /// Read the Ark-owned hook entry as a snapshot-ready JSON value, if present.
 /// Returns `None` if the file is missing or contains no Ark entry.
 ///
-/// `identity_value` is matched against `entry.hooks[*].command`.
-pub fn read_settings_hook(
+/// `identity_value` is matched against `entry.hooks[*][identity_key]`.
+pub fn read_hook_file(
     path: impl AsRef<Path>,
     identity_value: &str,
+    hooks_array_key: &str,
+    identity_key: &str,
 ) -> Result<Option<serde_json::Value>> {
+    validate_hooks_array_key(hooks_array_key)?;
     let path = path.as_ref();
     let Some(mut root) = read_settings_json(path)? else {
         return Ok(None);
     };
-    let Some(array) = navigate_session_start(&mut root) else {
+    let Some(array) = navigate_hook_array(&mut root, hooks_array_key) else {
         return Ok(None);
     };
     Ok(array
         .iter()
-        .find(|e| entry_carries_command(e, identity_value))
+        .find(|e| entry_carries_command(e, identity_value, identity_key))
         .cloned())
 }
 
-/// `true` if `entry` is a Claude Code hook wrapper whose inner `hooks[*]`
-/// array contains a step with `command == identity_value`. Tolerates the
-/// older flat shape (`entry["command"]`) for forward-compat with snapshots
-/// captured before the wrapper was introduced.
-fn entry_carries_command(entry: &serde_json::Value, identity_value: &str) -> bool {
+// --- Deprecated thin wrappers (codex-support C-23). Removed at 0.3.0. ---
+
+/// Deprecated alias for [`update_hook_file`] with `hooks_array_key =
+/// "SessionStart"` and `identity_key = "command"`. Removed at 0.3.0.
+#[deprecated(since = "0.2.0", note = "use update_hook_file")]
+pub fn update_settings_hook(path: impl AsRef<Path>, entry: serde_json::Value) -> Result<bool> {
+    update_hook_file(path, entry, "SessionStart", "command")
+}
+
+/// Deprecated alias for [`remove_hook_file`] with `hooks_array_key =
+/// "SessionStart"` and `identity_key = "command"`. Removed at 0.3.0.
+#[deprecated(since = "0.2.0", note = "use remove_hook_file")]
+pub fn remove_settings_hook(path: impl AsRef<Path>, identity_value: &str) -> Result<bool> {
+    remove_hook_file(path, identity_value, "SessionStart", "command")
+}
+
+/// Deprecated alias for [`read_hook_file`] with `hooks_array_key =
+/// "SessionStart"` and `identity_key = "command"`. Removed at 0.3.0.
+#[deprecated(since = "0.2.0", note = "use read_hook_file")]
+pub fn read_settings_hook(
+    path: impl AsRef<Path>,
+    identity_value: &str,
+) -> Result<Option<serde_json::Value>> {
+    read_hook_file(path, identity_value, "SessionStart", "command")
+}
+
+fn validate_hooks_array_key(key: &str) -> Result<()> {
+    if !key.is_empty()
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        Ok(())
+    } else {
+        Err(Error::io(
+            std::path::PathBuf::from("<hook-file>"),
+            std::io::Error::other("invalid hooks array key"),
+        ))
+    }
+}
+
+/// `true` if `entry` is a Claude/Codex hook wrapper whose inner `hooks[*]`
+/// array contains a step with `[identity_key] == identity_value`. Tolerates
+/// the older flat shape (`entry[identity_key]`) for forward-compat with
+/// snapshots captured before the wrapper was introduced.
+pub(crate) fn entry_carries_command(
+    entry: &serde_json::Value,
+    identity_value: &str,
+    identity_key: &str,
+) -> bool {
     let Some(obj) = entry.as_object() else {
         return false;
     };
     if let Some(inner) = obj.get("hooks").and_then(|v| v.as_array()) {
         return inner.iter().any(|step| {
             step.as_object()
-                .and_then(|m| m.get("command"))
+                .and_then(|m| m.get(identity_key))
                 .and_then(|v| v.as_str())
                 == Some(identity_value)
         });
     }
-    obj.get("command").and_then(|v| v.as_str()) == Some(identity_value)
+    obj.get(identity_key).and_then(|v| v.as_str()) == Some(identity_value)
 }
 
 fn read_settings_or_empty(path: &Path) -> Result<serde_json::Value> {
@@ -286,16 +441,19 @@ fn read_settings_json(path: &Path) -> Result<Option<serde_json::Value>> {
         .map_err(|e| Error::io(path, std::io::Error::other(e)))
 }
 
-fn upsert_session_start_entry(
+fn upsert_hook_entry(
     root: &mut serde_json::Value,
     entry: serde_json::Value,
+    hooks_array_key: &str,
+    identity_key: &str,
 ) -> Result<()> {
-    let identity = identity_command(&entry).ok_or_else(|| {
+    let identity = identity_value_of(&entry, identity_key).ok_or_else(|| {
         Error::io(
-            std::path::PathBuf::from("<settings.json>"),
-            std::io::Error::other(
-                "hook entry missing inner `hooks[*].command` (or top-level `command`)",
-            ),
+            std::path::PathBuf::from("<hook-file>"),
+            std::io::Error::other(format!(
+                "hook entry missing inner `hooks[*].{identity_key}` (or top-level \
+                 `{identity_key}`)"
+            )),
         )
     })?;
 
@@ -314,19 +472,19 @@ fn upsert_session_start_entry(
     }
     let hooks_obj = hooks.as_object_mut().expect("hooks is object");
 
-    // Ensure hooks.SessionStart is an array.
+    // Ensure hooks.<hooks_array_key> is an array.
     let session = hooks_obj
-        .entry("SessionStart".to_string())
+        .entry(hooks_array_key.to_string())
         .or_insert_with(|| serde_json::json!([]));
     if !session.is_array() {
         *session = serde_json::json!([]);
     }
-    let array = session.as_array_mut().expect("SessionStart is array");
+    let array = session.as_array_mut().expect("hooks array");
 
     // Replace existing entry with the same identity, else append.
     if let Some(existing) = array
         .iter_mut()
-        .find(|e| entry_carries_command(e, &identity))
+        .find(|e| entry_carries_command(e, &identity, identity_key))
     {
         *existing = entry;
     } else {
@@ -335,29 +493,32 @@ fn upsert_session_start_entry(
     Ok(())
 }
 
-/// Extract the inner-step command string from a Claude Code hook wrapper.
-/// Falls back to the top-level `command` field for the older flat shape.
-fn identity_command(entry: &serde_json::Value) -> Option<String> {
+/// Extract the inner-step identity string from a hook-wrapper entry.
+/// Falls back to the top-level `identity_key` field for the older flat shape.
+fn identity_value_of(entry: &serde_json::Value, identity_key: &str) -> Option<String> {
     let obj = entry.as_object()?;
     if let Some(inner) = obj.get("hooks").and_then(|v| v.as_array())
         && let Some(cmd) = inner.iter().find_map(|step| {
             step.as_object()
-                .and_then(|m| m.get("command"))
+                .and_then(|m| m.get(identity_key))
                 .and_then(|v| v.as_str())
         })
     {
         return Some(cmd.to_string());
     }
-    obj.get("command")
+    obj.get(identity_key)
         .and_then(|v| v.as_str())
         .map(str::to_string)
 }
 
-fn navigate_session_start(root: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
+fn navigate_hook_array<'a>(
+    root: &'a mut serde_json::Value,
+    hooks_array_key: &str,
+) -> Option<&'a mut Vec<serde_json::Value>> {
     root.as_object_mut()?
         .get_mut("hooks")?
         .as_object_mut()?
-        .get_mut("SessionStart")?
+        .get_mut(hooks_array_key)?
         .as_array_mut()
 }
 
@@ -478,6 +639,7 @@ struct MarkerSpan {
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // exercises the deprecated SessionStart-aliased helpers (codex-support C-23)
 mod tests {
     use super::*;
 
@@ -741,9 +903,13 @@ mod tests {
             "type": "command",
             "command": ARK_CONTEXT_HOOK_COMMAND,
         });
-        assert!(entry_carries_command(&legacy, ARK_CONTEXT_HOOK_COMMAND));
+        assert!(entry_carries_command(
+            &legacy,
+            ARK_CONTEXT_HOOK_COMMAND,
+            "command"
+        ));
         assert_eq!(
-            identity_command(&legacy).as_deref(),
+            identity_value_of(&legacy, "command").as_deref(),
             Some(ARK_CONTEXT_HOOK_COMMAND),
         );
     }
@@ -756,6 +922,47 @@ mod tests {
             read_settings_hook(&path, ARK_CONTEXT_HOOK_COMMAND)
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    /// V-UT-4 (codex-support G-6, C-4): `update_hook_file` round-trips with
+    /// explicit `(hooks_array_key, identity_key)` arguments.
+    #[test]
+    fn update_hook_file_round_trips_with_explicit_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("hooks.json");
+        assert!(update_hook_file(&path, ark_entry(), "SessionStart", "command").unwrap());
+        let written = read_hook_file(&path, ARK_CONTEXT_HOOK_COMMAND, "SessionStart", "command")
+            .unwrap()
+            .expect("entry present");
+        assert_eq!(written["hooks"][0]["command"], ARK_CONTEXT_HOOK_COMMAND);
+    }
+
+    /// codex-support C-19: `update_hook_file` rejects an empty / out-of-charset
+    /// `hooks_array_key`.
+    #[test]
+    fn update_hook_file_rejects_invalid_array_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("hooks.json");
+        let err = update_hook_file(&path, ark_entry(), "", "command").unwrap_err();
+        assert!(matches!(err, Error::Io { .. }));
+        let err = update_hook_file(&path, ark_entry(), "Has Spaces", "command").unwrap_err();
+        assert!(matches!(err, Error::Io { .. }));
+    }
+
+    /// codex-support C-23: deprecated alias delegates to the new helper. The
+    /// pre-existing `update_settings_hook_*` tests above already exercise the
+    /// alias path; this test pins the alias-to-new equivalence explicitly.
+    #[test]
+    fn deprecated_alias_delegates_to_update_hook_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path_alias = tmp.path().join("via_alias.json");
+        let path_direct = tmp.path().join("via_direct.json");
+        update_settings_hook(&path_alias, ark_entry()).unwrap();
+        update_hook_file(&path_direct, ark_entry(), "SessionStart", "command").unwrap();
+        assert_eq!(
+            std::fs::read(&path_alias).unwrap(),
+            std::fs::read(&path_direct).unwrap(),
         );
     }
 }

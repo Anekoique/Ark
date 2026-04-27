@@ -7,6 +7,7 @@ pub mod commands;
 pub mod error;
 pub mod io;
 pub mod layout;
+pub mod platforms;
 pub mod state;
 pub mod templates;
 
@@ -33,3 +34,4 @@ pub use commands::{
 pub use error::{Error, Result};
 pub use io::{PathExt, WriteMode, hash_bytes};
 pub use layout::Layout;
+pub use platforms::{CLAUDE_PLATFORM, CODEX_PLATFORM, PLATFORMS, Platform};

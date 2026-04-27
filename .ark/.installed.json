@@ -1,6 +1,6 @@
 {
   "version": "0.1.2",
-  "installed_at": "2026-04-27T08:10:09.136881Z",
+  "installed_at": "2026-04-27T12:48:30.932289Z",
   "files": [
     ".ark/workflow.md",
     ".ark/templates/PLAN.md",
@@ -11,11 +11,18 @@
     ".ark/specs/INDEX.md",
     ".ark/specs/project/INDEX.md",
     ".ark/specs/features/INDEX.md",
+    ".claude/commands/ark/archive.md",
     ".claude/commands/ark/design.md",
     ".claude/commands/ark/quick.md",
-    ".claude/commands/ark/archive.md"
+    ".codex/skills/ark-quick/SKILL.md",
+    ".codex/skills/ark-design/SKILL.md",
+    ".codex/skills/ark-archive/SKILL.md"
   ],
   "managed_blocks": [
+    {
+      "file": "AGENTS.md",
+      "marker": "ARK"
+    },
     {
       "file": "CLAUDE.md",
       "marker": "ARK"
@@ -23,16 +30,19 @@
   ],
   "hashes": {
     ".ark/specs/INDEX.md": "0e404d5c47fd687afe97aa94f55ade016ecb729b671a7a97f1ccd9f55e67c246",
-    ".ark/specs/features/INDEX.md": "72344ffb87752d2a6a3d175330eaa6992c7486c7d1455f68707da2d9ce21c330",
+    ".ark/specs/features/INDEX.md": "e5007b0362dc03b2e693397eebe687b663bfd488188af52ddac63d0056e95cb0",
     ".ark/specs/project/INDEX.md": "f86637904e7555607f8fc7613a7c7f04a45ef7b86f81ff5e4b7a328bd91b17e6",
     ".ark/templates/PLAN.md": "9ed190a058dd289299d1ff7dfe09908df88d7e2035ed4798bf9d4e531cc94bd8",
     ".ark/templates/PRD.md": "ec3ff89b872f90084379eba7bf97ddf6cdc9bcb7d175be663cd0a1df07e24dae",
     ".ark/templates/REVIEW.md": "4959ae0d8571f878745de7cf283f4992c5f1e8dfc3b3e3efed115fabf86868e5",
     ".ark/templates/SPEC.md": "fa8c1e8511cc73a31ea69d42576d9831f7384e969571535d00e73bfb382ee547",
     ".ark/templates/VERIFY.md": "fc9adabe1afaac579e60d2d8568426a7b701266c3c9c6b0eae6b528a94b7dd19",
-    ".ark/workflow.md": "9f29d9af205b59feff47fb8b0130980fbd917904bd154b664a2fc7cf46acd00f",
-    ".claude/commands/ark/archive.md": "3bd986332dfe9701bd3fc67598a18007c0e60068071882ff0e03bb12b01b10b1",
+    ".ark/workflow.md": "26297a73f21c9d8caa8e48a59a3e7d1cbd520f305bb4884c7fbde8e739364c3e",
+    ".claude/commands/ark/archive.md": "04089f57144e17bc75a6266ea8baaa140c5107afa87275fa55bd4967342605f2",
     ".claude/commands/ark/design.md": "13e96a26cd593c2963b9bc4b6079149ec609b30a013b86583bc54b1b3746c351",
-    ".claude/commands/ark/quick.md": "3d918fe893bd7fb5ed98059174d6161ff123c14c9051e0d0c0e4766fcd49586b"
+    ".claude/commands/ark/quick.md": "420e2d2d8c1e8a8e00f5ffce0e2050d107dfa03e78e7f6780eebef7cb05960ef",
+    ".codex/skills/ark-archive/SKILL.md": "1aa79abe48dbed9c51d60c759d17fe66ada08e8592e408b74887292c44784aa9",
+    ".codex/skills/ark-design/SKILL.md": "34691946ac352e6c1f56e7d885d785d215fa79104952b7ea2a364526ce150373",
+    ".codex/skills/ark-quick/SKILL.md": "38265cf4ad9c66ca6ecce6e5f2ead6d4582932651d7b643cf732672f138d3605"
   }
 }

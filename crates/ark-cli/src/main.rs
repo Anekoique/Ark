@@ -12,11 +12,11 @@ use std::{
 
 use ark_core::{
     ConflictChoice, ConflictPolicy, ContextFormat, ContextOptions, ContextScope, InitOptions,
-    Layout, LoadOptions, PathExt, PhaseFilter, Prompter, RemoveOptions, SpecExtractOptions,
-    SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions, TaskPhaseOptions, TaskPromoteOptions,
-    Tier, UnloadOptions, UpgradeOptions, WriteMode, context, init, load, remove, spec_extract,
-    spec_register, task_archive, task_execute, task_new, task_plan, task_promote, task_review,
-    task_verify, unload, upgrade,
+    Layout, LoadOptions, PLATFORMS, PathExt, PhaseFilter, Platform, Prompter, RemoveOptions,
+    SpecExtractOptions, SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions, TaskPhaseOptions,
+    TaskPromoteOptions, Tier, UnloadOptions, UpgradeOptions, WriteMode, context, init, load,
+    remove, spec_extract, spec_register, task_archive, task_execute, task_new, task_plan,
+    task_promote, task_review, task_verify, unload, upgrade,
 };
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
@@ -61,6 +61,119 @@ struct InitArgs {
     /// Overwrite files that differ from the shipped templates.
     #[arg(long)]
     force: bool,
+
+    /// Install Claude Code integration (default: prompt on TTY).
+    #[arg(long)]
+    claude: bool,
+    /// Install Codex CLI integration (default: prompt on TTY).
+    #[arg(long)]
+    codex: bool,
+    /// Skip Claude Code integration.
+    #[arg(long = "no-claude")]
+    no_claude: bool,
+    /// Skip Codex CLI integration.
+    #[arg(long = "no-codex")]
+    no_codex: bool,
+}
+
+/// Per-flag state from `InitArgs`: positive (`--<flag>`) vs negative
+/// (`--no-<flag>`) for one platform. Pure data, easy to construct in tests.
+#[derive(Debug, Default, Clone, Copy)]
+struct PlatformFlag {
+    on: bool,
+    off: bool,
+}
+
+impl InitArgs {
+    /// Map each platform's `cli_flag` to the parsed `PlatformFlag` state.
+    fn flags(&self) -> Vec<(&'static Platform, PlatformFlag)> {
+        PLATFORMS
+            .iter()
+            .copied()
+            .map(|p| {
+                let flag = match p.cli_flag {
+                    "claude" => PlatformFlag {
+                        on: self.claude,
+                        off: self.no_claude,
+                    },
+                    "codex" => PlatformFlag {
+                        on: self.codex,
+                        off: self.no_codex,
+                    },
+                    _ => PlatformFlag::default(),
+                };
+                (p, flag)
+            })
+            .collect()
+    }
+
+    /// Resolve `Vec<&'static Platform>` from CLI flags + TTY state. Per
+    /// codex-support G-3.
+    fn resolve_platforms(&self) -> anyhow::Result<Vec<&'static Platform>> {
+        let resolved =
+            resolve_platforms_pure(&self.flags(), std::io::stdin().is_terminal(), || {
+                interactive_select_platforms()
+            })?;
+        if resolved.is_empty() {
+            anyhow::bail!("init requires at least one platform");
+        }
+        Ok(resolved)
+    }
+}
+
+/// Pure resolution logic, factored for testability. The caller supplies
+/// `is_tty` and a closure that runs the interactive prompt; the function
+/// itself does no I/O.
+///
+/// - Positive flag (`--<flag>`) narrows to that subset.
+/// - Negative flag (`--no-<flag>`) excludes.
+/// - Both unset, TTY: run the interactive prompt.
+/// - Both unset, non-TTY: error — no silent default.
+fn resolve_platforms_pure(
+    flags: &[(&'static Platform, PlatformFlag)],
+    is_tty: bool,
+    interactive: impl FnOnce() -> anyhow::Result<Vec<&'static Platform>>,
+) -> anyhow::Result<Vec<&'static Platform>> {
+    let any_positive = flags.iter().any(|(_, f)| f.on);
+    let any_negative = flags.iter().any(|(_, f)| f.off);
+
+    if any_positive {
+        return Ok(flags
+            .iter()
+            .filter(|(_, f)| f.on && !f.off)
+            .map(|(p, _)| *p)
+            .collect());
+    }
+    if any_negative {
+        return Ok(flags
+            .iter()
+            .filter(|(_, f)| !f.off)
+            .map(|(p, _)| *p)
+            .collect());
+    }
+    if is_tty {
+        return interactive();
+    }
+    anyhow::bail!(
+        "init requires --claude, --codex, or both when stdin is not a TTY (use --no-claude / \
+         --no-codex to opt out)"
+    );
+}
+
+/// Tiny stdin-driven multi-select. Each platform is offered with a default
+/// of "yes". User types `y`/`n` (or just enter for default).
+fn interactive_select_platforms() -> anyhow::Result<Vec<&'static Platform>> {
+    eprintln!("Select integrations to install:");
+    let mut chosen = Vec::with_capacity(PLATFORMS.len());
+    for platform in PLATFORMS {
+        eprint!("  install {} integration? [Y/n] ", platform.id);
+        let mut line = String::new();
+        std::io::stdin().lock().read_line(&mut line).ok();
+        if !matches!(line.trim().to_ascii_lowercase().as_str(), "n" | "no") {
+            chosen.push(*platform);
+        }
+    }
+    Ok(chosen)
 }
 
 #[derive(clap::Args)]
@@ -249,6 +362,7 @@ impl Command {
         match self {
             Self::Init(a) => {
                 // ark-context C-21 carve-out: init creates `.ark/`; no walk-up.
+                let platforms = a.resolve_platforms()?;
                 let root = a.target.resolve();
                 let mode = if a.force {
                     WriteMode::Force
@@ -256,7 +370,11 @@ impl Command {
                     WriteMode::Skip
                 };
                 announce("initializing ark in", &root);
-                render(init(InitOptions::new(root).with_mode(mode))?);
+                render(init(
+                    InitOptions::new(root)
+                        .with_mode(mode)
+                        .with_platforms(platforms),
+                )?);
             }
             Self::Load(a) => {
                 // `ark load` works on the explicit target: it either restores
@@ -579,4 +697,78 @@ fn announce(verb: &str, root: &Path) {
 
 fn render<S: Display>(summary: S) {
     println!("{summary}");
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    fn parse_init(argv: &[&str]) -> InitArgs {
+        #[derive(Parser)]
+        #[command(no_binary_name = true)]
+        struct Wrapper {
+            #[command(subcommand)]
+            cmd: Wrapped,
+        }
+        #[derive(Subcommand)]
+        enum Wrapped {
+            Init(InitArgs),
+        }
+        let Wrapped::Init(a) = Wrapper::parse_from(argv).cmd;
+        a
+    }
+
+    /// Resolution helper that drives `resolve_platforms_pure` with an
+    /// explicit `is_tty` and panics if the interactive branch is reached.
+    fn resolve(argv: &[&str], is_tty: bool) -> anyhow::Result<Vec<&'static Platform>> {
+        let args = parse_init(argv);
+        resolve_platforms_pure(&args.flags(), is_tty, || {
+            unreachable!("test should not reach the interactive branch")
+        })
+    }
+
+    fn ids(ps: &[&'static Platform]) -> Vec<&'static str> {
+        ps.iter().map(|p| p.id).collect()
+    }
+
+    /// V-IT-12: `--no-claude` narrows to Codex only; `--no-codex` to Claude
+    /// only; both → empty.
+    #[test]
+    fn cli_resolve_platforms_no_x_excludes() {
+        assert_eq!(
+            ids(&resolve(&["init", "--no-claude"], true).unwrap()),
+            ["codex"]
+        );
+        assert_eq!(
+            ids(&resolve(&["init", "--no-codex"], true).unwrap()),
+            ["claude-code"]
+        );
+        let neither = resolve(&["init", "--no-claude", "--no-codex"], true).unwrap();
+        assert!(neither.is_empty(), "{neither:?}");
+    }
+
+    /// V-IT-12 (positive flags): `--codex` (no `--no-X`) narrows to Codex only.
+    #[test]
+    fn cli_resolve_platforms_positive_flags_narrow() {
+        assert_eq!(
+            ids(&resolve(&["init", "--codex"], true).unwrap()),
+            ["codex"]
+        );
+        assert_eq!(
+            ids(&resolve(&["init", "--claude", "--codex"], true).unwrap()),
+            ["claude-code", "codex"]
+        );
+    }
+
+    /// V-IT-11 (codex-support G-3 / R-007): non-TTY without flags errors.
+    /// Resolution must not silently install both platforms.
+    #[test]
+    fn cli_resolve_platforms_no_flags_non_tty_errors() {
+        let err = resolve(&["init"], false).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("--claude"), "{msg}");
+        assert!(msg.contains("--codex"), "{msg}");
+    }
 }

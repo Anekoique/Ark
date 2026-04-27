@@ -6,6 +6,9 @@ pub mod remove;
 pub mod unload;
 pub mod upgrade;
 
+#[cfg(test)]
+pub(crate) mod tests_common;
+
 pub use context::{
     ArchiveState, ArchivedTask, ArtifactKind, ArtifactSummary, Context, ContextOptions,
     ContextSummary, CurrentTask, Format, GitCommit, GitState, PhaseFilter, ProjectedContext,
