@@ -19,13 +19,11 @@ use chrono::Utc;
 
 use crate::{
     error::{Error, Result},
-    io::{
-        PathExt, ark_session_start_hook_entry, hash_bytes, scan_managed_markers,
-        splice_managed_block, update_managed_block, update_settings_hook,
-    },
-    layout::{CLAUDE_MD, Layout, MANAGED_BLOCK_BODY},
+    io::{PathExt, hash_bytes, merge_managed_blocks},
+    layout::Layout,
+    platforms::{self, PLATFORMS},
     state::{Manifest, manifest::MANIFEST_RELATIVE_PATH},
-    templates::{ARK_TEMPLATES, CLAUDE_TEMPLATES, walk},
+    templates::{ARK_TEMPLATES, walk},
 };
 
 /// How to resolve a conflict when the user has modified a template locally
@@ -203,85 +201,51 @@ fn is_exempted(relative: &Path) -> bool {
 }
 
 /// Walk the embedded template trees and produce project-relative keys (per
-/// C-18). This mirrors `init.rs::extract`'s join-then-strip shape so the keys
-/// are byte-equal to what `manifest.files` stores.
-fn collect_desired_templates(layout: &Layout) -> Vec<(PathBuf, Cow<'static, [u8]>)> {
-    let project_root = layout.root();
-    let mut out = Vec::new();
-    for (tree, dest_root) in [
-        (&ARK_TEMPLATES, layout.ark_dir()),
-        (&CLAUDE_TEMPLATES, layout.claude_dir()),
-    ] {
-        for entry in walk(tree) {
-            let absolute = dest_root.join(entry.relative_path);
-            // Invariant: `dest_root` is either `layout.ark_dir()` or
-            // `layout.claude_dir()`, both of which are `root.join(...)`.
-            // `absolute` is therefore always under `project_root`.
-            let relative = absolute
-                .strip_prefix(project_root)
-                .expect("template dest under project root")
-                .to_path_buf();
-            out.push((relative, Cow::Borrowed(entry.contents)));
-        }
-    }
-    out
+/// C-18). This mirrors `init.rs`'s extraction shape so the keys are byte-equal
+/// to what `manifest.files` stores.
+///
+/// Per codex-support G-14: only platforms whose `dest_dir` already appears in
+/// `manifest.files` are included. A Claude-only project upgraded by a CLI
+/// that knows about Codex stays Claude-only. To opt in, the user re-runs
+/// `ark init --codex`.
+fn collect_desired_templates(
+    layout: &Layout,
+    manifest: &Manifest,
+) -> Vec<(PathBuf, Cow<'static, [u8]>)> {
+    let trees = std::iter::once((&ARK_TEMPLATES, layout.ark_dir()))
+        .chain(platforms::installed(manifest).map(|p| (p.templates, layout.resolve(p.dest_dir))));
+    trees
+        .flat_map(|(tree, dest_root)| {
+            walk(tree).map(move |entry| {
+                let absolute = dest_root.join(entry.relative_path);
+                let relative = absolute
+                    .strip_prefix(layout.root())
+                    .expect("template dest under project root")
+                    .to_path_buf();
+                (relative, Cow::Borrowed(entry.contents))
+            })
+        })
+        .collect()
 }
 
-/// For every template that contains `<!-- ARK:*:START -->…<!-- ARK:*:END -->`
-/// regions, splice the on-disk block body into the desired bytes so that
-/// upgrade treats the managed region as transparent. Content outside managed
-/// blocks still participates in normal hash-based classification.
+/// Splice on-disk managed-block bodies into every desired template that
+/// carries one. Without this step, upgrade would hash-classify the divergent
+/// (template vs on-disk) bytes as "user-modified" and prompt to overwrite —
+/// which would destroy rows that `spec register` (and similar) wrote.
 ///
-/// Rationale: managed blocks are owned by other commands (`spec register`,
-/// `init` via `update_managed_block`). Their on-disk body is *expected* to
-/// diverge from the shipped template. Hashing those divergent bytes as
-/// "user-modified" would produce false-positive prompts whose Overwrite path
-/// destroys legitimate state.
+/// Delegates to [`merge_managed_blocks`]; the loop is the only upgrade-side
+/// logic.
 fn reconcile_managed_blocks(
     layout: &Layout,
     desired: &mut [(PathBuf, Cow<'static, [u8]>)],
 ) -> Result<()> {
     for (relative, contents) in desired.iter_mut() {
-        let Ok(text) = std::str::from_utf8(contents) else {
-            continue;
-        };
-        let markers = scan_managed_markers(text);
-        if markers.is_empty() {
-            continue;
+        let merged = merge_managed_blocks(layout.resolve(relative), contents)?;
+        if merged.as_slice() != contents.as_ref() {
+            *contents = Cow::Owned(merged);
         }
-        let absolute = layout.resolve(relative);
-        let Some(on_disk) = absolute.read_text_optional()? else {
-            // File missing on-disk → nothing to splice; the template's block
-            // body is authoritative for an Add.
-            continue;
-        };
-        let mut spliced = text.to_string();
-        for marker in &markers {
-            let Some(body) = extract_block_body_exact(&on_disk, marker) else {
-                continue;
-            };
-            if let Some(new_text) = splice_managed_block(&spliced, marker, body) {
-                spliced = new_text;
-            }
-        }
-        *contents = Cow::Owned(spliced.into_bytes());
     }
     Ok(())
-}
-
-/// Return the text between `<!-- ARK:...:START -->` and `<!-- ARK:...:END -->`
-/// with only the single leading and trailing newline trimmed — matching what
-/// `update_managed_block` / `splice_managed_block` produce. Preserves any
-/// blank lines the managing command put inside the block.
-fn extract_block_body_exact<'a>(text: &'a str, marker: &str) -> Option<&'a str> {
-    let start_tag = format!("<!-- {marker}:START -->");
-    let end_tag = format!("<!-- {marker}:END -->");
-    let start = text.find(&start_tag)? + start_tag.len();
-    let end = text[start..].find(&end_tag)? + start;
-    let body = &text[start..end];
-    let body = body.strip_prefix('\n').unwrap_or(body);
-    let body = body.strip_suffix('\n').unwrap_or(body);
-    Some(body)
 }
 
 /// C-17: normalize every `manifest.files` entry through `Layout::resolve_safe`.
@@ -482,7 +446,7 @@ pub fn upgrade(opts: UpgradeOptions, prompter: &mut dyn Prompter) -> Result<Upgr
     validate_manifest_paths(&layout, &manifest.files)?;
     check_version(&manifest.version, &cli_version, opts.allow_downgrade)?;
 
-    let mut desired = collect_desired_templates(&layout);
+    let mut desired = collect_desired_templates(&layout, &manifest);
     // C-17 symmetry note: desired paths come from `include_dir!` joined under
     // `layout.ark_dir()` / `layout.claude_dir()`, so they are safe by
     // construction. V-UT-17 asserts parity against `init.rs::extract`. No
@@ -544,19 +508,15 @@ pub fn upgrade(opts: UpgradeOptions, prompter: &mut dyn Prompter) -> Result<Upgr
         }
     }
 
-    // CLAUDE.md managed block — re-applied on every upgrade, not hash-tracked.
-    let newly_inserted = update_managed_block(
-        layout.claude_md(),
-        layout.managed_marker(),
-        MANAGED_BLOCK_BODY,
-    )?;
-    if newly_inserted {
-        manifest.record_block(CLAUDE_MD, layout.managed_marker());
+    // Per-platform managed block + SessionStart hook + extra files — re-
+    // applied on every upgrade, not hash-tracked. Per ark-upgrade C-8 /
+    // ark-context C-17 / codex-support G-11. Only platforms already in the
+    // manifest are touched (preserves G-14: Claude-only stays Claude-only).
+    for platform in PLATFORMS {
+        if platform.is_installed(&manifest) {
+            platform.apply_managed_state(&layout, &mut manifest)?;
+        }
     }
-
-    // .claude/settings.json SessionStart hook — re-applied on every upgrade,
-    // not hash-tracked. Per ark-context C-17 (analog of CLAUDE.md C-8).
-    update_settings_hook(layout.claude_settings(), ark_session_start_hook_entry())?;
 
     // R-004: durable manifest write BEFORE any delete can fail.
     manifest.version = cli_version;
@@ -759,7 +719,7 @@ mod tests {
         crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
         let manifest = Manifest::read(tmp.path()).unwrap().unwrap();
         let layout = layout_for(&tmp);
-        let desired: std::collections::BTreeSet<_> = collect_desired_templates(&layout)
+        let desired: std::collections::BTreeSet<_> = collect_desired_templates(&layout, &manifest)
             .into_iter()
             .map(|(p, _)| p)
             .collect();
@@ -810,7 +770,7 @@ mod tests {
         crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
         let layout = layout_for(&tmp);
         let manifest = Manifest::read(tmp.path()).unwrap().unwrap();
-        let desired = collect_desired_templates(&layout);
+        let desired = collect_desired_templates(&layout, &manifest);
         let mut prompter = PanicPrompter;
         let plan = plan_actions(
             &layout,
@@ -1090,5 +1050,35 @@ mod tests {
         let summary = upgrade(UpgradeOptions::new(tmp.path()), &mut prompter).unwrap();
         assert_eq!(summary.modified_preserved, 1);
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "user edit");
+    }
+
+    /// V-IT-15 (codex-support G-14): a Claude-only project upgraded with the
+    /// new CLI version remains Claude-only — `ark upgrade` does NOT install
+    /// `.codex/` artifacts or write the AGENTS.md managed block.
+    #[test]
+    fn upgrade_on_claude_only_project_does_not_install_codex() {
+        use crate::CLAUDE_PLATFORM;
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(
+            crate::commands::InitOptions::new(tmp.path()).with_platforms(vec![&CLAUDE_PLATFORM]),
+        )
+        .unwrap();
+
+        let mut prompter = PanicPrompter;
+        upgrade(UpgradeOptions::new(tmp.path()), &mut prompter).unwrap();
+
+        assert!(
+            !tmp.path().join(".codex").exists(),
+            ".codex must not appear"
+        );
+        assert!(
+            !tmp.path().join("AGENTS.md").exists(),
+            "AGENTS.md must not appear",
+        );
+        let manifest = Manifest::read(tmp.path()).unwrap().unwrap();
+        assert!(
+            !manifest.files.iter().any(|p| p.starts_with(".codex")),
+            "manifest must not gain .codex/* entries",
+        );
     }
 }

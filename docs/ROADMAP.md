@@ -33,6 +33,7 @@
 - Better memory(spec and tasks) management, learn idea stello.
 - Add a spec extraction mechanism through docs/codes to support older projects.
 - Add Hook support which useful for codebase-overview before any tasks.
+- **Strengthen VERIFY**. Today VERIFY checks plan-fidelity, correctness, and SPEC drift, but doesn't scrutinize function length, cross-file redundancy, or abstraction strength. The `codex-support` task surfaced this: VERIFY approved with minor follow-ups, but a separate cleanup pass found ~5 sites of structural redundancy that should have been findings. Enumerate code-quality dimensions in the verifier prompt; consider an "approved-after-refactor" verdict that gates archive on a cleanup pass.
   ...
 
 [Cli enhancement]

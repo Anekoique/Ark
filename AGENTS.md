@@ -104,7 +104,7 @@ Round-trip must preserve user-edited and user-added files under `.ark/` and `.cl
 
 - **Errors:** every fallible op returns `crate::error::Result<T>`. Wrap `std::io::Error` via `Error::io(path, source)`. Never `unwrap()` outside tests; reserve `expect("…")` for documented invariants only.
 - **Filesystem:** prefer the methods on `io::PathExt` over `std::fs::*` so error paths stay structured. The trait is implemented for any `T: AsRef<Path>`.
-- **Managed blocks** in text files are owned by `io::fs::{read,update,remove}_managed_block` — don't hand-write `<!-- ARK:START -->` strings elsewhere. The `Marker` helper inside `fs.rs` is private on purpose.
+- **Managed blocks** in text files are owned by `io::fs::{read,update,remove}_managed_block` — don't hand-write `ARK:START`/`ARK:END` HTML-comment delimiters elsewhere. The `Marker` helper inside `fs.rs` is private on purpose.
 - **Project paths:** route through `layout::Layout` (`ark_dir()`, `claude_md()`, `owned_dirs()`, etc.). Don't `root.join(".ark")` ad-hoc.
 - **Commands return summaries that `impl Display`.** The CLI calls one `render(summary)` per dispatch — don't add ad-hoc print logic.
 - **Style:** functional combinators (`try_for_each`, `and_then`, `map_or`) where they read more clearly; explicit imperative form where they don't. `cargo fmt` settles all formatting debates.
@@ -138,3 +138,11 @@ User-authored files inside owned dirs (`.ark/tasks/...`, custom slash commands) 
 - Don't introduce `crate::*::*` paths that bypass `layout::Layout` for path computation.
 - Don't shell out to git, `mv`, or `rm` from Rust code — use `PathExt`.
 - Don't mutate `reference/` or commit anything from `target/`.
+
+<!-- ARK:START -->
+Ark is installed in this project. Use `/ark:quick` or `/ark:design` to start tasks.
+
+See `.ark/workflow.md` for the full workflow.
+
+@.ark/specs/INDEX.md
+<!-- ARK:END -->

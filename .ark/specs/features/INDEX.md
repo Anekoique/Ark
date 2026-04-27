@@ -12,6 +12,7 @@ The table below is managed by `ark agent spec register` — new rows appear when
 | `ark-agent-namespace` | add `ark agent` tool for agents to invoke | 2026-04-24 from task `ark-agent-namespace` |
 | `ark-upgrade` | add `ark upgrade` support | 2026-04-24 from task `ark-upgrade` |
 | `ark-context` | Add ark context command | 2026-04-27 from task `ark-context` |
+| `codex-support` | add Codex platform support | 2026-04-27 from task `codex-support` |
 
 <!-- ARK:FEATURES:END -->
 
