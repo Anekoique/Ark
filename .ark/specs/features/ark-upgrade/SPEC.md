@@ -1,4 +1,3 @@
-
 [**Goals**]
 
 - G-1: `ark upgrade` is a top-level, visible subcommand. Safe to run repeatedly.
@@ -241,7 +240,7 @@ struct StdioPrompter;   // uses std::io::IsTerminal; non-TTY → Skip
 - C-5: Upgrade refuses with `Error::DowngradeRefused` when `semver::Version::parse(&manifest.version) > semver::Version::parse(CARGO_PKG_VERSION)`, unless `opts.allow_downgrade`. Unparseable `manifest.version` → treat as unknown and proceed.
 - C-6: Version comparison uses `semver::Version`. Same-version upgrades run a full pass.
 - C-7: `ConflictPolicy::Interactive` + non-TTY stdin → `ConflictChoice::Skip` without reading, with a single stderr note at upgrade start.
-- C-8: The `CLAUDE.md` managed block is re-applied on every upgrade via `update_managed_block` with `MANAGED_BLOCK_BODY`. Not hash-tracked.
+- C-8: The `CLAUDE.md` managed block AND the `.claude/settings.json` Ark `SessionStart` hook entry are re-applied on every upgrade. Not hash-tracked. The `CLAUDE.md` block is re-applied via `update_managed_block` with `MANAGED_BLOCK_BODY`. The settings-hook entry is re-applied via `update_settings_hook` with `ark_session_start_hook_entry()`; identity is `command == ARK_CONTEXT_HOOK_COMMAND` ("ark context --scope session --format json"). Per ark-context C-17, the entry is unconditionally rewritten to canonical form on every `init` / `load` / `upgrade`; user customizations to the entry itself are not preserved (rationale: matches the CLAUDE.md managed-block precedent). Sibling hook entries (e.g. user-added `PreToolUse`) are preserved.
 - C-9: `.new` files are NOT recorded in the manifest and NOT hashed.
 - C-10: When a template has been removed between versions, upgrade deletes the on-disk file iff `manifest.hash_for(path) == Some(current_sha256)`. Otherwise the file is left in place (orphaned). Either way, the entry is dropped from `manifest.files` AND `manifest.hashes`.
 - C-11: `AmbiguousNoHash` (no recorded hash + on-disk differs from desired) is treated as `UserModified`. "No recorded hash + on-disk matches desired" is `Classification::Unchanged { refresh_hash: true }`.
@@ -257,5 +256,9 @@ struct StdioPrompter;   // uses std::io::IsTerminal; non-TTY → Skip
 
   Implementation: use `dest_root.join(entry.relative_path).strip_prefix(project_root)` where `dest_root` is `layout.ark_dir()` or `layout.claude_dir()` — same idiom as `init.rs::extract`.
 - C-19 *(new)*: `plan_actions` returns `Vec<PlannedAction>` sorted by `(bucket, relative_path)`. Bucket order: `Write{Add}`, `Write{AutoUpdate}`, `Write{Overwrite}`, `CreateNew`, `RefreshHashOnly`, `Preserve`, `Delete`, `DropManifestEntry`. Two consecutive partial-recovery runs from the same state produce byte-identical manifests and filesystem layouts.
+
+[**CHANGELOG**]
+
+- 2026-04-25 — C-8 extended to cover `.claude/settings.json` Ark `SessionStart` hook entry alongside the `CLAUDE.md` managed block. Both are re-applied on every upgrade and not hash-tracked. Sibling user hook entries are preserved. Added by the `ark-context` task.
 
 ---

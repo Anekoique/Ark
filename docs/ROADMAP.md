@@ -68,14 +68,9 @@ Ship the minimum scaffold: `ark init`, template set, three-tier workflow.
 
 Extend CLI so slash commands stop shelling out to raw git/ls and instead call typed `ark` subcommands.
 
-- `ark context [--format json|text] [--for design|plan|review]` — bundle git + current task + active tasks + relevant specs
-- `ark task create <title> [--tier quick|standard|deep]`
-- `ark task list [--status active|archived] [--format json]`
-- `ark task show <id>` / `ark task current`
-- `ark task advance --to <phase>`
-- `ark task archive [--promote-spec]`
-- `ark unload` (respects `.installed.json`)
-- `ark update` (template refresh with non-destructive patching)
+- ✅ `ark context --scope {session|phase} --for {design|plan|review|execute|verify} [--format json|text]` — bundle git + current task + active tasks + project/feature specs + recent archive. Auto-invoked at session start via a SessionStart hook in `.claude/settings.json`. Phase-scoped projections trim the bundle to what each workflow phase consumes.
+- ✅ `ark unload` (respects `.installed.json`)
+- ✅ `ark upgrade` (template refresh with non-destructive patching)
 
 ## Phase 2: Hooks & Multi-Platform
 

@@ -13,7 +13,10 @@ use include_dir::Dir;
 
 use crate::{
     error::Result,
-    io::{PathExt, WriteMode, WriteOutcome, update_managed_block, write_file},
+    io::{
+        PathExt, WriteMode, WriteOutcome, ark_session_start_hook_entry, update_managed_block,
+        update_settings_hook, write_file,
+    },
     layout::{CLAUDE_MD, EMPTY_DIRS, Layout, MANAGED_BLOCK_BODY},
     state::Manifest,
     templates::{ARK_TEMPLATES, CLAUDE_TEMPLATES, walk},
@@ -119,6 +122,10 @@ pub fn init(opts: InitOptions) -> Result<InitSummary> {
     )? {
         manifest.record_block(CLAUDE_MD, layout.managed_marker());
     }
+
+    // ark-context C-17: re-apply the SessionStart hook unconditionally.
+    // Not hash-tracked; manifest is unchanged.
+    update_settings_hook(layout.claude_settings(), ark_session_start_hook_entry())?;
 
     manifest.write(layout.root())?;
     Ok(summary)
@@ -251,5 +258,74 @@ mod tests {
         let summary = init(InitOptions::new(tmp.path()).with_mode(WriteMode::Force)).unwrap();
         assert!(summary.overwritten > 0);
         assert_ne!(std::fs::read_to_string(&target).unwrap(), "user edit\n");
+    }
+
+    /// V-UT-29 (carve-out): `init(target)` operates exclusively on `target`,
+    /// regardless of any Arked ancestor. The CLI ensures the wrong target
+    /// can never be picked via discovery; the library is consistent with
+    /// that — passing a child of an Arked parent scaffolds in the child.
+    #[test]
+    fn init_in_subdir_of_arked_parent_scaffolds_in_subdir() {
+        let parent = tempfile::tempdir().unwrap();
+        init(InitOptions::new(parent.path())).unwrap();
+        assert!(parent.path().join(".ark").is_dir());
+
+        let sub = parent.path().join("nested").join("project");
+        std::fs::create_dir_all(&sub).unwrap();
+        init(InitOptions::new(&sub)).unwrap();
+        assert!(
+            sub.join(".ark").is_dir(),
+            "subdir should have its own .ark/"
+        );
+        // Parent's .ark/ is untouched (still has its own workflow.md).
+        assert!(parent.path().join(".ark/workflow.md").is_file());
+    }
+
+    /// V-IT-7: `ark init` writes the `SessionStart` hook entry in
+    /// `.claude/settings.json` per ark-context G-8 / G-11.
+    #[test]
+    fn init_writes_session_start_hook() {
+        use crate::io::ARK_CONTEXT_HOOK_COMMAND;
+        let tmp = tempfile::tempdir().unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+        let settings = tmp.path().join(".claude/settings.json");
+        assert!(settings.is_file());
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(
+            v["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            serde_json::Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()),
+        );
+        assert_eq!(v["hooks"]["SessionStart"][0]["hooks"][0]["timeout"], 5000);
+    }
+
+    /// V-IT-13: `ark init` followed by deleting the Ark entry → next `init`
+    /// re-adds it. (Idempotent re-application is also covered by C-29 at
+    /// the upgrade layer.) This verifies the same invariant for `init`.
+    #[test]
+    fn init_re_adds_deleted_session_start_hook() {
+        use crate::io::ARK_CONTEXT_HOOK_COMMAND;
+        let tmp = tempfile::tempdir().unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+        let settings = tmp.path().join(".claude/settings.json");
+
+        // User deletes the entry by emptying the array.
+        std::fs::write(
+            &settings,
+            serde_json::to_string_pretty(&serde_json::json!({
+                "hooks": {"SessionStart": []}
+            }))
+            .unwrap()
+                + "\n",
+        )
+        .unwrap();
+
+        init(InitOptions::new(tmp.path()).with_mode(WriteMode::Skip)).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(
+            v["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            serde_json::Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()),
+        );
     }
 }

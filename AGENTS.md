@@ -30,20 +30,27 @@ A simple CLI agent harness and development workflow for orchestrating AI-driven 
 ark-core/src/
 ├── lib.rs              # public re-exports
 ├── error.rs            # Error enum, Result alias
-├── layout.rs           # Layout + project-root constants
+├── layout.rs           # Layout + project-root constants + discover_from
 ├── templates.rs        # include_dir!() trees + walker
 ├── io/
 │   ├── path_ext.rs     # PathExt trait wrapping std::fs
-│   └── fs.rs           # write_file, walk_files, managed-block ops
+│   ├── fs.rs           # write_file, walk_files, managed-block ops, settings-hook
+│   └── git.rs          # the only sanctioned Command::new("git") site
 ├── state/
 │   ├── manifest.rs     # .ark/.installed.json
-│   └── snapshot.rs     # .ark.db capture/restore
+│   └── snapshot.rs     # .ark.db capture/restore (incl. SnapshotHookBody)
 └── commands/
     ├── init.rs         # scaffold from templates
     ├── load.rs         # restore from .ark.db OR scaffold
     ├── unload.rs       # capture into .ark.db, remove live files
     ├── remove.rs       # unconditional wipe
     ├── upgrade.rs      # refresh embedded templates to current CLI version
+    ├── context/        # `ark context` — read-only state snapshot
+    │   ├── model.rs    #   Context + sub-structs, schema=1
+    │   ├── gather.rs   #   one-pass collection (git + tasks + specs)
+    │   ├── projection.rs #  Scope / PhaseFilter / project()
+    │   ├── render.rs   #   text-mode Display
+    │   └── related_specs.rs #  PRD [**Related Specs**] parser
     └── agent/          # `ark agent` namespace (hidden CLI, not semver)
         ├── state.rs    #   TaskToml + legal-transition table
         ├── task/       #   task lifecycle (new/plan/review/execute/verify/archive)
@@ -107,11 +114,12 @@ Round-trip must preserve user-edited and user-added files under `.ark/` and `.cl
 
 | Command      | Effect                                                                                                                                                                  |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ark init`    | Scaffold `.ark/` + `.claude/commands/ark/` from embedded templates; insert `<!-- ARK -->` block in `CLAUDE.md`; record artifacts in `.ark/.installed.json`.             |
-| `ark load`    | If `.ark.db` exists → restore from snapshot and remove it. Otherwise → behave like `init`. Refuses if `.ark/` exists; `--force` wipes first.                            |
-| `ark unload`  | Capture every file under owned dirs and every recorded managed block into `.ark.db`; remove the live footprint. Ignoring `.ark.db` in VCS is the user's responsibility. |
-| `ark remove`  | Unconditional wipe of `.ark/`, `.claude/commands/ark/`, managed blocks, and `.ark.db`.                                                                                  |
-| `ark upgrade` | Refresh embedded templates to the current CLI version; user-modified files are preserved (prompt) or overridden by `--force` / `--skip-modified` / `--create-new`.      |
+| `ark init`    | Scaffold `.ark/` + `.claude/commands/ark/` from embedded templates; insert `<!-- ARK -->` block in `CLAUDE.md`; install Ark `SessionStart` hook in `.claude/settings.json`; record artifacts in `.ark/.installed.json`. |
+| `ark load`    | If `.ark.db` exists → restore from snapshot (incl. `SessionStart` hook) and remove it. Otherwise → behave like `init`. Refuses if `.ark/` exists; `--force` wipes first.                            |
+| `ark unload`  | Capture every file under owned dirs, every recorded managed block, AND the Ark `SessionStart` hook into `.ark.db`; remove the live footprint. Ignoring `.ark.db` in VCS is the user's responsibility. |
+| `ark remove`  | Unconditional wipe of `.ark/`, `.claude/commands/ark/`, managed blocks, `.ark.db`, and the Ark `SessionStart` hook entry (sibling user hooks preserved).                                                                                  |
+| `ark upgrade` | Refresh embedded templates to the current CLI version; user-modified files are preserved (prompt) or overridden by `--force` / `--skip-modified` / `--create-new`. Re-applies `CLAUDE.md` block and `SessionStart` hook unconditionally (not hash-tracked).      |
+| `ark context` | Print a structured snapshot of git + `.ark/` workflow state. Read-only. `--scope session` (default) for orientation; `--scope phase --for {design\|plan\|review\|execute\|verify}` for phase-targeted slices. JSON via `--format json`. |
 
 User-authored files inside owned dirs (`.ark/tasks/...`, custom slash commands) survive an `unload` → `load` round-trip losslessly.
 

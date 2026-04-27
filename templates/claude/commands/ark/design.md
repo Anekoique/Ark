@@ -24,22 +24,21 @@ Structural operations (creating task dirs, phase transitions, archive moves, SPE
 
 ## Phase 1 — DESIGN
 
-### 1.1 Read workflow & project specs
+### 1.1 Pull design-phase context
+
+```bash
+ark context --scope phase --for design --format json
+```
+
+This bundles git state, current task (if any), project specs, feature specs, and recent archive in one structured snapshot. Read the returned JSON before reading the workflow doc — it tells you what specs to consult.
+
+`.ark/workflow.md` is worth a quick re-read if you haven't seen it recently:
 
 ```bash
 cat .ark/workflow.md
-cat .ark/specs/project/INDEX.md
 ```
 
-Read every SPEC referenced in the project INDEX.
-
-### 1.2 Scan feature specs
-
-```bash
-cat .ark/specs/features/INDEX.md
-```
-
-Identify any feature SPEC relevant to the task.
+Then read every SPEC referenced under `specs.project` and any `specs.features` rows that look related to the task — they're all listed in the context output.
 
 ### 1.3 Brainstorm with the user
 
@@ -77,6 +76,14 @@ Edit `.ark/tasks/<slug>/PRD.md`:
 
 ## Phase 2 — PLAN
 
+### 2.0 Refresh phase context
+
+```bash
+ark context --scope phase --for plan --format json
+```
+
+This narrows the snapshot to current task + PRD + related feature specs (filtered to those mentioned in the PRD's `[**Related Specs**]`) + project specs.
+
 ### 2.1 Advance phase
 
 ```bash
@@ -107,6 +114,14 @@ Using the PRD and related specs as input, fill `00_PLAN.md`:
 **Deep tier:** `ark agent task review` — proceed to Phase 3.
 
 ## Phase 3 — REVIEW (deep tier only — plan review loop)
+
+### 3.0 Refresh phase context
+
+```bash
+ark context --scope phase --for review --format json
+```
+
+Returns current task + latest PLAN + related feature specs + project specs — exactly what a reviewer needs to evaluate the plan.
 
 ### 3.1 Review is seeded
 
@@ -149,6 +164,14 @@ ark agent task execute
 
 ## Phase 4 — EXECUTE
 
+### 4.0 Refresh phase context
+
+```bash
+ark context --scope phase --for execute --format json
+```
+
+Returns current task + latest PLAN + git dirty files + project specs. Use the dirty-files list to know what's already in flight before you start editing.
+
 ### 4.1 Implement the plan
 
 Work through the latest PLAN's Implementation phases. Follow project specs and related feature SPECs.
@@ -170,6 +193,14 @@ ark agent task verify
 This transitions to Verify and seeds `VERIFY.md` from the embedded template.
 
 ## Phase 5 — VERIFY
+
+### 5.0 Refresh phase context
+
+```bash
+ark context --scope phase --for verify --format json
+```
+
+Returns current task with PRD + latest PLAN + VERIFY.md path (if exists) + git state — the inputs a verifier needs to check plan-fidelity, correctness, and SPEC drift.
 
 ### 5.1 Act as verifier
 

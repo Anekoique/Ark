@@ -11,11 +11,12 @@ use std::{
 };
 
 use ark_core::{
-    ConflictChoice, ConflictPolicy, InitOptions, Layout, LoadOptions, PathExt, Prompter,
-    RemoveOptions, SpecExtractOptions, SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions,
-    TaskPhaseOptions, TaskPromoteOptions, Tier, UnloadOptions, UpgradeOptions, WriteMode, init,
-    load, remove, spec_extract, spec_register, task_archive, task_execute, task_new, task_plan,
-    task_promote, task_review, task_verify, unload, upgrade,
+    ConflictChoice, ConflictPolicy, ContextFormat, ContextOptions, ContextScope, InitOptions,
+    Layout, LoadOptions, PathExt, PhaseFilter, Prompter, RemoveOptions, SpecExtractOptions,
+    SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions, TaskPhaseOptions, TaskPromoteOptions,
+    Tier, UnloadOptions, UpgradeOptions, WriteMode, context, init, load, remove, spec_extract,
+    spec_register, task_archive, task_execute, task_new, task_plan, task_promote, task_review,
+    task_verify, unload, upgrade,
 };
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
@@ -44,6 +45,8 @@ enum Command {
     Remove(TargetArgs),
     /// Refresh embedded templates to the current CLI version.
     Upgrade(UpgradeArgs),
+    /// Print a structured snapshot of git + .ark/ workflow state.
+    Context(ContextArgs),
     /// Internal commands invoked by the Ark workflow and slash commands.
     /// Not covered by semver — prefer the slash commands over calling these directly.
     #[command(hide = true)]
@@ -105,6 +108,81 @@ impl UpgradeArgs {
     }
 }
 
+#[derive(clap::Args)]
+struct ContextArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+
+    /// Which projection to run.
+    #[arg(long, value_enum, default_value = "session")]
+    scope: ScopeArg,
+
+    /// Phase to filter by. Required when --scope=phase; rejected otherwise.
+    #[arg(long = "for", value_enum)]
+    r#for: Option<PhaseArg>,
+
+    /// Output format.
+    #[arg(long, value_enum, default_value = "text")]
+    format: FormatArg,
+}
+
+#[derive(Copy, Clone, clap::ValueEnum)]
+enum ScopeArg {
+    Session,
+    Phase,
+}
+
+#[derive(Copy, Clone, clap::ValueEnum)]
+enum PhaseArg {
+    Design,
+    Plan,
+    Review,
+    Execute,
+    Verify,
+}
+
+#[derive(Copy, Clone, clap::ValueEnum)]
+enum FormatArg {
+    Json,
+    Text,
+}
+
+impl From<PhaseArg> for PhaseFilter {
+    fn from(p: PhaseArg) -> Self {
+        match p {
+            PhaseArg::Design => PhaseFilter::Design,
+            PhaseArg::Plan => PhaseFilter::Plan,
+            PhaseArg::Review => PhaseFilter::Review,
+            PhaseArg::Execute => PhaseFilter::Execute,
+            PhaseArg::Verify => PhaseFilter::Verify,
+        }
+    }
+}
+
+impl From<FormatArg> for ContextFormat {
+    fn from(f: FormatArg) -> Self {
+        match f {
+            FormatArg::Json => ContextFormat::Json,
+            FormatArg::Text => ContextFormat::Text,
+        }
+    }
+}
+
+impl ContextArgs {
+    fn resolve_scope(&self) -> Result<ContextScope, String> {
+        match (self.scope, self.r#for) {
+            (ScopeArg::Session, None) => Ok(ContextScope::Session),
+            (ScopeArg::Session, Some(_)) => {
+                Err("`--for <PHASE>` is only valid with `--scope=phase`".to_string())
+            }
+            (ScopeArg::Phase, None) => {
+                Err("`--for <PHASE>` is required when `--scope=phase`".to_string())
+            }
+            (ScopeArg::Phase, Some(p)) => Ok(ContextScope::Phase(p.into())),
+        }
+    }
+}
+
 /// Shared `-C DIR` flag used by every subcommand.
 #[derive(clap::Args)]
 struct TargetArgs {
@@ -114,11 +192,28 @@ struct TargetArgs {
 }
 
 impl TargetArgs {
+    /// Resolve to the explicit target (cwd, or `--dir`). No walk-up. Used by
+    /// commands whose job is to scaffold or operate on a specific target
+    /// directory (`init`, `load --force`).
     fn resolve(self) -> PathBuf {
         let raw = self
             .dir
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
         absolutize(&raw)
+    }
+
+    /// Resolve and then walk ancestors looking for an Ark project root, per
+    /// ark-context C-21. If `--dir` was given, it wins (no walk-up). Used by
+    /// commands that require an existing `.ark/`.
+    fn resolve_with_discovery(self) -> anyhow::Result<PathBuf> {
+        // Explicit --dir always wins.
+        if let Some(dir) = self.dir.as_ref() {
+            return Ok(absolutize(dir));
+        }
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let cwd_abs = absolutize(&cwd);
+        let layout = Layout::discover_from(&cwd_abs)?;
+        Ok(layout.root().to_path_buf())
     }
 }
 
@@ -153,6 +248,7 @@ impl Command {
     fn dispatch(self) -> anyhow::Result<()> {
         match self {
             Self::Init(a) => {
+                // ark-context C-21 carve-out: init creates `.ark/`; no walk-up.
                 let root = a.target.resolve();
                 let mode = if a.force {
                     WriteMode::Force
@@ -163,23 +259,31 @@ impl Command {
                 render(init(InitOptions::new(root).with_mode(mode))?);
             }
             Self::Load(a) => {
+                // `ark load` works on the explicit target: it either restores
+                // from a local `.ark.db` snapshot or scaffolds fresh. Both
+                // branches operate on the cwd (or `--dir`); discovery would
+                // wrongly refuse when only `.ark.db` is present.
                 let root = a.target.resolve();
                 announce("loading ark into", &root);
                 render(load(LoadOptions::new(root).with_force(a.force))?);
             }
             Self::Unload(a) => {
-                let root = a.resolve();
+                let root = a.resolve_with_discovery()?;
                 announce("unloading ark from", &root);
                 render(unload(UnloadOptions::new(root))?);
             }
             Self::Remove(a) => {
+                // `ark remove` is unconditional cleanup — runs even when
+                // `.ark/` is already gone (e.g. after `ark unload` left only
+                // `.ark.db`). Resolve to the explicit target without
+                // requiring an existing project.
                 let root = a.resolve();
                 announce("removing ark from", &root);
                 render(remove(RemoveOptions::new(root))?);
             }
             Self::Upgrade(a) => {
                 let policy = a.policy();
-                let root = a.target.resolve();
+                let root = a.target.resolve_with_discovery()?;
                 if matches!(policy, ConflictPolicy::Interactive) && !std::io::stdin().is_terminal()
                 {
                     eprintln!(
@@ -194,6 +298,15 @@ impl Command {
                 let mut prompter = StdioPrompter;
                 announce("upgrading ark in", &root);
                 render(upgrade(opts, &mut prompter)?);
+            }
+            Self::Context(a) => {
+                let scope = a.resolve_scope().map_err(|msg| anyhow::anyhow!("{msg}"))?;
+                let format: ContextFormat = a.format.into();
+                let root = a.target.resolve_with_discovery()?;
+                let opts = ContextOptions::new(root)
+                    .with_scope(scope)
+                    .with_format(format);
+                render(context(opts)?);
             }
             Self::Agent(a) => a.dispatch()?,
         }

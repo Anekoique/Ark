@@ -19,7 +19,10 @@ use chrono::Utc;
 
 use crate::{
     error::{Error, Result},
-    io::{PathExt, hash_bytes, scan_managed_markers, splice_managed_block, update_managed_block},
+    io::{
+        PathExt, ark_session_start_hook_entry, hash_bytes, scan_managed_markers,
+        splice_managed_block, update_managed_block, update_settings_hook,
+    },
     layout::{CLAUDE_MD, Layout, MANAGED_BLOCK_BODY},
     state::{Manifest, manifest::MANIFEST_RELATIVE_PATH},
     templates::{ARK_TEMPLATES, CLAUDE_TEMPLATES, walk},
@@ -551,6 +554,10 @@ pub fn upgrade(opts: UpgradeOptions, prompter: &mut dyn Prompter) -> Result<Upgr
         manifest.record_block(CLAUDE_MD, layout.managed_marker());
     }
 
+    // .claude/settings.json SessionStart hook — re-applied on every upgrade,
+    // not hash-tracked. Per ark-context C-17 (analog of CLAUDE.md C-8).
+    update_settings_hook(layout.claude_settings(), ark_session_start_hook_entry())?;
+
     // R-004: durable manifest write BEFORE any delete can fail.
     manifest.version = cli_version;
     manifest.installed_at = Utc::now();
@@ -839,6 +846,56 @@ mod tests {
         assert_eq!(summary.deleted, 0);
         assert_eq!(summary.orphaned, 0);
         assert!(summary.unchanged > 0);
+    }
+
+    /// V-IT-14 / C-29: running `ark upgrade` twice produces a byte-identical
+    /// `.claude/settings.json`. The hook re-application is unconditional but
+    /// idempotent at the helper level; this asserts the integration is
+    /// drift-free.
+    #[test]
+    fn upgrade_settings_hook_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
+        let settings = tmp.path().join(".claude/settings.json");
+        let after_init = std::fs::read(&settings).unwrap();
+
+        let mut prompter = PanicPrompter;
+        upgrade(UpgradeOptions::new(tmp.path()), &mut prompter).unwrap();
+        let after_first = std::fs::read(&settings).unwrap();
+        upgrade(UpgradeOptions::new(tmp.path()), &mut prompter).unwrap();
+        let after_second = std::fs::read(&settings).unwrap();
+
+        assert_eq!(after_init, after_first, "init→upgrade drifted");
+        assert_eq!(after_first, after_second, "upgrade→upgrade drifted");
+    }
+
+    /// V-IT-13: deleting the Ark hook entry then running `ark upgrade`
+    /// re-adds it (no prompt, no hash check).
+    #[test]
+    fn upgrade_re_adds_deleted_session_start_hook() {
+        use crate::io::ARK_CONTEXT_HOOK_COMMAND;
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
+        let settings = tmp.path().join(".claude/settings.json");
+        std::fs::write(
+            &settings,
+            serde_json::to_string_pretty(&serde_json::json!({
+                "hooks": {"SessionStart": []}
+            }))
+            .unwrap()
+                + "\n",
+        )
+        .unwrap();
+
+        let mut prompter = PanicPrompter;
+        upgrade(UpgradeOptions::new(tmp.path()), &mut prompter).unwrap();
+
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(
+            v["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            serde_json::Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()),
+        );
     }
 
     #[test]

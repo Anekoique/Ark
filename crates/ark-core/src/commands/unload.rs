@@ -10,9 +10,12 @@ use std::{fmt, path::PathBuf};
 
 use crate::{
     error::{Error, Result},
-    io::{PathExt, read_managed_block, remove_managed_block, walk_files},
-    layout::{CLAUDE_MD, Layout},
-    state::{Manifest, Snapshot},
+    io::{
+        ARK_CONTEXT_HOOK_COMMAND, PathExt, read_managed_block, read_settings_hook,
+        remove_managed_block, remove_settings_hook, walk_files,
+    },
+    layout::{CLAUDE_MD, CLAUDE_SETTINGS_FILE, Layout},
+    state::{Manifest, Snapshot, SnapshotHookBody},
 };
 
 #[derive(Debug, Clone)]
@@ -32,14 +35,15 @@ impl UnloadOptions {
 pub struct UnloadSummary {
     pub files_captured: usize,
     pub blocks_captured: usize,
+    pub hook_bodies_captured: usize,
 }
 
 impl fmt::Display for UnloadSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "captured {} file(s) and {} managed block(s) into .ark.db",
-            self.files_captured, self.blocks_captured,
+            "captured {} file(s), {} managed block(s), and {} hook entries into .ark.db",
+            self.files_captured, self.blocks_captured, self.hook_bodies_captured,
         )
     }
 }
@@ -80,10 +84,28 @@ pub fn unload(opts: UnloadOptions) -> Result<UnloadSummary> {
         remove_managed_block(&target, &marker)?;
     }
 
-    // 3. Persist the snapshot before destroying anything else.
+    // 3. Capture + remove the Ark-owned SessionStart hook entry. Per
+    //    ark-context C-18: only the Ark entry is captured into the snapshot.
+    //    Sibling user entries stay on disk untouched — `remove_settings_hook`
+    //    targets the Ark entry by command, leaving the rest of the file
+    //    intact for the next `load` to find.
+    let settings = layout.claude_settings();
+    if let Some(entry) = read_settings_hook(&settings, ARK_CONTEXT_HOOK_COMMAND)? {
+        snapshot.add_hook_body(SnapshotHookBody {
+            path: PathBuf::from(CLAUDE_SETTINGS_FILE),
+            json_pointer: "/hooks/SessionStart".to_string(),
+            identity_key: "command".to_string(),
+            identity_value: ARK_CONTEXT_HOOK_COMMAND.to_string(),
+            entry,
+        });
+        summary.hook_bodies_captured += 1;
+        remove_settings_hook(&settings, ARK_CONTEXT_HOOK_COMMAND)?;
+    }
+
+    // 4. Persist the snapshot before destroying anything else.
     snapshot.write(layout.root())?;
 
-    // 4. Delete the live Ark footprint.
+    // 5. Delete the live Ark footprint.
     layout
         .owned_dirs()
         .iter()

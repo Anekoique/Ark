@@ -87,6 +87,12 @@ pub enum Error {
 
     #[error("unsafe path in installation manifest {path:?}: {reason}")]
     UnsafeManifestPath { path: PathBuf, reason: &'static str },
+
+    #[error("failed to spawn git: {source}")]
+    GitSpawn {
+        #[source]
+        source: io::Error,
+    },
 }
 
 impl Error {

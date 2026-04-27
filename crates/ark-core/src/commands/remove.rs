@@ -4,7 +4,7 @@ use std::{fmt, path::PathBuf};
 
 use crate::{
     error::Result,
-    io::{PathExt, remove_managed_block},
+    io::{ARK_CONTEXT_HOOK_COMMAND, PathExt, remove_managed_block, remove_settings_hook},
     layout::Layout,
     state::{Manifest, Snapshot},
 };
@@ -28,6 +28,7 @@ pub struct RemoveSummary {
     pub removed_claude_commands: bool,
     pub removed_snapshot: bool,
     pub blocks_removed: usize,
+    pub removed_hook_entry: bool,
 }
 
 impl fmt::Display for RemoveSummary {
@@ -38,6 +39,7 @@ impl fmt::Display for RemoveSummary {
             (self.removed_claude_commands, ".claude/commands/ark/"),
             (self.removed_snapshot, ".ark.db"),
             (self.blocks_removed > 0, blocks_label.as_str()),
+            (self.removed_hook_entry, ".claude/settings.json hook"),
         ]
         .into_iter()
         .filter_map(|(keep, label)| keep.then_some(label))
@@ -81,6 +83,11 @@ pub fn remove(opts: RemoveOptions) -> Result<RemoveSummary> {
 
     // 3. Snapshot.
     summary.removed_snapshot = Snapshot::remove(layout.root())?;
+
+    // 4. Ark-owned hook entry in .claude/settings.json (sibling user
+    //    entries are preserved).
+    summary.removed_hook_entry =
+        remove_settings_hook(layout.claude_settings(), ARK_CONTEXT_HOOK_COMMAND)?;
 
     Ok(summary)
 }

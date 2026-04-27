@@ -74,14 +74,16 @@ See `.ark/workflow.md` for the full workflow.
 
 ## Lifecycle
 
-`ark` has four commands for managing its presence in a project:
+`ark` has these commands for managing its presence in a project:
 
-| Command      | What it does                                                                     |
-| ------------ | -------------------------------------------------------------------------------- |
-| `ark init`   | Scaffold `.ark/` and Claude Code integration from the embedded templates.        |
-| `ark load`   | Restore from `.ark.db` or init.                                                  |
-| `ark unload` | Snapshot everything under `.ark/` + managed blocks into `.ark.db`.               |
-| `ark remove` | Wipe Ark fully: `.ark/`, `.claude/commands/ark/`, managed blocks, and `.ark.db`. |
+| Command       | What it does                                                                     |
+| ------------- | -------------------------------------------------------------------------------- |
+| `ark init`    | Scaffold `.ark/` and Claude Code integration from the embedded templates.        |
+| `ark load`    | Restore from `.ark.db` or init.                                                  |
+| `ark unload`  | Snapshot everything under `.ark/` + managed blocks + Ark hook into `.ark.db`.    |
+| `ark remove`  | Wipe Ark fully: `.ark/`, `.claude/commands/ark/`, managed blocks, `.ark.db`, hook. |
+| `ark upgrade` | Refresh embedded templates to the current CLI version.                           |
+| `ark context` | Print a snapshot of git + `.ark/` state. Read-only. JSON or text.                |
 
 ## Inspiration
 

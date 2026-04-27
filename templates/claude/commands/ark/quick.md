@@ -17,24 +17,21 @@ Structural operations (task dir creation, phase transitions, archive moves) are 
 
 ## Steps
 
-### 1. Read workflow & project specs
+### 1. Pull project context
+
+```bash
+ark context --scope phase --for design --format json
+```
+
+The output is the authoritative snapshot of `.ark/`, git, and project specs for the design phase. Read it before reading the workflow doc — it tells you what specs to consult, what tasks are active, and where you're starting from.
+
+`.ark/workflow.md` is also worth a quick scan if you haven't read it recently:
 
 ```bash
 cat .ark/workflow.md
-cat .ark/specs/project/INDEX.md
 ```
 
-Project specs listed in `specs/project/INDEX.md` apply to every task — read each `SPEC.md` referenced there before touching code.
-
-### 2. Scan feature specs index
-
-```bash
-cat .ark/specs/features/INDEX.md
-```
-
-Identify any feature SPEC this change touches. You'll record them in PRD's `[**Related Specs**]`.
-
-### 3. Create the task
+### 2. Create the task
 
 Turn the title into a slug: lowercase, hyphen-separated, ASCII, ≤40 chars.
 
@@ -44,7 +41,7 @@ ark agent task new --slug <slug> --title "<title>" --tier quick
 
 This scaffolds `.ark/tasks/<slug>/` with `PRD.md` + `task.toml`, and points `.ark/tasks/.current` at the new slug. Refuses if the slug already exists.
 
-### 4. Fill the PRD
+### 3. Fill the PRD
 
 Edit `.ark/tasks/<slug>/PRD.md`:
 - **What** — one-line description
@@ -52,25 +49,25 @@ Edit `.ark/tasks/<slug>/PRD.md`:
 - **Outcome** — observable success criteria (doubles as verification checklist for quick tier)
 - **Related Specs** — any `specs/features/<name>/SPEC.md` this change touches (or leave blank)
 
-### 5. Advance to execute
+### 4. Advance to execute
 
 ```bash
 ark agent task execute
 ```
 
-### 6. Implement the change
+### 5. Implement the change
 
 Follow the PRD's Outcome. Stay within scope — if work grows beyond trivial, stop and suggest promoting to standard.
 
-### 7. Verify against PRD's Outcome
+### 6. Verify against PRD's Outcome
 
 Run whatever check the Outcome describes (test, build, manual). Record the result by updating PRD's Outcome section with what you verified.
 
-### 8. Commit
+### 7. Commit
 
 The user commits. Do not run `git commit` — show the diff and let the user decide.
 
-### 9. Archive
+### 8. Archive
 
 Once the user confirms the commit succeeded, tell the user: "Run `/ark:archive` to close out the task." Do NOT archive automatically. See `/ark:archive`.
 

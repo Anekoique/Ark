@@ -10,7 +10,10 @@ use std::{fmt, path::PathBuf};
 use crate::{
     commands::init::{InitOptions, InitSummary, init},
     error::{Error, Result},
-    io::{PathExt, WriteMode, update_managed_block, write_file},
+    io::{
+        PathExt, WriteMode, ark_session_start_hook_entry, update_managed_block,
+        update_settings_hook, write_file,
+    },
     layout::Layout,
     state::Snapshot,
 };
@@ -91,6 +94,24 @@ fn restore(layout: &Layout, snapshot: Snapshot) -> Result<LoadSummary> {
         let target = layout.resolve_safe(&b.file)?;
         update_managed_block(target, &b.marker, &b.body).map(|_| ())
     })?;
+
+    // ark-context C-18: restore Ark-owned hook entries by re-applying via
+    // update_settings_hook. The captured `entry` body is the source of
+    // truth — but because the entry's identity-key value is also the
+    // canonical value, this collapses to "re-apply canonical entry" in
+    // practice.
+    for hb in &snapshot.hook_bodies {
+        let target = layout.resolve_safe(&hb.path)?;
+        update_settings_hook(target, hb.entry.clone())?;
+    }
+
+    // Even when a snapshot lacks a hook entry (older `.ark.db` written
+    // before this version), ensure the canonical Ark hook is applied. This
+    // mirrors `init`'s post-scaffold call — the only difference is that
+    // `restore` may have just installed user-customized files alongside.
+    if snapshot.hook_bodies.is_empty() {
+        update_settings_hook(layout.claude_settings(), ark_session_start_hook_entry())?;
+    }
 
     Snapshot::remove(layout.root())?;
 
@@ -209,5 +230,96 @@ mod tests {
 
         assert_eq!(std::fs::read_to_string(&quick).unwrap(), "# edited quick\n");
         assert_eq!(std::fs::read_to_string(&custom).unwrap(), "# user plan\n");
+    }
+
+    /// V-IT-12 (positive half): unload → load round-trip preserves the Ark
+    /// hook entry in `.claude/settings.json`. Per ark-context G-11.
+    #[test]
+    fn roundtrip_preserves_ark_session_start_hook() {
+        use crate::io::ARK_CONTEXT_HOOK_COMMAND;
+
+        let tmp = tempfile::tempdir().unwrap();
+        load(LoadOptions::new(tmp.path())).unwrap();
+
+        let settings = tmp.path().join(".claude/settings.json");
+        let before: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(
+            before["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            serde_json::Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()),
+        );
+
+        unload(UnloadOptions::new(tmp.path())).unwrap();
+        // After unload the settings file should no longer carry the Ark
+        // entry (sibling-empty arrays are fine).
+        if settings.exists() {
+            let mid: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+            let arr = mid["hooks"]["SessionStart"].as_array();
+            assert!(
+                arr.is_none_or(|a| !a.iter().any(|e| e["command"]
+                    == serde_json::Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()))),
+                "Ark entry should be absent after unload"
+            );
+        }
+
+        load(LoadOptions::new(tmp.path())).unwrap();
+        let after: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(
+            after["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            serde_json::Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()),
+            "Ark entry should be restored after load"
+        );
+    }
+
+    /// V-IT-15: user-added sibling hooks (e.g. `PreToolUse`) DO survive an
+    /// unload → load round-trip because `unload` only surgically removes the
+    /// Ark `SessionStart` entry; the rest of `.claude/settings.json` is left
+    /// in place on disk. This is better behavior than the original plan
+    /// documented (it expected siblings to be lost) — and falls out naturally
+    /// from `remove_settings_hook` being a precise edit rather than a
+    /// whole-file delete. C-18's "user siblings outside hook_bodies don't
+    /// survive" applies only to *capture into the snapshot*; `unload` itself
+    /// preserves them on disk.
+    #[test]
+    fn roundtrip_preserves_user_pretooluse_sibling() {
+        let tmp = tempfile::tempdir().unwrap();
+        load(LoadOptions::new(tmp.path())).unwrap();
+
+        let settings = tmp.path().join(".claude/settings.json");
+        let mut current: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+        current["hooks"]["PreToolUse"] = serde_json::json!([
+            {"type": "command", "command": "user-only-hook"}
+        ]);
+        std::fs::write(
+            &settings,
+            serde_json::to_string_pretty(&current).unwrap() + "\n",
+        )
+        .unwrap();
+
+        unload(UnloadOptions::new(tmp.path())).unwrap();
+        load(LoadOptions::new(tmp.path())).unwrap();
+
+        let after: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(
+            after["hooks"]["PreToolUse"][0]["command"],
+            serde_json::Value::String("user-only-hook".to_string()),
+            "user sibling should survive surgical unload/load",
+        );
+    }
+
+    /// V-UT-30 carve-out: `load --force` from a directory without an Ark
+    /// ancestor scaffolds fresh (no walk-up). The carve-out lives in the CLI
+    /// (TargetArgs::resolve), but at the library level the scaffold path
+    /// always operates on the explicit target.
+    #[test]
+    fn load_force_scaffolds_fresh_in_non_ark_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let summary = load(LoadOptions::new(tmp.path()).with_force(true)).unwrap();
+        assert!(matches!(summary, LoadSummary::Fresh(_)));
+        assert!(tmp.path().join(".ark/workflow.md").is_file());
     }
 }
