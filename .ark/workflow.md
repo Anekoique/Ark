@@ -110,6 +110,7 @@ Each stage below names its **purpose**, the **calls** to make, and the **gate** 
   - `ark context --scope phase --for plan` — pulls current PRD + related feature specs (filtered to the PRD's `[**Related Specs**]`) + project specs.
   - `ark agent task plan` — transitions DESIGN → PLAN and seeds `00_PLAN.md`.
 - **Gate:** PLAN complete; Acceptance Mapping fills every Goal. Standard → EXECUTE; deep → REVIEW.
+- **Rule:** `## Spec` must be self-contained every iteration (deltas go in `## Log`). It is copied verbatim to `specs/features/<name>/SPEC.md` on archive.
 
 ### REVIEW — pre-execute gate (deep only, iterative)
 
@@ -117,6 +118,7 @@ Each stage below names its **purpose**, the **calls** to make, and the **gate** 
 - **Calls:**
   - `ark context --scope phase --for review` — pulls current task, latest PLAN, related feature specs, project specs.
   - `ark agent task review` — transitions PLAN → REVIEW and seeds `NN_REVIEW.md`.
+- **Reject (HIGH)** if the latest PLAN's `## Spec` references prior iterations instead of restating in full.
 - **Iteration:** copy `NN_PLAN.md`/`NN_REVIEW.md` to the next number, bump `task.toml.iteration`, reset `phase = "plan"` (hand-edited; the state machine is small).
 - **Gate:** verdict *Approved*, zero open CRITICAL. → EXECUTE.
 

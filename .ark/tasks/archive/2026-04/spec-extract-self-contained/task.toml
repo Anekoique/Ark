@@ -1,0 +1,8 @@
+id = "spec-extract-self-contained"
+title = "Require deep-tier final PLAN's ## Spec to be self-contained"
+tier = "quick"
+phase = "archived"
+iteration = 0
+created_at = "2026-04-27T08:01:22.432234Z"
+updated_at = "2026-04-27T08:12:40.091580Z"
+archived_at = "2026-04-27T08:12:40.091580Z"

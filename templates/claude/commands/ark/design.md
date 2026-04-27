@@ -147,7 +147,7 @@ If verdict is *Rejected* or *Approved with Revisions*:
 3. Edit `task.toml`: bump `iteration` to `NN+1`, set `phase = "plan"`, update `updated_at`.
 4. Fill `NN+1_PLAN.md`:
    - Fill the `Response Matrix` in `## Log` — every prior CRITICAL/HIGH finding must appear with Accepted/Rejected/Deferred + reasoning.
-   - Revise the relevant sections.
+   - Revise the relevant sections. `## Spec` must stay self-contained (deltas go in `## Log`); it is the body of the future feature SPEC.
 5. `ark agent task review` — transition back to Review, ready for the next review pass.
 6. Fill `NN+1_REVIEW.md` with the next verdict.
 7. Repeat until verdict is *Approved* (zero open CRITICAL).

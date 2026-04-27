@@ -3,7 +3,7 @@
 - G-1: Provide a hidden `ark agent` subcommand group — not listed in `ark --help`, but discoverable via `ark agent --help` — that documents itself as non-semver-stable.
 - G-2: Expose explicit per-phase transition subcommands (`task plan`, `task review`, `task execute`, `task verify`, `task archive`) that enforce legal transitions per tier and reject illegal ones with a named error.
 - G-3: Package task-directory scaffolding (`task new`), tier change (`task promote`), and terminal archival (`task archive` — which on deep tier also extracts and registers the feature SPEC) as CLI commands; rare operations (iteration, task reopening) are done by hand-editing `task.toml`.
-- G-4: Package feature-SPEC operations: `spec extract` (final PLAN's `## Spec` → `specs/features/<slug>/SPEC.md`, appending CHANGELOG on overwrite) and `spec register` (upsert row in `specs/features/INDEX.md`'s managed block).
+- G-4: Package feature-SPEC operations: `spec extract` (final PLAN's `## Spec` → `specs/features/<slug>/SPEC.md`, appending CHANGELOG on overwrite) and `spec register` (upsert row in `specs/features/INDEX.md`'s managed block). `spec extract` copies the latest `## Spec` verbatim — no merge across iterations; the PLAN must keep `## Spec` self-contained (`workflow.md` §4 PLAN rule).
 - G-5: `task archive` internally invokes SPEC extract + register when `task.toml.tier == "deep"`; the agent calls one command, not three.
 - G-6: Every subcommand writes to disk, prints a one-line `impl Display` summary, and does not pipe structured data to siblings.
 - G-7: Archival is user-invoked via the `/ark:archive` slash command. `/ark:design` and `/ark:quick` stop at VERIFY (or EXECUTE for quick tier) and never archive automatically.
