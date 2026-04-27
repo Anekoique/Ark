@@ -11,8 +11,10 @@ pub mod state;
 pub mod templates;
 
 pub use commands::{
-    ConflictChoice, ConflictPolicy, InitOptions, InitSummary, LoadOptions, LoadSummary, Prompter,
-    RemoveOptions, RemoveSummary, UnloadOptions, UnloadSummary, UpgradeOptions, UpgradeSummary,
+    ConflictChoice, ConflictPolicy, ContextOptions, ContextSummary, Format as ContextFormat,
+    InitOptions, InitSummary, LoadOptions, LoadSummary, PhaseFilter, ProjectedContext, Prompter,
+    RemoveOptions, RemoveSummary, Scope as ContextScope, ScopeTag, UnloadOptions, UnloadSummary,
+    UpgradeOptions, UpgradeSummary,
     agent::{
         Phase, Status, TaskToml, Tier,
         spec::{
@@ -26,7 +28,7 @@ pub use commands::{
             task_verify,
         },
     },
-    init, load, remove, unload, upgrade,
+    context, init, load, remove, unload, upgrade,
 };
 pub use error::{Error, Result};
 pub use io::{PathExt, WriteMode, hash_bytes};

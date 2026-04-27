@@ -47,7 +47,7 @@ How work flows from intent to archive. Read before starting any task.
 | Standard | `/ark:design`        | `PRD.md`, `PLAN.md`, `VERIFY.md`                                        | design → plan → execute → verify → archived          |
 | Deep     | `/ark:design --deep` | `PRD.md`, `NN_PLAN.md`, `NN_REVIEW.md`, `VERIFY.md`, promoted `SPEC.md` | design → plan ⇄ review → execute → verify → archived |
 
-PRD captures *what we're building and why* (What / Why / Outcome) and is produced in the `design` state by every tier. PLAN elaborates *how*. VERIFY checks the shipped code against PRD's Outcome and PLAN's Validation.
+PRD captures *what we're building and why*. PLAN elaborates *how*. VERIFY checks the shipped code against PRD's Outcome and PLAN's Validation.
 
 ```
 quick:    reversible + no new abstractions
@@ -55,7 +55,7 @@ deep:     breaking / cross-cutting / new subsystem
 standard: everything else
 ```
 
-Promote mid-flight with `ark agent task promote --to <tier>`; prior artifacts are preserved and the agent decides what to reshape.
+Promote mid-flight with `ark agent task promote --to <tier>`; prior artifacts are preserved.
 
 ---
 
@@ -68,43 +68,81 @@ Promote mid-flight with `ark agent task promote --to <tier>`; prior artifacts ar
              ▼
        ┌────────────┐
        │  DESIGN    │  write PRD.md — What / Why / Outcome
-       └─────┬──────┘  brainstorm (quick: none, standard: ≤3 Qs, deep: thorough)
-             │
+       └─────┬──────┘
              │  (quick skips plan/review/verify)
              ▼
        ┌────────────┐
        │    PLAN    │  write NN_PLAN.md — elaborate how
        └─────┬──────┘
-             │
              │         (deep only — plan review loop)
              │         ┌──────────────┐
-             │         │    REVIEW    │  NN_REVIEW.md
-             ├────────►│              │  loop until Approved
+             ├────────►│    REVIEW    │  NN_REVIEW.md
              │         └──────┬───────┘
              │ ◄─── rejected ─┘
              ▼
        ┌────────────┐
-       │  EXECUTE   │  implement; update PLAN's Spec section if gaps found
+       │  EXECUTE   │  implement; update PLAN's Spec section if gaps emerge
        └─────┬──────┘
              ▼
        ┌────────────┐
-       │   VERIFY   │  single-pass gate — plan fidelity, correctness,
-       └─────┬──────┘  code quality, organization, abstraction
-             │         rejected → halt for user decision
+       │   VERIFY   │  single-pass gate
+       └─────┬──────┘  rejected → halt for user decision
              ▼
        ┌────────────┐
        │  ARCHIVE   │  move to tasks/archive/YYYY-MM/;
        └────────────┘  deep: extract SPEC → specs/features/<name>/
 ```
 
-| Stage   | Artifact                                                     | Purpose                                                                                                      | Gate to next                                                                                                           |
-| ------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| DESIGN  | `PRD.md`                                                     | Capture *what* and *why*; set Outcome criteria                                                               | PRD drafted                                                                                                            |
-| PLAN    | `NN_PLAN.md`                                                 | Elaborate *how* — spec, runtime, implementation, validation                                                  | PLAN complete; Goals mapped to Validation                                                                              |
-| REVIEW  | `NN_REVIEW.md`                                               | Pre-execute gate (deep only, iterative) — does the plan hold up?                                             | Verdict *Approved*; zero open **CRITICAL** (else loop to plan)                                                         |
-| EXECUTE | code + updated PLAN Spec                                     | Implement; update PLAN's Spec section if gaps emerge                                                         | Implementation complete; checks pass                                                                                   |
-| VERIFY  | `VERIFY.md`                                                  | Post-execute gate (single-pass) — plan fidelity, correctness, quality, organization, abstraction, SPEC drift | Verdict *Approved* or *Approved with Follow-ups* (rejection halts for user decision); user then invokes `/ark:archive` |
-| ARCHIVE | moved to `tasks/archive/YYYY-MM/<slug>/`; deep extracts SPEC | Preserve as memory                                                                                           | —                                                                                                                      |
+Each stage below names its **purpose**, the **calls** to make, and the **gate** to advance.
+
+### DESIGN — capture what & why
+
+- **Purpose:** write `PRD.md` (What / Why / Outcome / Related Specs). Brainstorm: quick = none, standard = ≤3 clarifying questions, deep = thorough.
+- **Calls:**
+  - `ark context --scope phase --for design` — orient on git, project specs, feature specs index, recent archive.
+  - `ark agent task new --slug <s> --title "<t>" --tier {quick|standard|deep}` — scaffolds the task dir + PRD + `task.toml`.
+- **Gate:** PRD drafted, Outcome stated. Quick → EXECUTE; standard/deep → PLAN.
+
+### PLAN — elaborate how
+
+- **Purpose:** fill `NN_PLAN.md` from the embedded template (Spec, Runtime, Implementation, Trade-offs, Validation). Every Goal mapped to ≥1 Validation.
+- **Calls:**
+  - `ark context --scope phase --for plan` — pulls current PRD + related feature specs (filtered to the PRD's `[**Related Specs**]`) + project specs.
+  - `ark agent task plan` — transitions DESIGN → PLAN and seeds `00_PLAN.md`.
+- **Gate:** PLAN complete; Acceptance Mapping fills every Goal. Standard → EXECUTE; deep → REVIEW.
+
+### REVIEW — pre-execute gate (deep only, iterative)
+
+- **Purpose:** evaluate the latest `NN_PLAN.md` against PRD and project specs; write `NN_REVIEW.md` with verdict + findings. Loop until verdict = *Approved* with zero open CRITICAL.
+- **Calls:**
+  - `ark context --scope phase --for review` — pulls current task, latest PLAN, related feature specs, project specs.
+  - `ark agent task review` — transitions PLAN → REVIEW and seeds `NN_REVIEW.md`.
+- **Iteration:** copy `NN_PLAN.md`/`NN_REVIEW.md` to the next number, bump `task.toml.iteration`, reset `phase = "plan"` (hand-edited; the state machine is small).
+- **Gate:** verdict *Approved*, zero open CRITICAL. → EXECUTE.
+
+### EXECUTE — implement
+
+- **Purpose:** work through the latest PLAN's Implementation phases. If implementation reveals design gaps, **update the latest PLAN's `## Spec` section** to reflect reality.
+- **Calls:**
+  - `ark context --scope phase --for execute` — git dirty files + current task + latest PLAN + project specs.
+  - `ark agent task execute` — transitions to EXECUTE.
+- **Gate:** implementation complete; project's checks pass; code committed.
+
+### VERIFY — post-execute gate (single-pass)
+
+- **Purpose:** verify the shipped code against PRD's Outcome and PLAN's Validation. Apply the higher quality bar: plan fidelity, correctness, code quality, organization, abstraction, SPEC drift. Fill `VERIFY.md`.
+- **Calls:**
+  - `ark context --scope phase --for verify` — current task with PRD + latest PLAN + VERIFY.md (if exists) + git state.
+  - `ark agent task verify` — transitions to VERIFY and seeds `VERIFY.md`.
+- **Gate:** verdict *Approved* or *Approved with Follow-ups* → tell the user to run `/ark:archive`. *Rejected* → halt for user decision.
+
+### ARCHIVE — preserve as memory (user-invoked)
+
+- **Purpose:** move the task to `tasks/archive/YYYY-MM/<slug>/`. Deep tier: extract the final PLAN's `## Spec` section to `specs/features/<name>/SPEC.md` and register it in the features INDEX.
+- **Calls:**
+  - `ark agent task archive` — moves the dir; on deep tier, internally invokes `ark agent spec extract` and `ark agent spec register`.
+- **Trigger:** `/ark:archive`. `/ark:design` and `/ark:quick` deliberately stop at VERIFY (or EXECUTE for quick); the user decides when to close out.
+- **Reopen:** move the archived dir back to `.ark/tasks/<slug>/` and reset `phase = "design"` + clear `archived_at` in `task.toml`. Refuse if a same-slug active task exists.
 
 ---
 
@@ -114,40 +152,19 @@ Two layers: `specs/project/<name>/SPEC.md` (user-authored conventions) and `spec
 
 **Read pattern.**
 - **Project specs** — read every SPEC listed in `specs/project/INDEX.md` before any task. These are conventions that apply always.
-- **Feature specs** — scan `specs/features/INDEX.md`, then read only the SPECs the task touches. Record them in PRD's `[**Related Specs**]` so VERIFY can check adherence.
+- **Feature specs** — scan `specs/features/INDEX.md`, then read only the SPECs the task touches. Record them in PRD's `[**Related Specs**]` so VERIFY can check adherence. The DESIGN/PLAN/REVIEW context calls above expose both indices in their JSON output.
 
-**Archive promotion (deep tier).** Extract the final PLAN's Spec section to `specs/features/<name>/SPEC.md` and append a row to `specs/features/INDEX.md` (managed block). If the task modified an existing feature SPEC, append a `[**CHANGELOG**]` entry to that SPEC and update the INDEX row's promotion date.
+**Archive promotion (deep tier).** `ark agent task archive` extracts the final PLAN's Spec section to `specs/features/<name>/SPEC.md` and appends a row to the features INDEX. If the task modifies an existing feature SPEC, the agent appends a `[**CHANGELOG**]` entry to that SPEC.
 
 **Divergence.** If a PLAN contradicts an existing feature SPEC, REVIEW flags it. Either the PLAN conforms or explicitly updates the SPEC.
 
 ---
 
-## 6. Archive
+## 6. Mechanics
 
-- Active: `.ark/tasks/<slug>/`
-- Archived: `.ark/tasks/archive/YYYY-MM/<slug>/` (month = archive date).
-- Deep tier: extract final PLAN's Spec section → `specs/features/<name>/SPEC.md`; append CHANGELOG when modifying an existing SPEC.
-- **Archival is user-invoked via `/ark:archive`**, not automatic. `/ark:design` and `/ark:quick` stop at VERIFY. The user decides when (and whether) to close out.
-- Reopen: move the archived dir back to `.ark/tasks/<slug>/` and edit `task.toml` to reset `phase = "design"` and clear `archived_at`. Refuse if same-slug active exists.
+Two CLI surfaces drive the workflow; both are referenced inline above.
 
----
+- **`ark context`** — top-level, semver-stable, **read-only**. Reports git + active tasks + specs + recent archive + current task. Auto-invoked at session start via the `SessionStart` hook in `.claude/settings.json`. Use `--scope session` (default) for orientation; `--scope phase --for <phase>` for phase-targeted slices. `--format json` for machine consumers; default text for humans. `ark context --help` for the full surface.
+- **`ark agent`** — hidden, **not semver-stable**, structural mutation only. Each subcommand prints a one-line summary; illegal transitions error out (e.g. `IllegalPhaseTransition`, `WrongTier`) — never bypass them with hand-edits. Every `--slug`-taking command defaults to `.ark/tasks/.current` when omitted. `ark agent --help` lists the children.
 
-## 7. Mechanics: `ark agent`
-
-A few structural operations are handled by the `ark agent` CLI namespace — a hidden set of subcommands callable by the agent. **Not covered by semver**; the contract is between the binary and the shipped slash commands/workflow, not end users.
-
-| Workflow step                                            | Command                                                                      |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Create task dir + PRD + task.toml                        | `ark agent task new --slug <s> --title "<t>" --tier {quick\|standard\|deep}` |
-| Advance DESIGN → PLAN                                    | `ark agent task plan`                                                        |
-| Advance PLAN → REVIEW (deep)                             | `ark agent task review`                                                      |
-| Advance → EXECUTE                                        | `ark agent task execute`                                                     |
-| Advance → VERIFY                                         | `ark agent task verify`                                                      |
-| Archive (moves dir; deep tier extracts + registers SPEC) | `ark agent task archive`                                                     |
-| Change tier mid-flight                                   | `ark agent task promote --to <tier>`                                         |
-| Extract SPEC alone (deep)                                | `ark agent spec extract`                                                     |
-| Register feature in INDEX                                | `ark agent spec register --feature <f> --scope "<s>" --from-task <t>`        |
-
-Every `--slug`-taking command defaults to `.ark/tasks/.current` when `--slug` is omitted. Every command prints a one-line summary to stdout. Illegal transitions error out with a named variant (e.g. `IllegalPhaseTransition`, `WrongTier`); the agent must not bypass them with hand-edits.
-
-**Operations without a CLI.** Deep-tier iteration (copy `NN_PLAN.md`/`NN_REVIEW.md` to the next number, bump `iteration` in `task.toml`, set `phase = "plan"`) and task reopening (see §6) are handled by direct file edits. The state machine is small enough that hand-edits stay manageable; `ark agent task plan/review/...` will reject illegal transitions if the agent does get the phase wrong.
+**Operations without a CLI.** Deep-tier iteration (copy `NN_PLAN.md`/`NN_REVIEW.md` to the next number, bump `iteration`, reset `phase = "plan"`) and task reopening are handled by direct file edits — the state machine is small enough that hand-edits stay manageable, and `ark agent task plan/review/...` rejects illegal transitions if the agent gets the phase wrong.

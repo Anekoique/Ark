@@ -32,7 +32,13 @@ pub const TASKS_ARCHIVE_DIR: &str = ".ark/tasks/archive";
 pub const TASKS_CURRENT_FILE: &str = ".ark/tasks/.current";
 pub const SPECS_FEATURES_DIR: &str = ".ark/specs/features";
 pub const SPECS_FEATURES_INDEX_FILE: &str = ".ark/specs/features/INDEX.md";
+pub const SPECS_PROJECT_DIR: &str = ".ark/specs/project";
+pub const SPECS_PROJECT_INDEX_FILE: &str = ".ark/specs/project/INDEX.md";
 pub const ARK_TEMPLATES_DIR: &str = ".ark/templates";
+
+/// `.claude/settings.json` — host-side Claude Code settings file (managed
+/// only as far as the Ark `SessionStart` hook entry; user-owned otherwise).
+pub const CLAUDE_SETTINGS_FILE: &str = ".claude/settings.json";
 
 /// Marker used for the feature-spec roster in `specs/features/INDEX.md`.
 pub const FEATURES_MARKER: &str = "ARK:FEATURES";
@@ -140,9 +146,44 @@ impl Layout {
         self.root.join(SPECS_FEATURES_INDEX_FILE)
     }
 
+    /// `<root>/.ark/specs/project/`
+    pub fn specs_project_dir(&self) -> PathBuf {
+        self.root.join(SPECS_PROJECT_DIR)
+    }
+
+    /// `<root>/.ark/specs/project/INDEX.md`
+    pub fn specs_project_index(&self) -> PathBuf {
+        self.root.join(SPECS_PROJECT_INDEX_FILE)
+    }
+
+    /// `<root>/.claude/settings.json`
+    pub fn claude_settings(&self) -> PathBuf {
+        self.root.join(CLAUDE_SETTINGS_FILE)
+    }
+
     /// `<root>/.ark/templates/`
     pub fn ark_templates_dir(&self) -> PathBuf {
         self.root.join(ARK_TEMPLATES_DIR)
+    }
+
+    /// Walk `cwd`'s ancestor chain (including `cwd` itself) until a directory
+    /// containing `.ark/` is found. Returns a [`Layout`] rooted at that
+    /// directory, or [`Error::NotLoaded`] if no ancestor is Ark-loaded.
+    ///
+    /// Used by commands that operate on an *existing* Ark project (`context`,
+    /// `unload`, `remove`, `upgrade`, `load` without `--force`). Commands
+    /// that scaffold a project (`init`, `load --force`) must continue to use
+    /// the explicit-target path.
+    pub fn discover_from(cwd: impl AsRef<Path>) -> Result<Self> {
+        let cwd = cwd.as_ref();
+        for ancestor in cwd.ancestors() {
+            if ancestor.join(ARK_DIR).is_dir() {
+                return Ok(Self::new(ancestor.to_path_buf()));
+            }
+        }
+        Err(Error::NotLoaded {
+            path: cwd.to_path_buf(),
+        })
     }
 
     /// Directories whose full contents are captured by `unload` and restored by
@@ -182,6 +223,7 @@ fn classify_unsafe(path: &Path) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::PathExt;
 
     fn layout() -> Layout {
         Layout::new("/project")
@@ -219,5 +261,34 @@ mod tests {
     fn resolve_safe_rejects_empty() {
         let err = layout().resolve_safe("").unwrap_err();
         assert!(matches!(err, Error::UnsafeSnapshotPath { .. }));
+    }
+
+    #[test]
+    fn discover_from_finds_project_at_cwd() {
+        let tmp = tempfile::tempdir().unwrap();
+        tmp.path().join(".ark").join("tasks").ensure_dir().unwrap();
+        let layout = Layout::discover_from(tmp.path()).unwrap();
+        assert_eq!(layout.root(), tmp.path());
+    }
+
+    #[test]
+    fn discover_from_walks_up_to_arked_ancestor() {
+        let tmp = tempfile::tempdir().unwrap();
+        tmp.path().join(".ark").join("tasks").ensure_dir().unwrap();
+        let nested = tmp.path().join("a").join("b").join("c");
+        nested.ensure_dir().unwrap();
+
+        let layout = Layout::discover_from(&nested).unwrap();
+        assert_eq!(layout.root(), tmp.path());
+    }
+
+    #[test]
+    fn discover_from_errors_when_no_ancestor_is_arked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nested = tmp.path().join("not").join("arked");
+        nested.ensure_dir().unwrap();
+
+        let err = Layout::discover_from(&nested).unwrap_err();
+        assert!(matches!(err, Error::NotLoaded { .. }));
     }
 }

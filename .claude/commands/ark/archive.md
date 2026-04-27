@@ -26,13 +26,13 @@ Parse `$ARGUMENTS`:
 
 ### 2. Pre-archive sanity check
 
-```bash
-cat .ark/tasks/<slug>/task.toml
-```
+Read `.ark/tasks/<slug>/task.toml` and confirm:
+- `tier = "quick"` ⇒ `phase = "execute"`
+- `tier = "standard" | "deep"` ⇒ `phase = "verify"`
 
-Confirm `phase` matches one of the preconditions above. If not, halt and report the mismatch to the user.
+If the phase does not match its tier's expected pre-archive state, halt and report — `ark agent task archive` would refuse with `IllegalPhaseTransition` anyway.
 
-For standard/deep tiers, skim `VERIFY.md`'s Verdict line. If it's *Rejected*, halt.
+For standard/deep tiers, read `.ark/tasks/<slug>/VERIFY.md` and check the Verdict line. If it's *Rejected*, halt.
 
 ### 3. Run the archive
 

@@ -27,6 +27,11 @@ pub struct Snapshot {
     pub created_at: DateTime<Utc>,
     pub files: Vec<SnapshotFile>,
     pub managed_blocks: Vec<SnapshotBlock>,
+    /// Per-entry hook bodies captured by `unload`, restored by `load` via
+    /// `update_settings_hook`. Older `.ark.db` files lack this key and
+    /// deserialize to `vec![]`. Per ark-context C-27.
+    #[serde(default)]
+    pub hook_bodies: Vec<SnapshotHookBody>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +57,23 @@ pub struct SnapshotBlock {
     pub body: String,
 }
 
+/// One entry inside a JSON-array hook region (e.g. `.claude/settings.json`'s
+/// `hooks.SessionStart` array), captured by identity key.
+///
+/// `load`'s restore path uses `path` and `entry` to splice the entry back via
+/// `update_settings_hook`. `json_pointer`, `identity_key`, and `identity_value`
+/// are reserved for snapshot portability — external readers / future restore
+/// strategies can use them to relocate the entry without re-parsing the entry
+/// itself.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotHookBody {
+    pub path: PathBuf,
+    pub json_pointer: String,
+    pub identity_key: String,
+    pub identity_value: String,
+    pub entry: serde_json::Value,
+}
+
 impl Snapshot {
     pub fn new() -> Self {
         Self {
@@ -60,7 +82,12 @@ impl Snapshot {
             created_at: Utc::now(),
             files: Vec::new(),
             managed_blocks: Vec::new(),
+            hook_bodies: Vec::new(),
         }
+    }
+
+    pub fn add_hook_body(&mut self, body: SnapshotHookBody) {
+        self.hook_bodies.push(body);
     }
 
     pub fn add_file(&mut self, relative: impl Into<PathBuf>, contents: &[u8]) {
@@ -146,5 +173,44 @@ mod tests {
         Snapshot::new().write(tmp.path()).unwrap();
         assert!(Snapshot::remove(tmp.path()).unwrap());
         assert!(!Snapshot::remove(tmp.path()).unwrap());
+    }
+
+    #[test]
+    fn read_accepts_older_snapshot_without_hook_bodies_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let legacy = serde_json::json!({
+            "version": "1",
+            "ark_version": "0.1.2",
+            "created_at": "2026-04-24T00:00:00Z",
+            "files": [],
+            "managed_blocks": []
+        });
+        let path = tmp.path().join(SNAPSHOT_FILENAME);
+        path.write_bytes(serde_json::to_string(&legacy).unwrap().as_bytes())
+            .unwrap();
+
+        let snap = Snapshot::read(tmp.path()).unwrap().expect("file present");
+        assert!(snap.hook_bodies.is_empty());
+    }
+
+    #[test]
+    fn add_hook_body_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut snap = Snapshot::new();
+        snap.add_hook_body(SnapshotHookBody {
+            path: PathBuf::from(".claude/settings.json"),
+            json_pointer: "/hooks/SessionStart".to_string(),
+            identity_key: "command".to_string(),
+            identity_value: "ark context --scope session --format json".to_string(),
+            entry: serde_json::json!({
+                "type": "command",
+                "command": "ark context --scope session --format json",
+                "timeout": 5000,
+            }),
+        });
+        snap.write(tmp.path()).unwrap();
+        let restored = Snapshot::read(tmp.path()).unwrap().unwrap();
+        assert_eq!(restored.hook_bodies.len(), 1);
+        assert_eq!(restored.hook_bodies[0].identity_key, "command");
     }
 }

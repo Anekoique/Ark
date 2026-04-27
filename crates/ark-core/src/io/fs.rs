@@ -148,6 +148,228 @@ pub fn remove_managed_block(path: impl AsRef<Path>, marker: &str) -> Result<bool
     Ok(true)
 }
 
+// === settings.json — Ark hook entry helpers (ark-context C-17) ===
+
+/// Canonical command string identifying the Ark-owned `SessionStart` hook
+/// entry within `.claude/settings.json`. Used as the identity key for
+/// upserts via [`update_settings_hook`] and removals via
+/// [`remove_settings_hook`]. Per ark-context C-11.
+pub const ARK_CONTEXT_HOOK_COMMAND: &str = "ark context --scope session --format json";
+
+/// Build the canonical Ark `SessionStart` hook entry. Single source of truth
+/// for the entry's contents — `init` / `load` / `upgrade` all call into
+/// [`update_settings_hook`] with this value.
+///
+/// Schema follows Claude Code's hooks contract: each `SessionStart` array
+/// entry is a `{matcher, hooks: [...]}` wrapper. The empty matcher matches
+/// every session-start event. The inner `hooks[0].command` is the identity
+/// key Ark uses to detect (and replace) its own entry across runs.
+pub fn ark_session_start_hook_entry() -> serde_json::Value {
+    serde_json::json!({
+        "matcher": "",
+        "hooks": [
+            {
+                "type": "command",
+                "command": ARK_CONTEXT_HOOK_COMMAND,
+                "timeout": 5000,
+            }
+        ],
+    })
+}
+
+/// Insert or replace the Ark-owned `SessionStart` hook entry in
+/// `.claude/settings.json`. Idempotent: callable on every `init` / `load` /
+/// `upgrade` without surprise. Preserves unrelated keys and sibling
+/// `SessionStart` entries.
+///
+/// Identity is derived from the inner `entry.hooks[*].command` matching
+/// `ARK_CONTEXT_HOOK_COMMAND` (Claude Code's hooks schema wraps each entry
+/// in `{matcher, hooks: [...]}`).
+///
+/// Per ark-context C-17: the file is *not* hash-tracked. This helper is the
+/// single source of truth for the Ark entry's contents.
+///
+/// Returns `Ok(true)` if a write happened, `Ok(false)` if the on-disk JSON
+/// already encoded the canonical entry byte-identically (idempotence skip).
+pub fn update_settings_hook(path: impl AsRef<Path>, entry: serde_json::Value) -> Result<bool> {
+    let path = path.as_ref();
+    let mut root = read_settings_or_empty(path)?;
+    upsert_session_start_entry(&mut root, entry)?;
+    let serialized = render_settings_json(&root);
+    let on_disk = path.read_optional()?;
+    if on_disk.as_deref() == Some(serialized.as_bytes()) {
+        return Ok(false);
+    }
+    path.write_bytes(serialized.as_bytes())?;
+    Ok(true)
+}
+
+/// Remove the Ark-owned `SessionStart` entry by identity value. Returns
+/// `Ok(true)` if an entry was removed, `Ok(false)` if absent. The
+/// `SessionStart` array is left in place even if it becomes empty so users
+/// can re-add siblings without re-init.
+///
+/// `identity_value` is matched against `entry.hooks[*].command`.
+pub fn remove_settings_hook(path: impl AsRef<Path>, identity_value: &str) -> Result<bool> {
+    let path = path.as_ref();
+    let Some(mut root) = read_settings_json(path)? else {
+        return Ok(false);
+    };
+    let Some(array) = navigate_session_start(&mut root) else {
+        return Ok(false);
+    };
+    let before = array.len();
+    array.retain(|e| !entry_carries_command(e, identity_value));
+    if array.len() == before {
+        return Ok(false);
+    }
+    path.write_bytes(render_settings_json(&root).as_bytes())?;
+    Ok(true)
+}
+
+/// Read the Ark-owned hook entry as a snapshot-ready JSON value, if present.
+/// Returns `None` if the file is missing or contains no Ark entry.
+///
+/// `identity_value` is matched against `entry.hooks[*].command`.
+pub fn read_settings_hook(
+    path: impl AsRef<Path>,
+    identity_value: &str,
+) -> Result<Option<serde_json::Value>> {
+    let path = path.as_ref();
+    let Some(mut root) = read_settings_json(path)? else {
+        return Ok(None);
+    };
+    let Some(array) = navigate_session_start(&mut root) else {
+        return Ok(None);
+    };
+    Ok(array
+        .iter()
+        .find(|e| entry_carries_command(e, identity_value))
+        .cloned())
+}
+
+/// `true` if `entry` is a Claude Code hook wrapper whose inner `hooks[*]`
+/// array contains a step with `command == identity_value`. Tolerates the
+/// older flat shape (`entry["command"]`) for forward-compat with snapshots
+/// captured before the wrapper was introduced.
+fn entry_carries_command(entry: &serde_json::Value, identity_value: &str) -> bool {
+    let Some(obj) = entry.as_object() else {
+        return false;
+    };
+    if let Some(inner) = obj.get("hooks").and_then(|v| v.as_array()) {
+        return inner.iter().any(|step| {
+            step.as_object()
+                .and_then(|m| m.get("command"))
+                .and_then(|v| v.as_str())
+                == Some(identity_value)
+        });
+    }
+    obj.get("command").and_then(|v| v.as_str()) == Some(identity_value)
+}
+
+fn read_settings_or_empty(path: &Path) -> Result<serde_json::Value> {
+    Ok(read_settings_json(path)?.unwrap_or_else(|| serde_json::json!({})))
+}
+
+/// Parse `.claude/settings.json` if it exists. Returns `None` for a missing
+/// or empty file, `Some(value)` for a successful parse, and `Err` for malformed
+/// JSON.
+fn read_settings_json(path: &Path) -> Result<Option<serde_json::Value>> {
+    let Some(text) = path.read_text_optional()? else {
+        return Ok(None);
+    };
+    if text.trim().is_empty() {
+        return Ok(None);
+    }
+    serde_json::from_str(&text)
+        .map(Some)
+        .map_err(|e| Error::io(path, std::io::Error::other(e)))
+}
+
+fn upsert_session_start_entry(
+    root: &mut serde_json::Value,
+    entry: serde_json::Value,
+) -> Result<()> {
+    let identity = identity_command(&entry).ok_or_else(|| {
+        Error::io(
+            std::path::PathBuf::from("<settings.json>"),
+            std::io::Error::other(
+                "hook entry missing inner `hooks[*].command` (or top-level `command`)",
+            ),
+        )
+    })?;
+
+    // Ensure root is an object.
+    if !root.is_object() {
+        *root = serde_json::json!({});
+    }
+    let root_obj = root.as_object_mut().expect("root is object");
+
+    // Ensure root.hooks is an object.
+    let hooks = root_obj
+        .entry("hooks".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if !hooks.is_object() {
+        *hooks = serde_json::json!({});
+    }
+    let hooks_obj = hooks.as_object_mut().expect("hooks is object");
+
+    // Ensure hooks.SessionStart is an array.
+    let session = hooks_obj
+        .entry("SessionStart".to_string())
+        .or_insert_with(|| serde_json::json!([]));
+    if !session.is_array() {
+        *session = serde_json::json!([]);
+    }
+    let array = session.as_array_mut().expect("SessionStart is array");
+
+    // Replace existing entry with the same identity, else append.
+    if let Some(existing) = array
+        .iter_mut()
+        .find(|e| entry_carries_command(e, &identity))
+    {
+        *existing = entry;
+    } else {
+        array.push(entry);
+    }
+    Ok(())
+}
+
+/// Extract the inner-step command string from a Claude Code hook wrapper.
+/// Falls back to the top-level `command` field for the older flat shape.
+fn identity_command(entry: &serde_json::Value) -> Option<String> {
+    let obj = entry.as_object()?;
+    if let Some(inner) = obj.get("hooks").and_then(|v| v.as_array())
+        && let Some(cmd) = inner.iter().find_map(|step| {
+            step.as_object()
+                .and_then(|m| m.get("command"))
+                .and_then(|v| v.as_str())
+        })
+    {
+        return Some(cmd.to_string());
+    }
+    obj.get("command")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+fn navigate_session_start(root: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
+    root.as_object_mut()?
+        .get_mut("hooks")?
+        .as_object_mut()?
+        .get_mut("SessionStart")?
+        .as_array_mut()
+}
+
+/// Pretty-print with a trailing newline. `serde_json` defaults to BTreeMap-
+/// ordered objects, which gives stable byte-identical output across runs
+/// (per ark-context C-29).
+fn render_settings_json(root: &serde_json::Value) -> String {
+    let mut s = serde_json::to_string_pretty(root).expect("settings json serializes");
+    s.push('\n');
+    s
+}
+
 /// Yield every file under `root` recursively, in an unspecified order.
 ///
 /// Directories are skipped; only regular files are reported. Returns an empty
@@ -361,5 +583,179 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let files = walk_files(tmp.path().join("nope")).unwrap();
         assert!(files.is_empty());
+    }
+
+    /// Canonical Claude-Code-shaped Ark entry for testing. Mirrors what
+    /// `commands::context::ark_session_start_hook_entry()` produces.
+    fn ark_entry() -> serde_json::Value {
+        serde_json::json!({
+            "matcher": "",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": ARK_CONTEXT_HOOK_COMMAND,
+                    "timeout": 5000,
+                }
+            ],
+        })
+    }
+
+    #[test]
+    fn update_settings_hook_creates_file_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        assert!(update_settings_hook(&path, ark_entry()).unwrap());
+        let s = path.read_text().unwrap();
+        assert!(s.contains(ARK_CONTEXT_HOOK_COMMAND));
+        assert!(s.contains("SessionStart"));
+    }
+
+    #[test]
+    fn update_settings_hook_is_idempotent_on_repeat() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        update_settings_hook(&path, ark_entry()).unwrap();
+        let first = path.read_bytes().unwrap();
+        let wrote_again = update_settings_hook(&path, ark_entry()).unwrap();
+        assert!(!wrote_again, "second call should be a no-op");
+        let second = path.read_bytes().unwrap();
+        assert_eq!(first, second, "byte-identical after second update");
+    }
+
+    #[test]
+    fn update_settings_hook_preserves_unrelated_pretooluse_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        let user_settings = serde_json::json!({
+            "hooks": {
+                "PreToolUse": [{"type": "command", "command": "user-hook"}],
+            }
+        });
+        path.write_bytes(
+            serde_json::to_string_pretty(&user_settings)
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
+
+        update_settings_hook(&path, ark_entry()).unwrap();
+
+        let after: serde_json::Value = serde_json::from_str(&path.read_text().unwrap()).unwrap();
+        assert_eq!(
+            after["hooks"]["PreToolUse"][0]["command"],
+            serde_json::Value::String("user-hook".to_string()),
+            "user PreToolUse must survive"
+        );
+        assert_eq!(
+            after["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            serde_json::Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()),
+        );
+    }
+
+    #[test]
+    fn update_settings_hook_overwrites_user_modified_ark_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        // User stuck timeout: 99999 onto the Ark entry (wrapped shape).
+        let tampered = serde_json::json!({
+            "hooks": {
+                "SessionStart": [{
+                    "matcher": "",
+                    "hooks": [{
+                        "type": "command",
+                        "command": ARK_CONTEXT_HOOK_COMMAND,
+                        "timeout": 99999,
+                    }]
+                }]
+            }
+        });
+        path.write_bytes(serde_json::to_string_pretty(&tampered).unwrap().as_bytes())
+            .unwrap();
+
+        update_settings_hook(&path, ark_entry()).unwrap();
+
+        let after: serde_json::Value = serde_json::from_str(&path.read_text().unwrap()).unwrap();
+        // Whole entry replaced — timeout should be 5000, not 99999.
+        assert_eq!(
+            after["hooks"]["SessionStart"][0]["hooks"][0]["timeout"],
+            serde_json::Value::from(5000)
+        );
+    }
+
+    #[test]
+    fn remove_settings_hook_removes_only_ark_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        let mixed = serde_json::json!({
+            "hooks": {
+                "SessionStart": [
+                    {
+                        "matcher": "",
+                        "hooks": [{"type": "command", "command": ARK_CONTEXT_HOOK_COMMAND}],
+                    },
+                    {
+                        "matcher": "",
+                        "hooks": [{"type": "command", "command": "user-extra"}],
+                    },
+                ]
+            }
+        });
+        path.write_bytes(serde_json::to_string_pretty(&mixed).unwrap().as_bytes())
+            .unwrap();
+
+        let removed = remove_settings_hook(&path, ARK_CONTEXT_HOOK_COMMAND).unwrap();
+        assert!(removed);
+
+        let after: serde_json::Value = serde_json::from_str(&path.read_text().unwrap()).unwrap();
+        let arr = after["hooks"]["SessionStart"].as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["hooks"][0]["command"], "user-extra");
+    }
+
+    #[test]
+    fn remove_settings_hook_returns_false_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        assert!(!remove_settings_hook(&path, ARK_CONTEXT_HOOK_COMMAND).unwrap());
+    }
+
+    #[test]
+    fn read_settings_hook_returns_entry_when_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        update_settings_hook(&path, ark_entry()).unwrap();
+        let entry = read_settings_hook(&path, ARK_CONTEXT_HOOK_COMMAND)
+            .unwrap()
+            .unwrap();
+        // Returned value is the matcher-wrapper; the command lives one level
+        // deeper at entry.hooks[0].command (Claude Code's hook schema).
+        assert_eq!(entry["hooks"][0]["command"], ARK_CONTEXT_HOOK_COMMAND);
+    }
+
+    /// Forward-compat: the identity matcher tolerates a flat-shape entry
+    /// (no `matcher`/`hooks` wrapper) so older snapshots whose `hook_bodies`
+    /// captured the pre-wrapper form can still be detected and replaced.
+    #[test]
+    fn entry_carries_command_tolerates_legacy_flat_shape() {
+        let legacy = serde_json::json!({
+            "type": "command",
+            "command": ARK_CONTEXT_HOOK_COMMAND,
+        });
+        assert!(entry_carries_command(&legacy, ARK_CONTEXT_HOOK_COMMAND));
+        assert_eq!(
+            identity_command(&legacy).as_deref(),
+            Some(ARK_CONTEXT_HOOK_COMMAND),
+        );
+    }
+
+    #[test]
+    fn read_settings_hook_returns_none_when_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        assert!(
+            read_settings_hook(&path, ARK_CONTEXT_HOOK_COMMAND)
+                .unwrap()
+                .is_none()
+        );
     }
 }

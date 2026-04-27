@@ -9,4 +9,4 @@ pub mod manifest;
 pub mod snapshot;
 
 pub use manifest::Manifest;
-pub use snapshot::{SNAPSHOT_FILENAME, Snapshot, SnapshotFile};
+pub use snapshot::{SNAPSHOT_FILENAME, Snapshot, SnapshotBlock, SnapshotFile, SnapshotHookBody};
