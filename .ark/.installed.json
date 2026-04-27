@@ -1,6 +1,6 @@
 {
   "version": "0.1.2",
-  "installed_at": "2026-04-27T09:04:28.241397Z",
+  "installed_at": "2026-04-27T08:10:09.136881Z",
   "files": [
     ".ark/workflow.md",
     ".ark/templates/PLAN.md",
@@ -31,8 +31,8 @@
     ".ark/templates/SPEC.md": "fa8c1e8511cc73a31ea69d42576d9831f7384e969571535d00e73bfb382ee547",
     ".ark/templates/VERIFY.md": "fc9adabe1afaac579e60d2d8568426a7b701266c3c9c6b0eae6b528a94b7dd19",
     ".ark/workflow.md": "9f29d9af205b59feff47fb8b0130980fbd917904bd154b664a2fc7cf46acd00f",
-    ".claude/commands/ark/archive.md": "04089f57144e17bc75a6266ea8baaa140c5107afa87275fa55bd4967342605f2",
+    ".claude/commands/ark/archive.md": "3bd986332dfe9701bd3fc67598a18007c0e60068071882ff0e03bb12b01b10b1",
     ".claude/commands/ark/design.md": "13e96a26cd593c2963b9bc4b6079149ec609b30a013b86583bc54b1b3746c351",
-    ".claude/commands/ark/quick.md": "420e2d2d8c1e8a8e00f5ffce0e2050d107dfa03e78e7f6780eebef7cb05960ef"
+    ".claude/commands/ark/quick.md": "3d918fe893bd7fb5ed98059174d6161ff123c14c9051e0d0c0e4766fcd49586b"
   }
 }
