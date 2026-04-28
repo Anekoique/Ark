@@ -49,6 +49,22 @@ pub struct TaskToml {
     pub updated_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub archived_at: Option<DateTime<Utc>>,
+
+    /// Worktree branch ref, set by `task new --worktree`. Stored verbatim
+    /// (worktree-support C-12). Persists across the task lifecycle.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub branch: Option<String>,
+
+    /// Project-relative worktree path (worktree-support C-21). Resolved
+    /// against `Layout::root()` at read time. Forward-slash separators on
+    /// disk; `PathBuf` deserializes both styles transparently.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub worktree_path: Option<std::path::PathBuf>,
+
+    /// Branch ref or SHA captured at worktree-create time. May be a SHA
+    /// when invoked from detached HEAD (worktree-support F-17).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub base_branch: Option<String>,
 }
 
 impl TaskToml {
@@ -184,6 +200,9 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,
+            branch: None,
+            worktree_path: None,
+            base_branch: None,
         }
     }
 
@@ -325,6 +344,47 @@ mod tests {
                 "expected reject for {bad:?}"
             );
         }
+    }
+
+    /// worktree-support C-3: pre-existing `task.toml` without the new
+    /// `branch` / `worktree_path` / `base_branch` fields must still load.
+    #[test]
+    fn task_toml_loads_without_worktree_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let legacy = r#"
+id = "legacy"
+title = "legacy task"
+tier = "deep"
+phase = "design"
+iteration = 0
+created_at = "2026-01-01T00:00:00Z"
+updated_at = "2026-01-01T00:00:00Z"
+"#;
+        tmp.path()
+            .join("task.toml")
+            .write_bytes(legacy.as_bytes())
+            .unwrap();
+        let loaded = TaskToml::load(tmp.path()).unwrap();
+        assert!(loaded.branch.is_none());
+        assert!(loaded.worktree_path.is_none());
+        assert!(loaded.base_branch.is_none());
+    }
+
+    #[test]
+    fn task_toml_round_trips_with_worktree_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut t = sample();
+        t.branch = Some("feat/foo".into());
+        t.worktree_path = Some(".ark/worktrees/feat/foo".into());
+        t.base_branch = Some("main".into());
+        t.save(tmp.path()).unwrap();
+        let loaded = TaskToml::load(tmp.path()).unwrap();
+        assert_eq!(loaded.branch.as_deref(), Some("feat/foo"));
+        assert_eq!(
+            loaded.worktree_path.as_deref(),
+            Some(std::path::Path::new(".ark/worktrees/feat/foo"))
+        );
+        assert_eq!(loaded.base_branch.as_deref(), Some("main"));
     }
 
     #[test]

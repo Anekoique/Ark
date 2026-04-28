@@ -951,6 +951,26 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "user edit");
     }
 
+    /// worktree-support V-IT-15 / C-9: `.ark/worktree.toml` is user-editable;
+    /// upgrade preserves the user's edits via the hash-mismatch path.
+    #[test]
+    fn upgrade_does_not_overwrite_worktree_toml() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
+        let target = tmp.path().join(".ark/worktree.toml");
+        assert!(target.exists(), "init should ship worktree.toml");
+        std::fs::write(&target, "branch_prefix = \"fix\"\ncopy = [\".env\"]\n").unwrap();
+        let mut prompter = PanicPrompter;
+        upgrade(
+            UpgradeOptions::new(tmp.path()).with_policy(ConflictPolicy::Skip),
+            &mut prompter,
+        )
+        .unwrap();
+        let after = std::fs::read_to_string(&target).unwrap();
+        assert!(after.contains("branch_prefix = \"fix\""));
+        assert!(after.contains(".env"));
+    }
+
     #[test]
     fn upgrade_create_new_writes_dot_new_sidecar() {
         let tmp = tempfile::tempdir().unwrap();

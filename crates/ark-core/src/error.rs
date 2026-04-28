@@ -93,6 +93,56 @@ pub enum Error {
         #[source]
         source: io::Error,
     },
+
+    // worktree-support feature errors --------------------------------------
+    #[error("worktree directory already exists at {path:?}")]
+    WorktreeDirExists { path: PathBuf },
+
+    #[error("no worktree found for slug `{slug}`")]
+    WorktreeNotFound { slug: String },
+
+    #[error("worktree at {path:?} has uncommitted changes; pass --force to override")]
+    WorktreeDirty { path: PathBuf },
+
+    #[error("branch `{branch}` is already checked out at {where_at:?}")]
+    BranchInUse { branch: String, where_at: PathBuf },
+
+    #[error("invalid branch name `{branch}`: {reason}")]
+    InvalidBranchName { branch: String, reason: String },
+
+    #[error("invalid branch type `{value}`; expected one of feat, fix, refactor, chore, ci, docs")]
+    InvalidBranchType { value: String },
+
+    #[error("worktree.toml corrupt at {path:?}: {source}")]
+    WorktreeConfigCorrupt {
+        path: PathBuf,
+        #[source]
+        source: toml::de::Error,
+    },
+
+    #[error("post_create hook `{command}` failed with exit code {exit_code}")]
+    PostCreateHookFailed { command: String, exit_code: i32 },
+
+    #[error("worktree.toml `copy` source missing: {path:?}")]
+    WorktreeCopySourceMissing { path: PathBuf },
+
+    #[error(
+        "task `{slug}` already exists on the parent at {path:?}; archive it or run without \
+         --worktree"
+    )]
+    TaskExistsOnParent { slug: String, path: PathBuf },
+
+    #[error(
+        "`task new --worktree` cannot be invoked from inside an existing worktree (root is \
+         {current_root:?})"
+    )]
+    NestedWorktreeForbidden { current_root: PathBuf },
+
+    #[error("invalid worktree.toml field `{field}`: {reason}")]
+    InvalidConfigField {
+        field: &'static str,
+        reason: &'static str,
+    },
 }
 
 impl Error {
