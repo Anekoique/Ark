@@ -1,9 +1,8 @@
 ---
-name: ark-quick
-description: Start a quick-tier Ark task. For trivial, reversible changes. Produces PRD.md only. Use when the user asks for a small fix, typo, or one-line change that's reversible in a single commit.
+description: Start a quick-tier task. For trivial, reversible changes. Produces PRD.md only.
 ---
 
-# `ark-quick`
+# `/ark:quick $ARGUMENTS`
 
 Create a quick-tier task for a trivial, reversible change. No clarifying questions, no PLAN, and no separate VERIFY.md artifact.
 
@@ -13,7 +12,7 @@ Structural operations (task dir creation, phase transitions, archive moves) are 
 
 - `.ark/` is initialized.
 - The change is reversible in one commit and introduces no new abstractions.
-  If not, stop and suggest `ark-design` instead — it covers both standard and deep tiers (deep is selected via `--tier deep` when running `ark agent task new`).
+  If not, stop and suggest `/ark:design` (standard) or `/ark:design --deep` instead.
 
 ## Steps
 
@@ -69,11 +68,11 @@ The user commits. Do not run `git commit` — show the diff and let the user dec
 
 ### 8. Archive
 
-Once the user confirms the commit succeeded, tell the user: "Use `ark-archive` to close out the task." Do NOT archive automatically. See `ark-archive`.
+Once the user confirms the commit succeeded, tell the user: "Run `/ark:archive` to close out the task." Do NOT archive automatically. See `/ark:archive`.
 
 ## If the task grows mid-flight
 
-Stop. Tell the user: "This change is larger than quick-tier scope. Recommend promoting to standard (`ark-design`) — I'll preserve the PRD as historical context." Wait for user decision.
+Stop. Tell the user: "This change is larger than quick-tier scope. Recommend promoting to standard (`/ark:design`) — I'll preserve the PRD as historical context." Wait for user decision.
 
 To promote mid-flight:
 
@@ -81,4 +80,4 @@ To promote mid-flight:
 ark agent task promote --to standard
 ```
 
-Then continue from Phase 2 of `ark-design` (write PLAN, etc.). Existing artifacts are preserved — the agent decides what to reshape.
+Then continue from Phase 2 of `/ark:design` (write PLAN, etc.). Existing artifacts are preserved — the agent decides what to reshape.

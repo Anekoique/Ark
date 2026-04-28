@@ -1,0 +1,9 @@
+id = "opencode-support"
+title = "add OpenCode platform support"
+tier = "deep"
+phase = "archived"
+iteration = 2
+max_iterations = 3
+created_at = "2026-04-28T02:52:23.625825Z"
+updated_at = "2026-04-28T05:42:08.039054Z"
+archived_at = "2026-04-28T05:42:08.039054Z"

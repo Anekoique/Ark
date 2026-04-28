@@ -387,4 +387,60 @@ mod tests {
             "canonical re-apply must normalize stale timeout to current value",
         );
     }
+
+    /// opencode-support V-IT-3: full three-platform round-trip. `init` →
+    /// `unload` → `load` produces all three trees, one shared AGENTS.md
+    /// block, and a byte-identical plugin file (modulo timestamps in the
+    /// snapshot itself).
+    #[test]
+    fn opencode_three_platform_roundtrip() {
+        use crate::templates::OPENCODE_ARK_CONTEXT_TS;
+        let tmp = tempfile::tempdir().unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+
+        // Sanity: all three trees + shared AGENTS.md block exist post-init.
+        for path in [
+            ".claude/commands/ark/quick.md",
+            ".codex/skills/ark-quick/SKILL.md",
+            ".opencode/commands/ark/quick.md",
+            ".opencode/plugins/ark-context.ts",
+        ] {
+            assert!(tmp.path().join(path).is_file(), "missing post-init: {path}");
+        }
+        let agents_before = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
+        let starts: Vec<_> = agents_before.match_indices("<!-- ARK:START -->").collect();
+        assert_eq!(starts.len(), 1, "AGENTS.md must contain exactly one block");
+
+        let plugin_before =
+            std::fs::read_to_string(tmp.path().join(".opencode/plugins/ark-context.ts")).unwrap();
+        assert_eq!(plugin_before, OPENCODE_ARK_CONTEXT_TS);
+
+        unload(UnloadOptions::new(tmp.path())).unwrap();
+        load(LoadOptions::new(tmp.path())).unwrap();
+
+        // All three trees restored.
+        for path in [
+            ".claude/commands/ark/quick.md",
+            ".codex/skills/ark-quick/SKILL.md",
+            ".opencode/commands/ark/quick.md",
+            ".opencode/plugins/ark-context.ts",
+        ] {
+            assert!(tmp.path().join(path).is_file(), "missing post-load: {path}");
+        }
+
+        // AGENTS.md block reapplied exactly once (no double-write from
+        // Codex+OpenCode both targeting it).
+        let agents_after = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
+        let starts_after: Vec<_> = agents_after.match_indices("<!-- ARK:START -->").collect();
+        assert_eq!(
+            starts_after.len(),
+            1,
+            "AGENTS.md must still contain one block"
+        );
+
+        // Plugin file byte-identical (re-applied via extra_files canonical write).
+        let plugin_after =
+            std::fs::read_to_string(tmp.path().join(".opencode/plugins/ark-context.ts")).unwrap();
+        assert_eq!(plugin_after, OPENCODE_ARK_CONTEXT_TS);
+    }
 }

@@ -34,4 +34,4 @@ pub use commands::{
 pub use error::{Error, Result};
 pub use io::{PathExt, WriteMode, hash_bytes};
 pub use layout::Layout;
-pub use platforms::{CLAUDE_PLATFORM, CODEX_PLATFORM, PLATFORMS, Platform};
+pub use platforms::{CLAUDE_PLATFORM, CODEX_PLATFORM, OPENCODE_PLATFORM, PLATFORMS, Platform};

@@ -26,10 +26,13 @@ use crate::{
     layout::{
         AGENTS_MD, CLAUDE_COMMANDS_ARK_DIR, CLAUDE_DIR, CLAUDE_MD, CLAUDE_SETTINGS_FILE,
         CODEX_CONFIG_FILE, CODEX_DIR, CODEX_HOOKS_FILE, CODEX_SKILLS_DIR, Layout,
-        MANAGED_BLOCK_BODY,
+        MANAGED_BLOCK_BODY, OPENCODE_COMMANDS_DIR, OPENCODE_DIR, OPENCODE_PLUGIN_FILE,
     },
     state::{Manifest, Snapshot, SnapshotHookBody},
-    templates::{CLAUDE_TEMPLATES, CODEX_CONFIG_TOML, CODEX_TEMPLATES},
+    templates::{
+        CLAUDE_TEMPLATES, CODEX_CONFIG_TOML, CODEX_TEMPLATES, OPENCODE_ARK_CONTEXT_TS,
+        OPENCODE_TEMPLATES,
+    },
 };
 
 /// A coding-agent integration target. Each entry is the single source of
@@ -213,7 +216,7 @@ impl SnapshotHookBody {
 
 /// All known platforms, in canonical iteration order. Used by `init` /
 /// `upgrade` / `unload` / `load` / `remove` to drive per-platform plumbing.
-pub const PLATFORMS: &[&Platform] = &[&CLAUDE_PLATFORM, &CODEX_PLATFORM];
+pub const PLATFORMS: &[&Platform] = &[&CLAUDE_PLATFORM, &CODEX_PLATFORM, &OPENCODE_PLATFORM];
 
 /// Iterate platforms whose templates appear in `manifest.files` — i.e. the
 /// project has opted into them. Preserves G-14 (Claude-only stays
@@ -265,19 +268,35 @@ pub const CODEX_PLATFORM: Platform = Platform {
     extra_files: &[(CODEX_CONFIG_FILE, CODEX_CONFIG_TOML)],
 };
 
+/// OpenCode integration. Templates extract under `.opencode/`; managed block
+/// shares `AGENTS.md` with Codex (manifest dedupes on `(file, marker)`).
+/// SessionStart-equivalent context injection rides a Bun-loaded TS plugin
+/// shipped via `extra_files`; OpenCode has no native JSON hook surface.
+pub const OPENCODE_PLATFORM: Platform = Platform {
+    id: "opencode",
+    templates: &OPENCODE_TEMPLATES,
+    dest_dir: OPENCODE_COMMANDS_DIR,
+    removal_root: OPENCODE_DIR,
+    cli_flag: "opencode",
+    managed_block_target: Some(AGENTS_MD),
+    hook_file: None,
+    extra_files: &[(OPENCODE_PLUGIN_FILE, OPENCODE_ARK_CONTEXT_TS)],
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// V-UT-1: registry has two entries in canonical order.
+    /// opencode-support V-UT-2: registry has three entries in canonical order.
     #[test]
-    fn platforms_registry_has_two_entries_in_canonical_order() {
-        assert_eq!(PLATFORMS.len(), 2);
+    fn platforms_registry_has_three_entries_in_canonical_order() {
+        assert_eq!(PLATFORMS.len(), 3);
         assert_eq!(PLATFORMS[0].id, "claude-code");
         assert_eq!(PLATFORMS[1].id, "codex");
+        assert_eq!(PLATFORMS[2].id, "opencode");
     }
 
-    /// V-UT-2: by_id resolves known platforms; unknown id returns None.
+    /// opencode-support V-UT-3: by_id resolves all three; unknown id returns None.
     #[test]
     fn platform_by_id_resolves_known_platforms() {
         assert_eq!(
@@ -285,10 +304,11 @@ mod tests {
             Some("claude-code")
         );
         assert_eq!(Platform::by_id("codex").map(|p| p.id), Some("codex"));
+        assert_eq!(Platform::by_id("opencode").map(|p| p.id), Some("opencode"));
         assert!(Platform::by_id("unknown").is_none());
     }
 
-    /// V-UT-3: by_cli_flag resolves.
+    /// opencode-support V-UT-3: by_cli_flag resolves all three.
     #[test]
     fn platform_by_cli_flag_resolves() {
         assert_eq!(
@@ -296,7 +316,131 @@ mod tests {
             Some("claude-code")
         );
         assert_eq!(Platform::by_cli_flag("codex").map(|p| p.id), Some("codex"));
+        assert_eq!(
+            Platform::by_cli_flag("opencode").map(|p| p.id),
+            Some("opencode")
+        );
         assert!(Platform::by_cli_flag("nope").is_none());
+    }
+
+    /// opencode-support V-UT-1: `OPENCODE_PLATFORM` shape. `dest_dir` is
+    /// the commands subtree (parallel to Codex's `.codex/skills/` so
+    /// `Platform::templates` extracts cleanly under it); `removal_root` is
+    /// the parent `.opencode/` so removal wipes both `commands/` and
+    /// `plugins/`.
+    #[test]
+    fn opencode_platform_shape() {
+        assert_eq!(OPENCODE_PLATFORM.id, "opencode");
+        assert_eq!(OPENCODE_PLATFORM.cli_flag, "opencode");
+        assert_eq!(OPENCODE_PLATFORM.dest_dir, OPENCODE_COMMANDS_DIR);
+        assert_eq!(OPENCODE_PLATFORM.removal_root, OPENCODE_DIR);
+        assert_eq!(OPENCODE_PLATFORM.managed_block_target, Some(AGENTS_MD));
+        assert!(OPENCODE_PLATFORM.hook_file.is_none());
+        assert_eq!(OPENCODE_PLATFORM.extra_files.len(), 1);
+        assert_eq!(OPENCODE_PLATFORM.extra_files[0].0, OPENCODE_PLUGIN_FILE);
+        assert_eq!(OPENCODE_PLATFORM.extra_files[0].1, OPENCODE_ARK_CONTEXT_TS);
+    }
+
+    /// opencode-support V-UT-4: `apply_managed_state` writes the block, the
+    /// plugin file (byte-for-byte equal to `OPENCODE_ARK_CONTEXT_TS`), and
+    /// records the block once.
+    #[test]
+    fn opencode_apply_managed_state_writes_block_and_plugin() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        let mut manifest = Manifest::new();
+
+        OPENCODE_PLATFORM
+            .apply_managed_state(&layout, &mut manifest)
+            .unwrap();
+
+        // Managed block in AGENTS.md, recorded in the manifest.
+        let agents = std::fs::read_to_string(layout.agents_md()).unwrap();
+        assert!(agents.contains("<!-- ARK:START -->"));
+        assert!(
+            manifest
+                .managed_blocks
+                .iter()
+                .any(|b| b.marker == "ARK" && b.file.ends_with(AGENTS_MD))
+        );
+
+        // Plugin file byte-identical to the embedded constant.
+        let plugin = std::fs::read_to_string(layout.opencode_plugin_file()).unwrap();
+        assert_eq!(plugin, OPENCODE_ARK_CONTEXT_TS);
+
+        // No hook file plumbing was triggered.
+        assert!(OPENCODE_PLATFORM.hook_file.is_none());
+    }
+
+    /// opencode-support V-UT-5: applying both Codex and OpenCode platforms
+    /// records the AGENTS.md block exactly once (`(file, marker)` dedupe).
+    #[test]
+    fn shared_agents_block_deduped_when_both_platforms_apply() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        let mut manifest = Manifest::new();
+
+        CODEX_PLATFORM
+            .apply_managed_state(&layout, &mut manifest)
+            .unwrap();
+        OPENCODE_PLATFORM
+            .apply_managed_state(&layout, &mut manifest)
+            .unwrap();
+
+        let agents_blocks: Vec<_> = manifest
+            .managed_blocks
+            .iter()
+            .filter(|b| b.marker == "ARK" && b.file.ends_with(AGENTS_MD))
+            .collect();
+        assert_eq!(
+            agents_blocks.len(),
+            1,
+            "block must be recorded exactly once"
+        );
+
+        // The on-disk file contains exactly one `<!-- ARK:START -->` marker.
+        let agents = std::fs::read_to_string(layout.agents_md()).unwrap();
+        let starts: Vec<_> = agents.match_indices("<!-- ARK:START -->").collect();
+        assert_eq!(starts.len(), 1, "AGENTS.md must contain one block");
+    }
+
+    /// opencode-support V-UT-6: capture_hook is None for OpenCode.
+    #[test]
+    fn opencode_capture_hook_returns_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        let mut snapshot = Snapshot::new();
+        assert_eq!(
+            OPENCODE_PLATFORM
+                .capture_hook(&layout, &mut snapshot)
+                .unwrap(),
+            None,
+        );
+        assert!(snapshot.hook_bodies.is_empty());
+    }
+
+    /// opencode-support V-UT-7: remove_hook returns false for OpenCode (no hook file).
+    #[test]
+    fn opencode_remove_hook_returns_false() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        assert!(!OPENCODE_PLATFORM.remove_hook(&layout).unwrap());
+    }
+
+    /// opencode-support V-UT-8: remove_dir round-trip.
+    #[test]
+    fn opencode_remove_dir_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        assert!(!OPENCODE_PLATFORM.remove_dir(&layout).unwrap());
+
+        let mut manifest = Manifest::new();
+        OPENCODE_PLATFORM
+            .apply_managed_state(&layout, &mut manifest)
+            .unwrap();
+        assert!(layout.opencode_dir().exists());
+        assert!(OPENCODE_PLATFORM.remove_dir(&layout).unwrap());
+        assert!(!layout.opencode_dir().exists());
     }
 
     /// V-UT-7 / V-UT-10: ark_codex_hook_entry carries the canonical command
