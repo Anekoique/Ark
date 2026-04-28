@@ -160,8 +160,14 @@ mod tests {
                 p.id
             );
         }
-        // Each platform installs one managed block.
-        assert_eq!(summary.blocks_removed, PLATFORMS.len());
+        // Managed blocks are deduped on (file, marker): Claude writes
+        // CLAUDE.md; Codex and OpenCode share AGENTS.md (one block, two
+        // platforms). So the count is the number of unique target files.
+        let unique_targets: std::collections::BTreeSet<_> = PLATFORMS
+            .iter()
+            .filter_map(|p| p.managed_block_target)
+            .collect();
+        assert_eq!(summary.blocks_removed, unique_targets.len());
     }
 
     #[test]

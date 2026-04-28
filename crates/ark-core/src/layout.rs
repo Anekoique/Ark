@@ -58,6 +58,21 @@ pub const CODEX_CONFIG_FILE: &str = ".codex/config.toml";
 /// [`CLAUDE_MD`]).
 pub const AGENTS_MD: &str = "AGENTS.md";
 
+/// Root directory for OpenCode integration (relative to project root).
+pub const OPENCODE_DIR: &str = ".opencode";
+
+/// `<project>/.opencode/commands/` — where OpenCode slash-command markdown
+/// files are extracted. `OPENCODE_TEMPLATES` is rooted parallel to this, so
+/// `Platform::templates` extracts under `dest_dir = OPENCODE_COMMANDS_DIR`
+/// without an extra path component (mirrors `CODEX_SKILLS_DIR` /
+/// `CODEX_TEMPLATES` rooted at `templates/codex/skills/`).
+pub const OPENCODE_COMMANDS_DIR: &str = ".opencode/commands";
+
+/// `<project>/.opencode/plugins/ark-context.ts` — Bun-loaded plugin that
+/// shells out to `ark context --scope session --format json` and prepends
+/// the `additionalContext` payload to the first user message.
+pub const OPENCODE_PLUGIN_FILE: &str = ".opencode/plugins/ark-context.ts";
+
 /// Marker used for the feature-spec roster in `specs/features/INDEX.md`.
 pub const FEATURES_MARKER: &str = "ARK:FEATURES";
 
@@ -204,6 +219,21 @@ impl Layout {
         self.root.join(AGENTS_MD)
     }
 
+    /// `<root>/.opencode/`
+    pub fn opencode_dir(&self) -> PathBuf {
+        self.root.join(OPENCODE_DIR)
+    }
+
+    /// `<root>/.opencode/commands/`
+    pub fn opencode_commands_dir(&self) -> PathBuf {
+        self.root.join(OPENCODE_COMMANDS_DIR)
+    }
+
+    /// `<root>/.opencode/plugins/ark-context.ts`
+    pub fn opencode_plugin_file(&self) -> PathBuf {
+        self.root.join(OPENCODE_PLUGIN_FILE)
+    }
+
     /// `<root>/.ark/templates/`
     pub fn ark_templates_dir(&self) -> PathBuf {
         self.root.join(ARK_TEMPLATES_DIR)
@@ -232,14 +262,15 @@ impl Layout {
     /// Directories whose full contents are captured by `unload` and restored by
     /// `load`. User edits and additions under these survive a round-trip.
     ///
-    /// `.codex/` joins the set whether or not Codex is installed in this project
-    /// — `walk_files` on a missing directory yields an empty vec, so the
-    /// Claude-only case is silently a no-op for the third entry.
-    pub fn owned_dirs(&self) -> [PathBuf; 3] {
+    /// `.codex/` and `.opencode/` join the set whether or not those platforms
+    /// are installed in this project — `walk_files` on a missing directory
+    /// yields an empty vec, so the un-installed cases are silently no-ops.
+    pub fn owned_dirs(&self) -> [PathBuf; 4] {
         [
             self.ark_dir(),
             self.claude_commands_ark_dir(),
             self.codex_dir(),
+            self.opencode_dir(),
         ]
     }
 

@@ -229,6 +229,10 @@ mod tests {
             ".codex/skills/ark-archive/SKILL.md",
             ".codex/config.toml",
             ".codex/hooks.json",
+            ".opencode/commands/ark/quick.md",
+            ".opencode/commands/ark/design.md",
+            ".opencode/commands/ark/archive.md",
+            ".opencode/plugins/ark-context.ts",
         ] {
             assert!(tmp.path().join(expected).is_file(), "missing: {expected}");
         }

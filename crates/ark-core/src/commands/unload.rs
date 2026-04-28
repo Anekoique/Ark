@@ -118,7 +118,9 @@ pub fn unload(opts: UnloadOptions) -> Result<UnloadSummary> {
 /// Managed blocks to capture: recorded in the manifest if present, else
 /// every shipped platform's managed-block target as a fallback so a missing
 /// manifest never leaves orphaned state on either Claude or Codex (or any
-/// future platform with a managed-block target).
+/// future platform with a managed-block target). Deduped on `(file, marker)`
+/// so platforms sharing a target (e.g. Codex and OpenCode both writing to
+/// `AGENTS.md`) yield one capture entry, not one per platform.
 fn managed_blocks(layout: &Layout) -> Result<Vec<(PathBuf, String)>> {
     Ok(match Manifest::read(layout.root())? {
         Some(manifest) => manifest
@@ -128,10 +130,10 @@ fn managed_blocks(layout: &Layout) -> Result<Vec<(PathBuf, String)>> {
             .collect(),
         None => PLATFORMS
             .iter()
-            .filter_map(|p| {
-                p.managed_block_target
-                    .map(|f| (PathBuf::from(f), layout.managed_marker().to_string()))
-            })
+            .filter_map(|p| p.managed_block_target)
+            .map(|target| (PathBuf::from(target), layout.managed_marker().to_string()))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
             .collect(),
     })
 }
@@ -251,10 +253,15 @@ mod tests {
         std::fs::remove_file(tmp.path().join(".ark/.installed.json")).unwrap();
 
         let summary = unload(UnloadOptions::new(tmp.path())).unwrap();
-        // Manifest-missing fallback now iterates every platform's
-        // managed_block_target, so default install (Claude + Codex)
-        // captures both `CLAUDE.md` and `AGENTS.md` blocks.
-        assert_eq!(summary.blocks_captured, PLATFORMS.len());
+        // Manifest-missing fallback iterates every platform's
+        // managed_block_target. Codex and OpenCode share `AGENTS.md`, so
+        // the captured-block count is the number of unique target files
+        // (CLAUDE.md + AGENTS.md = 2), not the platform count.
+        let unique_targets: std::collections::BTreeSet<_> = PLATFORMS
+            .iter()
+            .filter_map(|p| p.managed_block_target)
+            .collect();
+        assert_eq!(summary.blocks_captured, unique_targets.len());
 
         // Both blocks must be removed from disk (file deleted if it was
         // the only content, per `remove_managed_block` semantics).

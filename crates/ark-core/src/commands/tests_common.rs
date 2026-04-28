@@ -19,7 +19,7 @@
 /// composition patterns we look for are `.join("<prefix>"`,
 /// `Path::new("<prefix>"`, and `PathBuf::from("<prefix>"`.
 pub fn assert_source_clean(source: &str) {
-    let path_prefixes = [".ark/", ".claude/", ".codex/"];
+    let path_prefixes = [".ark/", ".claude/", ".codex/", ".opencode/"];
     let composition_patterns = [".join(\"", "Path::new(\"", "PathBuf::from(\""];
     let mut in_tests = false;
     for (idx, line) in source.lines().enumerate() {

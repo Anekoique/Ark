@@ -68,12 +68,18 @@ struct InitArgs {
     /// Install Codex CLI integration (default: prompt on TTY).
     #[arg(long)]
     codex: bool,
+    /// Install OpenCode integration (default: prompt on TTY).
+    #[arg(long)]
+    opencode: bool,
     /// Skip Claude Code integration.
     #[arg(long = "no-claude")]
     no_claude: bool,
     /// Skip Codex CLI integration.
     #[arg(long = "no-codex")]
     no_codex: bool,
+    /// Skip OpenCode integration.
+    #[arg(long = "no-opencode")]
+    no_opencode: bool,
 }
 
 /// Per-flag state from `InitArgs`: positive (`--<flag>`) vs negative
@@ -99,6 +105,10 @@ impl InitArgs {
                     "codex" => PlatformFlag {
                         on: self.codex,
                         off: self.no_codex,
+                    },
+                    "opencode" => PlatformFlag {
+                        on: self.opencode,
+                        off: self.no_opencode,
                     },
                     _ => PlatformFlag::default(),
                 };
@@ -155,8 +165,8 @@ fn resolve_platforms_pure(
         return interactive();
     }
     anyhow::bail!(
-        "init requires --claude, --codex, or both when stdin is not a TTY (use --no-claude / \
-         --no-codex to opt out)"
+        "init requires at least one of --claude, --codex, or --opencode when stdin is not a TTY \
+         (use --no-claude / --no-codex / --no-opencode to opt out per platform)"
     );
 }
 
@@ -733,23 +743,31 @@ mod tests {
         ps.iter().map(|p| p.id).collect()
     }
 
-    /// V-IT-12: `--no-claude` narrows to Codex only; `--no-codex` to Claude
-    /// only; both → empty.
+    /// `--no-X` narrows by exclusion; combinations exclude correspondingly;
+    /// excluding all yields empty. Updated for opencode-support: three flags.
     #[test]
     fn cli_resolve_platforms_no_x_excludes() {
         assert_eq!(
             ids(&resolve(&["init", "--no-claude"], true).unwrap()),
-            ["codex"]
+            ["codex", "opencode"]
         );
         assert_eq!(
             ids(&resolve(&["init", "--no-codex"], true).unwrap()),
-            ["claude-code"]
+            ["claude-code", "opencode"]
         );
-        let neither = resolve(&["init", "--no-claude", "--no-codex"], true).unwrap();
+        assert_eq!(
+            ids(&resolve(&["init", "--no-opencode"], true).unwrap()),
+            ["claude-code", "codex"]
+        );
+        let neither = resolve(
+            &["init", "--no-claude", "--no-codex", "--no-opencode"],
+            true,
+        )
+        .unwrap();
         assert!(neither.is_empty(), "{neither:?}");
     }
 
-    /// V-IT-12 (positive flags): `--codex` (no `--no-X`) narrows to Codex only.
+    /// Positive flags narrow to the named subset.
     #[test]
     fn cli_resolve_platforms_positive_flags_narrow() {
         assert_eq!(
@@ -757,18 +775,70 @@ mod tests {
             ["codex"]
         );
         assert_eq!(
+            ids(&resolve(&["init", "--opencode"], true).unwrap()),
+            ["opencode"]
+        );
+        assert_eq!(
             ids(&resolve(&["init", "--claude", "--codex"], true).unwrap()),
             ["claude-code", "codex"]
         );
+        assert_eq!(
+            ids(&resolve(&["init", "--claude", "--opencode"], true).unwrap()),
+            ["claude-code", "opencode"]
+        );
     }
 
-    /// V-IT-11 (codex-support G-3 / R-007): non-TTY without flags errors.
-    /// Resolution must not silently install both platforms.
+    /// opencode-support V-F-1: non-TTY without flags errors with a message
+    /// naming all three flag pairs.
     #[test]
     fn cli_resolve_platforms_no_flags_non_tty_errors() {
         let err = resolve(&["init"], false).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("--claude"), "{msg}");
         assert!(msg.contains("--codex"), "{msg}");
+        assert!(msg.contains("--opencode"), "{msg}");
+    }
+
+    /// opencode-support V-IT-8: `--<flag> --no-<flag>` for the same platform
+    /// excludes that platform per the existing `f.on && !f.off` rule
+    /// (negative wins on conflict). The new opencode flag pair matches the
+    /// existing claude / codex semantics — no behavior divergence.
+    #[test]
+    fn cli_resolve_platforms_opencode_with_no_opencode_excludes_opencode() {
+        // With at least one positive flag, the filter narrows to platforms
+        // that are positive AND not negative. `--opencode --no-opencode`
+        // sets both, so opencode is excluded; no other positive flag is set,
+        // so the result is empty.
+        let resolved = resolve(&["init", "--opencode", "--no-opencode"], true).unwrap();
+        assert!(
+            resolved.is_empty(),
+            "opencode excluded by --no-opencode; no other positive flag → empty: {resolved:?}"
+        );
+        // With another positive flag, that platform is the only survivor.
+        assert_eq!(
+            ids(&resolve(&["init", "--claude", "--opencode", "--no-opencode"], true).unwrap()),
+            ["claude-code"]
+        );
+        // Symmetry check with the existing claude / codex pairs.
+        let claude_self = resolve(&["init", "--claude", "--no-claude"], true).unwrap();
+        assert!(claude_self.is_empty(), "{claude_self:?}");
+        let codex_self = resolve(&["init", "--codex", "--no-codex"], true).unwrap();
+        assert!(codex_self.is_empty(), "{codex_self:?}");
+    }
+
+    /// opencode-support Phase 3 step 16: `resolve_platforms_pure` calls the
+    /// interactive closure exactly once when no flags are set and `is_tty`
+    /// is true. The closure's return value is propagated unchanged.
+    #[test]
+    fn cli_resolve_platforms_pure_invokes_interactive_when_tty_and_no_flags() {
+        let args = parse_init(&["init"]);
+        let mut calls = 0;
+        let resolved = resolve_platforms_pure(&args.flags(), true, || {
+            calls += 1;
+            Ok(PLATFORMS.to_vec())
+        })
+        .unwrap();
+        assert_eq!(calls, 1, "interactive closure must be called exactly once");
+        assert_eq!(ids(&resolved), ["claude-code", "codex", "opencode"]);
     }
 }
