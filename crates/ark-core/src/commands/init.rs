@@ -147,6 +147,7 @@ pub fn init(opts: InitOptions) -> Result<InitSummary> {
     EMPTY_DIRS
         .iter()
         .try_for_each(|dir| layout.resolve(dir).ensure_dir())?;
+
     manifest.write(layout.root())?;
     Ok(summary)
 }
@@ -206,6 +207,17 @@ fn extract(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// worktree-support C-16: init ships `.ark/.gitignore` as a regular
+    /// template file. The file is fully Ark-owned (single-line content
+    /// `worktrees/`); no managed block needed since users don't co-author it.
+    #[test]
+    fn init_writes_ark_gitignore_template() {
+        let tmp = tempfile::tempdir().unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+        let text = std::fs::read_to_string(tmp.path().join(".ark/.gitignore")).unwrap();
+        assert!(text.contains("worktrees/"));
+    }
 
     #[test]
     fn init_writes_expected_tree() {

@@ -107,6 +107,7 @@ mod tests {
             slug: "demo".into(),
             title: "t".into(),
             tier: Tier::Standard,
+            worktree: None,
         })
         .unwrap();
         task_plan(TaskPhaseOptions {
@@ -162,6 +163,7 @@ mod tests {
             slug: "demo".into(),
             title: "t".into(),
             tier: Tier::Deep,
+            worktree: None,
         })
         .unwrap();
         task_plan(TaskPhaseOptions {
@@ -193,6 +195,7 @@ mod tests {
             slug: "demo".into(),
             title: "t".into(),
             tier: Tier::Deep,
+            worktree: None,
         })
         .unwrap();
         assert_eq!(

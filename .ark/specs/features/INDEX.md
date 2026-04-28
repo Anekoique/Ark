@@ -14,6 +14,7 @@ The table below is managed by `ark agent spec register` — new rows appear when
 | `ark-context` | Add ark context command | 2026-04-27 from task `ark-context` |
 | `codex-support` | add Codex platform support | 2026-04-27 from task `codex-support` |
 | `opencode-support` | add OpenCode platform support | 2026-04-28 from task `opencode-support` |
+| `worktree-support` | add worktree support | 2026-04-28 from task `worktree-support` |
 
 <!-- ARK:FEATURES:END -->
 

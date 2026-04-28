@@ -116,6 +116,7 @@ mod tests {
             slug: "demo".into(),
             title: "t".into(),
             tier,
+            worktree: None,
         })
         .unwrap();
         "demo".to_string()

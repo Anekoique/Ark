@@ -12,8 +12,12 @@ use std::{
 };
 
 use crate::{
+    commands::agent::task::worktree::WorktreeConfig,
     error::{Error, Result},
-    io::{ARK_CONTEXT_HOOK_COMMAND, PathExt, read_managed_block, remove_managed_block, walk_files},
+    io::{
+        ARK_CONTEXT_HOOK_COMMAND, PathExt, read_managed_block, remove_managed_block,
+        walk_files_excluding,
+    },
     layout::Layout,
     platforms::PLATFORMS,
     state::{Manifest, Snapshot, SnapshotHookBody},
@@ -62,9 +66,15 @@ pub fn unload(opts: UnloadOptions) -> Result<UnloadSummary> {
     let mut snapshot = Snapshot::new();
     let mut summary = UnloadSummary::default();
 
-    // 1. Capture every file under Ark-owned directories.
+    // 1. Capture every file under Ark-owned directories. Per worktree-support
+    //    C-7, skip the configured worktrees dir so we don't recurse into
+    //    per-task git checkouts (which would capture `target/`, uncommitted
+    //    edits, etc.). Use `WorktreeConfig` so a non-default `worktree_dir`
+    //    setting is honored.
+    let cfg = WorktreeConfig::load_or_default(&layout)?;
+    let skip = [cfg.resolve_worktrees_dir(&layout)];
     for owned in layout.owned_dirs() {
-        for path in walk_files(&owned)? {
+        for path in walk_files_excluding(&owned, &skip)? {
             let relative = path
                 .strip_prefix(layout.root())
                 .expect("file from owned_dirs lies under project root");
@@ -144,8 +154,12 @@ fn managed_blocks(layout: &Layout) -> Result<Vec<(PathBuf, String)>> {
 /// surgical write — owned dirs are about to be deleted. Parse failures
 /// non-fatal (warn + skip).
 fn capture_orphan_hook_entries(layout: &Layout, snapshot: &mut Snapshot) -> Result<()> {
+    // worktree-support C-7: skip the configured worktrees dir here too.
+    // Per-task worktrees may carry user JSON we don't own.
+    let cfg = WorktreeConfig::load_or_default(layout)?;
+    let skip = [cfg.resolve_worktrees_dir(layout)];
     for owned in layout.owned_dirs() {
-        for path in walk_files(&owned)? {
+        for path in walk_files_excluding(&owned, &skip)? {
             if path.extension().and_then(|e| e.to_str()) == Some("json") {
                 capture_from_orphan_file(&path, layout, snapshot)?;
             }
@@ -322,6 +336,61 @@ mod tests {
     #[test]
     fn unload_source_no_bare_std_fs_or_dot_path_literals() {
         crate::commands::tests_common::assert_source_clean(include_str!("unload.rs"));
+    }
+
+    /// worktree-support V-IT-13 / C-7: `.ark/worktrees/` is skipped during
+    /// snapshot capture. A sentinel file under a fake worktree dir must NOT
+    /// appear in either `snapshot.files` or `snapshot.hook_bodies`.
+    #[test]
+    fn unload_excludes_worktree_contents() {
+        let tmp = tempfile::tempdir().unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+
+        // Simulate a worktree directory with a sentinel + a JSON file (Stage
+        // B would scan the latter without our skip).
+        let wt = tmp.path().join(".ark/worktrees/feat/foo");
+        std::fs::create_dir_all(&wt).unwrap();
+        std::fs::write(wt.join("SENTINEL.txt"), b"should not appear").unwrap();
+        std::fs::write(
+            wt.join("hooks.json"),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "hooks": {
+                    "SessionStart": [{
+                        "matcher": "",
+                        "hooks": [{
+                            "type": "command",
+                            "command": ARK_CONTEXT_HOOK_COMMAND,
+                            "timeout": 30,
+                        }]
+                    }]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        unload(UnloadOptions::new(tmp.path())).unwrap();
+
+        let snap = Snapshot::read(tmp.path()).unwrap().unwrap();
+        assert!(
+            !snap
+                .files
+                .iter()
+                .any(|f| f.path.to_string_lossy().contains("worktrees")),
+            "worktree files leaked into snapshot: {:?}",
+            snap.files.iter().map(|f| &f.path).collect::<Vec<_>>()
+        );
+        assert!(
+            !snap
+                .hook_bodies
+                .iter()
+                .any(|hb| hb.path.to_string_lossy().contains("worktrees")),
+            "worktree hook entries leaked into snapshot: {:?}",
+            snap.hook_bodies
+                .iter()
+                .map(|hb| &hb.path)
+                .collect::<Vec<_>>()
+        );
     }
 
     /// V-IT-17 (codex-support C-24): Stage B captures Ark-identity hook

@@ -27,6 +27,7 @@ fn standard_tier_round_trip() {
         slug: "std1".into(),
         title: "standard demo".into(),
         tier: Tier::Standard,
+        worktree: None,
     })
     .unwrap();
     task_plan(opts("std1")).unwrap();
@@ -67,6 +68,7 @@ fn deep_tier_round_trip() {
         slug: "deep1".into(),
         title: "deep demo".into(),
         tier: Tier::Deep,
+        worktree: None,
     })
     .unwrap();
     task_plan(opts("deep1")).unwrap();
@@ -115,6 +117,7 @@ fn quick_tier_round_trip() {
         slug: "q1".into(),
         title: "quick demo".into(),
         tier: Tier::Quick,
+        worktree: None,
     })
     .unwrap();
     task_execute(TaskPhaseOptions {

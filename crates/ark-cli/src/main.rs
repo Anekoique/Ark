@@ -13,10 +13,11 @@ use std::{
 use ark_core::{
     ConflictChoice, ConflictPolicy, ContextFormat, ContextOptions, ContextScope, InitOptions,
     Layout, LoadOptions, PLATFORMS, PathExt, PhaseFilter, Platform, Prompter, RemoveOptions,
-    SpecExtractOptions, SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions, TaskPhaseOptions,
-    TaskPromoteOptions, Tier, UnloadOptions, UpgradeOptions, WriteMode, context, init, load,
-    remove, spec_extract, spec_register, task_archive, task_execute, task_new, task_plan,
-    task_promote, task_review, task_verify, unload, upgrade,
+    SpecExtractOptions, SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions, TaskNewWorktree,
+    TaskPhaseOptions, TaskPromoteOptions, Tier, UnloadOptions, UpgradeOptions,
+    WorktreeCleanupOptions, WorktreeListOptions, WriteMode, context, init, load, remove,
+    spec_extract, spec_register, task_archive, task_execute, task_new, task_plan, task_promote,
+    task_review, task_verify, unload, upgrade, worktree_cleanup, worktree_list,
 };
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
@@ -494,7 +495,8 @@ struct TaskArgs {
 
 #[derive(Subcommand)]
 enum TaskCommand {
-    /// Scaffold a new task directory with PRD + task.toml.
+    /// Scaffold a new task directory with PRD + task.toml. Pass --worktree
+    /// to bind the task to a git worktree under `.ark/worktrees/<branch>/`.
     New(TaskNewCliArgs),
     /// Transition: -> Plan.
     Plan(TaskSlugArgs),
@@ -508,6 +510,43 @@ enum TaskCommand {
     Archive(TaskSlugArgs),
     /// Change tier mid-flight. Does not rewrite artifacts.
     Promote(TaskPromoteCliArgs),
+    /// Worktree lifecycle (cleanup / list). Creation lives in `task new --worktree`.
+    Worktree(WorktreeCliArgs),
+}
+
+#[derive(clap::Args)]
+struct WorktreeCliArgs {
+    #[command(subcommand)]
+    command: WorktreeSubcommand,
+}
+
+#[derive(Subcommand)]
+enum WorktreeSubcommand {
+    /// Remove the worktree dir; optionally delete the branch.
+    Cleanup(WorktreeCleanupCliArgs),
+    /// List active worktree-backed tasks.
+    List(WorktreeListCliArgs),
+}
+
+#[derive(clap::Args)]
+struct WorktreeCleanupCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug. Defaults to the value in `.ark/tasks/.current`.
+    #[arg(long)]
+    slug: Option<String>,
+    /// After removing the worktree dir, delete the git branch too.
+    #[arg(long = "delete-branch")]
+    delete_branch: bool,
+    /// Force removal of dirty worktree and force-delete unmerged branch.
+    #[arg(long)]
+    force: bool,
+}
+
+#[derive(clap::Args)]
+struct WorktreeListCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
 }
 
 #[derive(clap::Args)]
@@ -523,6 +562,19 @@ struct TaskNewCliArgs {
     /// quick | standard | deep
     #[arg(long, value_parser = parse_tier)]
     tier: Tier,
+    /// Create a git worktree under `.ark/worktrees/<branch>/` and scaffold
+    /// the task dir inside it (worktree-support G-2).
+    #[arg(long)]
+    worktree: bool,
+    /// Branch type prefix when --worktree is set; one of feat, fix, refactor,
+    /// chore, ci, docs. Defaults to `worktree.toml`'s `branch_prefix` (feat).
+    /// Mutually exclusive with --branch.
+    #[arg(long = "branch-type", conflicts_with = "branch", requires = "worktree")]
+    branch_type: Option<String>,
+    /// Full branch name override; bypasses --branch-type/<slug> resolution.
+    /// Validated via `git check-ref-format --branch`.
+    #[arg(long, conflicts_with = "branch_type", requires = "worktree")]
+    branch: Option<String>,
 }
 
 #[derive(clap::Args)]
@@ -610,11 +662,20 @@ impl TaskCommand {
         match self {
             Self::New(a) => {
                 let root = a.target.resolve();
+                let worktree = if a.worktree {
+                    Some(TaskNewWorktree {
+                        branch_type: a.branch_type,
+                        branch_override: a.branch,
+                    })
+                } else {
+                    None
+                };
                 render(task_new(TaskNewOptions {
                     project_root: root,
                     slug: a.slug,
                     title: a.title,
                     tier: a.tier,
+                    worktree,
                 })?);
             }
             Self::Plan(a) => run_phase(a, task_plan)?,
@@ -638,6 +699,22 @@ impl TaskCommand {
                     to: a.to,
                 })?);
             }
+            Self::Worktree(a) => match a.command {
+                WorktreeSubcommand::Cleanup(c) => {
+                    let root = c.target.resolve();
+                    let slug = resolve_slug(&root, c.slug)?;
+                    render(worktree_cleanup(WorktreeCleanupOptions {
+                        project_root: root,
+                        slug,
+                        delete_branch: c.delete_branch,
+                        force: c.force,
+                    })?);
+                }
+                WorktreeSubcommand::List(l) => {
+                    let root = l.target.resolve();
+                    render(worktree_list(WorktreeListOptions { project_root: root })?);
+                }
+            },
         }
         Ok(())
     }

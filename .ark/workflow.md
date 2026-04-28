@@ -57,6 +57,8 @@ standard: everything else
 
 Promote mid-flight with `ark agent task promote --to <tier>`; prior artifacts are preserved.
 
+To run multiple tasks in parallel without `.current` collisions, pass `--worktree` at scaffold time: `ark agent task new --slug foo --tier <t> --worktree` creates branch `feat/foo` (override with `--branch-type fix|refactor|...` or `--branch <full>`) at `.ark/worktrees/<branch>/` and scaffolds the task dir inside it. The parent checkout's `.current` is untouched. Configure copies and post-create hooks via `.ark/worktree.toml` (user-editable; preserved across `ark upgrade`).
+
 ---
 
 ## 4. Lifecycle
@@ -100,7 +102,7 @@ Each stage below names its **purpose**, the **calls** to make, and the **gate** 
 - **Purpose:** write `PRD.md` (What / Why / Outcome / Related Specs). Brainstorm: quick = none, standard = ≤3 clarifying questions, deep = thorough.
 - **Calls:**
   - `ark context --scope phase --for design` — orient on git, project specs, feature specs index, recent archive.
-  - `ark agent task new --slug <s> --title "<t>" --tier {quick|standard|deep}` — scaffolds the task dir + PRD + `task.toml`.
+  - `ark agent task new --slug <s> --title "<t>" --tier {quick|standard|deep} [--worktree]` — scaffolds the task dir + PRD + `task.toml`. Pass `--worktree` to bind the task to a fresh git worktree at `.ark/worktrees/<branch>/` (see §3 and §6).
 - **Gate:** PRD drafted, Outcome stated. Quick → EXECUTE; standard/deep → PLAN.
 
 ### PLAN — elaborate how
@@ -129,6 +131,7 @@ Each stage below names its **purpose**, the **calls** to make, and the **gate** 
   - `ark context --scope phase --for execute` — git dirty files + current task + latest PLAN + project specs.
   - `ark agent task execute` — transitions to EXECUTE.
 - **Gate:** implementation complete; project's checks pass; code committed.
+- **Worktree note:** if the task was created with `--worktree`, all phase commands (plan/review/execute/verify/archive) operate on the *worktree's* `.ark/`. `cd .ark/worktrees/<branch>/` and run them there. After merging the branch, run `ark agent task worktree cleanup --slug <s> [--delete-branch]` from the parent to remove the dir; archive does NOT auto-clean.
 
 ### VERIFY — post-execute gate (single-pass)
 
@@ -170,3 +173,5 @@ Two CLI surfaces drive the workflow; both are referenced inline above.
 - **`ark agent`** — hidden, **not semver-stable**, structural mutation only. Each subcommand prints a one-line summary; illegal transitions error out (e.g. `IllegalPhaseTransition`, `WrongTier`) — never bypass them with hand-edits. Every `--slug`-taking command defaults to `.ark/tasks/.current` when omitted. `ark agent --help` lists the children.
 
 **Operations without a CLI.** Deep-tier iteration (copy `NN_PLAN.md`/`NN_REVIEW.md` to the next number, bump `iteration`, reset `phase = "plan"`) and task reopening are handled by direct file edits — the state machine is small enough that hand-edits stay manageable, and `ark agent task plan/review/...` rejects illegal transitions if the agent gets the phase wrong.
+
+**Worktree commands.** Beyond `task new --worktree` covered in §3 and the EXECUTE step in §4, two `ark agent task worktree` subcommands manage the lifecycle: `list` (one line per active worktree-backed task) and `cleanup --slug <s> [--delete-branch] [--force]` (remove the worktree dir; optionally prune the branch). Configuration in `.ark/worktree.toml` exposes `worktree_dir`, `branch_prefix`, `copy` (paths copied into each new worktree, e.g. `.env`), and `post_create` (shell hooks). `.ark/.gitignore` (shipped by `init`) ignores `worktrees/`, scoped to the `.ark/` subtree so the project root's `.gitignore` stays untouched.

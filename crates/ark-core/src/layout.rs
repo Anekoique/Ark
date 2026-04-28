@@ -36,6 +36,22 @@ pub const SPECS_PROJECT_DIR: &str = ".ark/specs/project";
 pub const SPECS_PROJECT_INDEX_FILE: &str = ".ark/specs/project/INDEX.md";
 pub const ARK_TEMPLATES_DIR: &str = ".ark/templates";
 
+/// `<project>/.ark/worktrees/` — root for git worktrees bound to Ark tasks.
+/// Created lazily on first `task new --worktree`. Excluded from `unload`'s
+/// snapshot capture per worktree-support C-7.
+pub const WORKTREES_DIR: &str = ".ark/worktrees";
+
+/// `<project>/.ark/worktree.toml` — user-editable config for the worktree
+/// feature. Created by `init` from the embedded template; `upgrade` does
+/// NOT overwrite (worktree-support C-9).
+pub const WORKTREE_CONFIG_FILE: &str = ".ark/worktree.toml";
+
+/// `<project>/.ark/.gitignore` — fully Ark-owned. Lists `worktrees/` so the
+/// parent checkout's index does not pick up per-task worktree directories.
+/// Shipped as a regular template under `.ark/`; no managed-block needed
+/// since users don't co-author it (worktree-support C-16).
+pub const ARK_GITIGNORE_FILE: &str = ".ark/.gitignore";
+
 /// `.claude/settings.json` — host-side Claude Code settings file (managed
 /// only as far as the Ark `SessionStart` hook entry; user-owned otherwise).
 pub const CLAUDE_SETTINGS_FILE: &str = ".claude/settings.json";
@@ -192,6 +208,27 @@ impl Layout {
     /// `<root>/.claude/settings.json`
     pub fn claude_settings(&self) -> PathBuf {
         self.root.join(CLAUDE_SETTINGS_FILE)
+    }
+
+    /// `<root>/.ark/worktrees/`
+    pub fn worktrees_dir(&self) -> PathBuf {
+        self.root.join(WORKTREES_DIR)
+    }
+
+    /// `<root>/.ark/worktrees/<branch>/` — joining a branch name (which may
+    /// contain a `/`) onto `worktrees_dir()`.
+    pub fn worktree_dir(&self, branch: &str) -> PathBuf {
+        self.worktrees_dir().join(branch)
+    }
+
+    /// `<root>/.ark/worktree.toml`
+    pub fn worktree_config_file(&self) -> PathBuf {
+        self.root.join(WORKTREE_CONFIG_FILE)
+    }
+
+    /// `<root>/.ark/.gitignore`
+    pub fn ark_gitignore(&self) -> PathBuf {
+        self.root.join(ARK_GITIGNORE_FILE)
     }
 
     /// `<root>/.codex/`
