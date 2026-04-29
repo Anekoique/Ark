@@ -41,16 +41,27 @@ pub const ARK_TEMPLATES_DIR: &str = ".ark/templates";
 /// snapshot capture per worktree-support C-7.
 pub const WORKTREES_DIR: &str = ".ark/worktrees";
 
-/// `<project>/.ark/worktree.toml` — user-editable config for the worktree
-/// feature. Created by `init` from the embedded template; `upgrade` does
-/// NOT overwrite (worktree-support C-9).
-pub const WORKTREE_CONFIG_FILE: &str = ".ark/worktree.toml";
+/// `<project>/.ark/config.toml` — user-editable consolidated config for
+/// every Ark feature that needs settings. Sectioned TOML: `[worktree]`,
+/// `[workspace]`, etc. Created by `init` from the embedded template;
+/// `upgrade` does NOT overwrite (worktree-support C-9, workspace C-10).
+pub const CONFIG_FILE: &str = ".ark/config.toml";
 
 /// `<project>/.ark/.gitignore` — fully Ark-owned. Lists `worktrees/` so the
 /// parent checkout's index does not pick up per-task worktree directories.
 /// Shipped as a regular template under `.ark/`; no managed-block needed
 /// since users don't co-author it (worktree-support C-16).
 pub const ARK_GITIGNORE_FILE: &str = ".ark/.gitignore";
+
+/// `<project>/.ark/workspace/` — root for per-developer session journals.
+/// Created lazily by `ark agent workspace init`. Captured normally by
+/// `unload`/`load` (workspace C-7).
+pub const WORKSPACE_DIR: &str = ".ark/workspace";
+
+/// `<project>/.ark/.developer` — gitignored, per-machine identity file.
+/// Written only by `ark agent workspace init`. Excluded from `unload`'s
+/// snapshot capture in BOTH walk sites (workspace C-7).
+pub const DEVELOPER_FILE: &str = ".ark/.developer";
 
 /// `.claude/settings.json` — host-side Claude Code settings file (managed
 /// only as far as the Ark `SessionStart` hook entry; user-owned otherwise).
@@ -221,14 +232,40 @@ impl Layout {
         self.worktrees_dir().join(branch)
     }
 
-    /// `<root>/.ark/worktree.toml`
-    pub fn worktree_config_file(&self) -> PathBuf {
-        self.root.join(WORKTREE_CONFIG_FILE)
+    /// `<root>/.ark/config.toml`
+    pub fn config_file(&self) -> PathBuf {
+        self.root.join(CONFIG_FILE)
     }
 
     /// `<root>/.ark/.gitignore`
     pub fn ark_gitignore(&self) -> PathBuf {
         self.root.join(ARK_GITIGNORE_FILE)
+    }
+
+    /// `<root>/.ark/workspace/`
+    pub fn workspace_dir(&self) -> PathBuf {
+        self.root.join(WORKSPACE_DIR)
+    }
+
+    /// `<root>/.ark/workspace/<dev>/`
+    pub fn workspace_developer_dir(&self, dev: &str) -> PathBuf {
+        self.workspace_dir().join(dev)
+    }
+
+    /// `<root>/.ark/workspace/<dev>/index.md`
+    pub fn workspace_index(&self, dev: &str) -> PathBuf {
+        self.workspace_developer_dir(dev).join("index.md")
+    }
+
+    /// `<root>/.ark/workspace/<dev>/journal-<n>.md`
+    pub fn workspace_journal(&self, dev: &str, n: u32) -> PathBuf {
+        self.workspace_developer_dir(dev)
+            .join(format!("journal-{n}.md"))
+    }
+
+    /// `<root>/.ark/.developer`
+    pub fn developer_file(&self) -> PathBuf {
+        self.root.join(DEVELOPER_FILE)
     }
 
     /// `<root>/.codex/`

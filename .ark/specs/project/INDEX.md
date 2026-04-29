@@ -4,8 +4,8 @@ Project-level conventions. User-authored. Layout: `<name>/SPEC.md`.
 
 ## Index
 
-| Spec | Scope |
-|------|-------|
+| Spec                  | Scope                                                  |
+| --------------------- | ------------------------------------------------------ |
 | `{e.g. rust/SPEC.md}` | `{e.g. language style, error handling, module layout}` |
 
 `{Add one row per spec. Keep the Scope column terse — agents scan this to decide what to read.}`

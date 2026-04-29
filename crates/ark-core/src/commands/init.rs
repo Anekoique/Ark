@@ -14,6 +14,7 @@ use std::{
 use include_dir::Dir;
 
 use crate::{
+    commands::agent::workspace::{WorkspaceInitOptions, identity, workspace_init},
     error::Result,
     io::{PathExt, WriteMode, WriteOutcome, merge_managed_blocks, write_file},
     layout::{ARK_DIR, EMPTY_DIRS, Layout},
@@ -31,6 +32,13 @@ pub struct InitOptions {
     /// honors whatever the caller passes (an empty set yields a Claude-and-
     /// Codex-free install with only `.ark/` artifacts).
     pub platforms: Vec<&'static Platform>,
+    /// Workspace developer name to bootstrap (workspace G-18). When `Some`,
+    /// init runs `workspace_init` after platform extraction, creating
+    /// `.ark/.developer` and `.ark/workspace/<name>/`. `None` skips identity
+    /// entirely (the user can run `ark agent workspace init --name <x>`
+    /// later). Library default is `None`; the CLI adapter resolves the
+    /// value via interactive prompt or `--developer`/`--no-developer` flags.
+    pub developer: Option<String>,
 }
 
 impl InitOptions {
@@ -39,6 +47,7 @@ impl InitOptions {
             project_root: project_root.into(),
             mode: WriteMode::default(),
             platforms: PLATFORMS.to_vec(),
+            developer: None,
         }
     }
 
@@ -53,15 +62,24 @@ impl InitOptions {
         self.platforms = platforms;
         self
     }
+
+    /// Bootstrap the workspace identity at init time (workspace G-18).
+    pub fn with_developer(mut self, name: impl Into<String>) -> Self {
+        self.developer = Some(name.into());
+        self
+    }
 }
 
 /// Counts of per-file outcomes produced by `init`.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 pub struct InitSummary {
     pub created: usize,
     pub unchanged: usize,
     pub skipped: usize,
     pub overwritten: usize,
+    /// Developer name bootstrapped at init time (workspace G-18). `None` if
+    /// identity was skipped (`InitOptions::developer == None`).
+    pub developer: Option<String>,
 }
 
 impl InitSummary {
@@ -97,6 +115,9 @@ impl fmt::Display for InitSummary {
                 self.skipped
             )?;
         }
+        if let Some(dev) = &self.developer {
+            write!(f, "\ndeveloper: {dev}")?;
+        }
         Ok(())
     }
 }
@@ -116,6 +137,12 @@ impl fmt::Display for InitSummary {
 /// codex-support G-14: `ark init --codex` on a Claude-installed project
 /// adds Codex without forgetting Claude.
 pub fn init(opts: InitOptions) -> Result<InitSummary> {
+    // Validate identity *first* (workspace G-18 / V-UT-14): a malformed
+    // `--developer` should fail before we scaffold any platform files.
+    if let Some(name) = &opts.developer {
+        identity::validate_developer_name(name)?;
+    }
+
     let layout = Layout::new(&opts.project_root);
     let mut manifest = Manifest::read(layout.root())?.unwrap_or_default();
     let mut summary = InitSummary::default();
@@ -149,6 +176,18 @@ pub fn init(opts: InitOptions) -> Result<InitSummary> {
         .try_for_each(|dir| layout.resolve(dir).ensure_dir())?;
 
     manifest.write(layout.root())?;
+
+    // Workspace identity bootstrap (workspace G-18). Runs after manifest
+    // write so a `workspace_init` failure doesn't roll back the platform
+    // scaffolding — the user can re-run `ark agent workspace init`.
+    if let Some(name) = opts.developer {
+        workspace_init(WorkspaceInitOptions {
+            project_root: opts.project_root.clone(),
+            name: name.clone(),
+        })?;
+        summary.developer = Some(name);
+    }
+
     Ok(summary)
 }
 
@@ -512,5 +551,51 @@ mod tests {
             v["hooks"]["SessionStart"][0]["hooks"][0]["command"],
             serde_json::Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()),
         );
+    }
+
+    /// V-UT-9 (workspace G-2 / G-18): library default skips identity. The CLI
+    /// `--no-developer` flag maps to `developer: None`; this test mirrors that.
+    #[test]
+    fn ark_init_with_no_developer_flag_skips_identity() {
+        let tmp = tempfile::tempdir().unwrap();
+        let summary = init(InitOptions::new(tmp.path())).unwrap();
+        assert!(summary.developer.is_none());
+        assert!(!tmp.path().join(".ark/.developer").exists());
+        assert!(!tmp.path().join(".ark/workspace").exists());
+    }
+
+    /// V-UT-13 (workspace G-18): `--developer alice` bootstraps identity in
+    /// the same flow as `ark agent workspace init --name alice`.
+    #[test]
+    fn ark_init_with_developer_flag_bootstraps_identity() {
+        let tmp = tempfile::tempdir().unwrap();
+        let summary = init(InitOptions::new(tmp.path()).with_developer("alice")).unwrap();
+        assert_eq!(summary.developer.as_deref(), Some("alice"));
+        let dev_file = std::fs::read_to_string(tmp.path().join(".ark/.developer")).unwrap();
+        assert!(dev_file.contains("name=alice"));
+        assert!(tmp.path().join(".ark/workspace/alice/index.md").is_file());
+        assert!(
+            tmp.path()
+                .join(".ark/workspace/alice/journal-1.md")
+                .is_file()
+        );
+        let idx =
+            std::fs::read_to_string(tmp.path().join(".ark/workspace/alice/index.md")).unwrap();
+        assert!(idx.contains("ARK:WORKSPACE_STATUS:START"));
+        assert!(idx.contains("ARK:WORKSPACE_SESSIONS:START"));
+    }
+
+    /// V-UT-14 (workspace G-18 / C-3): invalid `--developer` errors before
+    /// any platform extraction (no partial scaffolding).
+    #[test]
+    fn ark_init_with_invalid_developer_name_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = init(InitOptions::new(tmp.path()).with_developer("1leading")).unwrap_err();
+        assert!(matches!(
+            err,
+            crate::error::Error::InvalidDeveloperName { .. }
+        ));
+        // Pre-flight failure → no scaffolding happened.
+        assert!(!tmp.path().join(".ark").exists());
     }
 }

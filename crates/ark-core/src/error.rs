@@ -113,7 +113,7 @@ pub enum Error {
     #[error("invalid branch type `{value}`; expected one of feat, fix, refactor, chore, ci, docs")]
     InvalidBranchType { value: String },
 
-    #[error("worktree.toml corrupt at {path:?}: {source}")]
+    #[error("config.toml corrupt at {path:?}: {source}")]
     WorktreeConfigCorrupt {
         path: PathBuf,
         #[source]
@@ -123,7 +123,7 @@ pub enum Error {
     #[error("post_create hook `{command}` failed with exit code {exit_code}")]
     PostCreateHookFailed { command: String, exit_code: i32 },
 
-    #[error("worktree.toml `copy` source missing: {path:?}")]
+    #[error("config.toml [worktree] `copy` source missing: {path:?}")]
     WorktreeCopySourceMissing { path: PathBuf },
 
     #[error(
@@ -138,11 +138,34 @@ pub enum Error {
     )]
     NestedWorktreeForbidden { current_root: PathBuf },
 
-    #[error("invalid worktree.toml field `{field}`: {reason}")]
+    #[error("invalid config.toml field `{field}`: {reason}")]
     InvalidConfigField {
         field: &'static str,
         reason: &'static str,
     },
+
+    // workspace feature errors --------------------------------------------
+    #[error(
+        "developer not initialized: {path:?} is missing; run `ark agent workspace init --name \
+         <x>` to create it"
+    )]
+    DeveloperNotInitialized { path: PathBuf },
+
+    #[error("developer already initialized as `{name}`; remove .ark/.developer to re-init")]
+    DeveloperAlreadyInitialized { name: String },
+
+    #[error("config.toml corrupt at {path:?}: {source}")]
+    WorkspaceConfigCorrupt {
+        path: PathBuf,
+        #[source]
+        source: toml::de::Error,
+    },
+
+    #[error("journal rotation limit hit for `{dev}`: max {max} journals")]
+    JournalRotationLimit { dev: String, max: u32 },
+
+    #[error("invalid developer name `{name}`: {reason}")]
+    InvalidDeveloperName { name: String, reason: &'static str },
 }
 
 impl Error {

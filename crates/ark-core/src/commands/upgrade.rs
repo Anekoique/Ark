@@ -951,15 +951,22 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "user edit");
     }
 
-    /// worktree-support V-IT-15 / C-9: `.ark/worktree.toml` is user-editable;
-    /// upgrade preserves the user's edits via the hash-mismatch path.
+    /// worktree-support V-IT-15 / C-9 + workspace C-10: `.ark/config.toml` is
+    /// user-editable; upgrade preserves the user's edits via the hash-mismatch
+    /// path. Covers both `[worktree]` and `[workspace]` sections through one
+    /// shared file.
     #[test]
-    fn upgrade_does_not_overwrite_worktree_toml() {
+    fn upgrade_does_not_overwrite_config_toml() {
         let tmp = tempfile::tempdir().unwrap();
         crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
-        let target = tmp.path().join(".ark/worktree.toml");
-        assert!(target.exists(), "init should ship worktree.toml");
-        std::fs::write(&target, "branch_prefix = \"fix\"\ncopy = [\".env\"]\n").unwrap();
+        let target = tmp.path().join(".ark/config.toml");
+        assert!(target.exists(), "init should ship config.toml");
+        std::fs::write(
+            &target,
+            "[worktree]\nbranch_prefix = \"fix\"\ncopy = \
+             [\".env\"]\n\n[workspace]\njournal_max_lines = 500\n",
+        )
+        .unwrap();
         let mut prompter = PanicPrompter;
         upgrade(
             UpgradeOptions::new(tmp.path()).with_policy(ConflictPolicy::Skip),
@@ -969,6 +976,7 @@ mod tests {
         let after = std::fs::read_to_string(&target).unwrap();
         assert!(after.contains("branch_prefix = \"fix\""));
         assert!(after.contains(".env"));
+        assert!(after.contains("journal_max_lines = 500"));
     }
 
     #[test]

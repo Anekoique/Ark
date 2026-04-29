@@ -1,0 +1,28 @@
+# `workspace` PRD
+
+---
+
+[**What**]
+Add per-developer session journals to Ark. New `.ark/workspace/<dev>/` tree (committed) with rotating `journal-N.md` files plus an auto-updated `index.md`. Identity is bootstrapped at `ark init` time via an interactive prompt (alongside the existing `claude/codex/opencode` prompts) and persisted in gitignored `.ark/.developer`; `ark agent workspace init --name <x>` remains as a manual / non-interactive backstop. `ark agent task archive` unconditionally appends a `task` session entry; a new `/ark:record` slash command (backed by `ark agent workspace record`) appends a `manual` session entry for work outside any task — research, debugging, doc edits.
+
+[**Why**]
+Ark's `tasks/archive/` is shared *project* memory: structured artifacts of completed work. It says nothing about *who* did it, *when* across the developer's lifetime, or work that wasn't task-shaped to begin with. The Trellis reference implementation demonstrates that a per-developer journal — sessions chronologically with branch + commits + next steps — is the missing layer. The `worktree-support` SPEC (G-1, NG-1) deliberately reserved the `workspace` slot for this follow-up. Without workspace, developers either keep journals out-of-band (lost continuity, no link to commits/branches) or stretch tasks to cover non-task work (bloating the task pipeline).
+
+[**Outcome**]
+- `ark init` prompts for a developer name (parallel to the platform prompts). On TTY: `Y` → prompt for the name and bootstrap; `n` → skip. Non-TTY init requires explicit `--developer <name>` or `--no-developer` (mirrors existing `--claude` / `--no-claude` rules). When identity is bootstrapped (either via `ark init` or `ark agent workspace init --name <x>`), the flow writes `.ark/.developer` and scaffolds `.ark/workspace/<x>/` with `index.md` (managed-block markers `ARK:WORKSPACE_STATUS`, `ARK:WORKSPACE_SESSIONS`) and `journal-1.md`. `ark agent workspace init --name <x>` remains the way to bootstrap identity on an already-installed project (and the only way that's idempotent on rerun).
+- `ark agent task archive` appends a session entry to the developer's active journal whenever `.developer` is set AND `workspace.toml`'s `auto_record_on_archive` is `true` (the default); absent identity → archive succeeds with a one-line stderr note "no developer set; skipping workspace record"; disabled by config → archive succeeds silently. There is **no per-archive `--no-record` CLI flag** — the global `workspace.toml` toggle is the single opt-out path.
+- `/ark:record [<title>]` (manual mode) appends an entry. With `<title>`: agent fills summary/next from conversation context. Without `<title>`: agent summarizes the last topic of work into a title + summary + next steps.
+- Journal entry fields: `title`, `date`, `kind` (`task` | `manual`), `slug` (if task), `branch`, `summary`, `commits` (hash + message table), `next steps`. Trellis-style markdown; no JSON.
+- `journal-N.md` rotates at >2000 lines: next record creates `journal-{N+1}.md`; `index.md` reflects the new active file via managed-block re-render.
+- `index.md`'s `ARK:WORKSPACE_STATUS` block tracks active file + total sessions + last-active date; `ARK:WORKSPACE_SESSIONS` block holds the `# | Date | Title | Kind | Slug | Branch | Commits` table sorted desc by date.
+- Worktree-aware: when invoked inside a worktree, the record is written to the *parent's* `.ark/workspace/<dev>/` (developer journal is repo-global, not branch-local). The parent's `.ark/.developer` is the source of truth for identity.
+- `templates/ark/.gitignore` (managed block) gains `.developer` line — identity file never committed.
+- `workspace.toml` (project-tracked, optional) carries tunables: `journal_max_lines = 2000`, `auto_record_on_archive = true`. Missing file → defaults. Created by `ark init` (NOT by `workspace init`, which only seeds per-developer state).
+- Pre-existing `.ark/` projects upgrade cleanly: `ark upgrade` preserves user `workspace.toml`, idempotently re-applies `.gitignore` line.
+- `ark unload`/`load` capture/restore `.ark/workspace/` and `workspace.toml` like any other `.ark/` content. `.ark/.developer` is gitignored and per-machine, so it MUST be excluded from snapshot capture (mirrors how snapshots already skip user-private files).
+
+[**Related Specs**]
+
+- `specs/features/worktree-support/SPEC.md` — NG-1 reserved this exact feature; G-1 deliberately named the config `worktree.toml` (singular) to leave `workspace` open. This task implements the reserved slot. The new `workspace.toml` lives alongside `worktree.toml` under `.ark/`. Worktree-aware record routing (auto-record from inside a worktree writes to parent's workspace) extends `Layout` helpers but does not touch worktree create/cleanup/list flows.
+- `specs/features/ark-agent-namespace/SPEC.md` — adds a new `ark agent workspace {init, record}` subcommand group following the same patterns: hidden under `agent`, one-line `Display` summaries, all FS via `io::PathExt`, all `.ark/`-relative paths via `Layout` helpers, named errors for illegal states. `task archive` (G-5) gains an internal call to `super::workspace::record` after dir rename succeeds (auto-record). Adds error variants `Error::DeveloperNotInitialized`, `Error::DeveloperAlreadyInitialized`, `Error::WorkspaceCorrupt`, `Error::JournalRotationLimit`.
+- `specs/features/ark-context/SPEC.md` — `ark context --scope session` may surface the developer name + active journal file as a non-mandatory addition (decided in PLAN; could also stay out of scope as NG). The session JSON's stable schema means any field added here is purely additive (still `schema: 1`). Coordinating change — not blocking for the workspace MVP.

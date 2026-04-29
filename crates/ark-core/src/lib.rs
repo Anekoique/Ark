@@ -30,6 +30,11 @@ pub use commands::{
             task_execute, task_new, task_plan, task_promote, task_review, task_verify,
             worktree_cleanup, worktree_list,
         },
+        workspace::{
+            RecordTaskOptions, WorkspaceConfig, WorkspaceInitOptions, WorkspaceInitSummary,
+            WorkspaceRecordOptions, WorkspaceRecordSummary, WorkspaceRecorded, record_task,
+            workspace_init, workspace_record,
+        },
     },
     context, init, load, remove, unload, upgrade,
 };

@@ -8,7 +8,7 @@ The table below is managed by `ark agent spec register` — new rows appear when
 
 <!-- ARK:FEATURES:START -->
 | Feature | Scope | Promoted |
-|---------|-------|----------|
+| ------- | ----- | -------- |
 <!-- ARK:FEATURES:END -->
 
 ---

@@ -581,8 +581,8 @@ mod tests {
         // Configure copy = [".env"] but don't create .env.
         tmp.path().join(".ark").ensure_dir().unwrap();
         tmp.path()
-            .join(".ark/worktree.toml")
-            .write_bytes(b"copy = [\".env\"]\n")
+            .join(".ark/config.toml")
+            .write_bytes(b"[worktree]\ncopy = [\".env\"]\n")
             .unwrap();
 
         let err = task_new(TaskNewOptions {
@@ -607,8 +607,8 @@ mod tests {
         let tmp = init_repo();
         tmp.path().join(".ark").ensure_dir().unwrap();
         tmp.path()
-            .join(".ark/worktree.toml")
-            .write_bytes(b"post_create = [\"false\"]\n")
+            .join(".ark/config.toml")
+            .write_bytes(b"[worktree]\npost_create = [\"false\"]\n")
             .unwrap();
 
         let err = task_new(TaskNewOptions {
@@ -629,8 +629,8 @@ mod tests {
         let tmp = init_repo();
         tmp.path().join(".ark").ensure_dir().unwrap();
         tmp.path()
-            .join(".ark/worktree.toml")
-            .write_bytes(b"post_create = [\"touch hello.txt\"]\n")
+            .join(".ark/config.toml")
+            .write_bytes(b"[worktree]\npost_create = [\"touch hello.txt\"]\n")
             .unwrap();
 
         task_new(TaskNewOptions {
@@ -737,16 +737,16 @@ mod tests {
         assert!(matches!(err, Error::TaskExistsOnParent { .. }));
     }
 
-    /// PR#8 fix: `worktree.toml`'s `worktree_dir` must control where worktrees
-    /// land — previously it was loaded but ignored, so the layout default
-    /// always won.
+    /// PR#8 fix: `[worktree].worktree_dir` in `.ark/config.toml` must control
+    /// where worktrees land — previously it was loaded but ignored, so the
+    /// layout default always won.
     #[test]
     fn worktree_honors_custom_worktree_dir_from_config() {
         let tmp = init_repo();
         tmp.path().join(".ark").ensure_dir().unwrap();
         tmp.path()
-            .join(".ark/worktree.toml")
-            .write_bytes(b"worktree_dir = \".ark/wt\"\n")
+            .join(".ark/config.toml")
+            .write_bytes(b"[worktree]\nworktree_dir = \".ark/wt\"\n")
             .unwrap();
 
         task_new(TaskNewOptions {

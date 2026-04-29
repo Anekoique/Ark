@@ -7,14 +7,15 @@ The table below is managed by `ark agent spec register` — new rows appear when
 ## Index
 
 <!-- ARK:FEATURES:START -->
-| Feature | Scope | Promoted |
-|---------|-------|----------|
-| `ark-agent-namespace` | add `ark agent` tool for agents to invoke | 2026-04-24 from task `ark-agent-namespace` |
-| `ark-upgrade` | add `ark upgrade` support | 2026-04-24 from task `ark-upgrade` |
-| `ark-context` | Add ark context command | 2026-04-27 from task `ark-context` |
-| `codex-support` | add Codex platform support | 2026-04-27 from task `codex-support` |
-| `opencode-support` | add OpenCode platform support | 2026-04-28 from task `opencode-support` |
-| `worktree-support` | add worktree support | 2026-04-28 from task `worktree-support` |
+| Feature               | Scope                                                 | Promoted                                   |
+| --------------------- | ----------------------------------------------------- | ------------------------------------------ |
+| `ark-agent-namespace` | add `ark agent` tool for agents to invoke             | 2026-04-24 from task `ark-agent-namespace` |
+| `ark-upgrade`         | add `ark upgrade` support                             | 2026-04-24 from task `ark-upgrade`         |
+| `ark-context`         | Add ark context command                               | 2026-04-27 from task `ark-context`         |
+| `codex-support`       | add Codex platform support                            | 2026-04-27 from task `codex-support`       |
+| `opencode-support`    | add OpenCode platform support                         | 2026-04-28 from task `opencode-support`    |
+| `worktree`            | add worktree support                                  | 2026-04-28 from task `worktree-support`    |
+| `workspace`           | add workspace support (per-developer session journal) | 2026-04-29 from task `workspace`           |
 
 <!-- ARK:FEATURES:END -->
 

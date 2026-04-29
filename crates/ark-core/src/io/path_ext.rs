@@ -62,6 +62,15 @@ pub trait PathExt {
 
     /// Hex-lowercase SHA-256 of the file contents, or `None` if the file is missing.
     fn hash_sha256(&self) -> Result<Option<String>>;
+
+    /// Append UTF-8 text to the file, creating it (and parent dirs) if absent.
+    /// Per workspace G-17: opens with `OpenOptions::new().create(true).append(true)`.
+    /// `O_APPEND` positions each write at the current end-of-file, so concurrent
+    /// appenders won't overwrite each other; the write itself is not atomic
+    /// (regular files lack the PIPE_BUF guarantee — partial writes and
+    /// signal-interrupted writes are still possible). `write_all` retries
+    /// short writes; underlying I/O errors propagate as `Error::Io`.
+    fn append_text(&self, contents: &str) -> Result<()>;
 }
 
 impl<T: AsRef<Path> + ?Sized> PathExt for T {
@@ -146,6 +155,22 @@ impl<T: AsRef<Path> + ?Sized> PathExt for T {
 
     fn hash_sha256(&self) -> Result<Option<String>> {
         Ok(self.read_optional()?.as_deref().map(hash_bytes))
+    }
+
+    fn append_text(&self, contents: &str) -> Result<()> {
+        use std::io::Write;
+        let path = self.as_ref();
+        if let Some(parent) = path.parent() {
+            parent.ensure_dir()?;
+        }
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .map_err(|e| Error::io(path, e))?;
+        file.write_all(contents.as_bytes())
+            .map_err(|e| Error::io(path, e))?;
+        Ok(())
     }
 }
 
@@ -241,6 +266,16 @@ mod tests {
             path.hash_sha256().unwrap().as_deref(),
             Some(hash_bytes(b"hello").as_str())
         );
+    }
+
+    /// V-UT-11: append_text creates and appends.
+    #[test]
+    fn append_text_creates_and_appends() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("nested/journal.md");
+        p.append_text("first\n").unwrap();
+        p.append_text("second\n").unwrap();
+        assert_eq!(p.read_text().unwrap(), "first\nsecond\n");
     }
 
     #[test]
