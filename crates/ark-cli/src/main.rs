@@ -15,9 +15,10 @@ use ark_core::{
     Layout, LoadOptions, PLATFORMS, PathExt, PhaseFilter, Platform, Prompter, RemoveOptions,
     SpecExtractOptions, SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions, TaskNewWorktree,
     TaskPhaseOptions, TaskPromoteOptions, Tier, UnloadOptions, UpgradeOptions,
-    WorktreeCleanupOptions, WorktreeListOptions, WriteMode, context, init, load, remove,
-    spec_extract, spec_register, task_archive, task_execute, task_new, task_plan, task_promote,
-    task_review, task_verify, unload, upgrade, worktree_cleanup, worktree_list,
+    WorkspaceInitOptions, WorkspaceRecordOptions, WorktreeCleanupOptions, WorktreeListOptions,
+    WriteMode, context, init, load, remove, spec_extract, spec_register, task_archive,
+    task_execute, task_new, task_plan, task_promote, task_review, task_verify, unload, upgrade,
+    workspace_init, workspace_record, worktree_cleanup, worktree_list,
 };
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
@@ -81,6 +82,14 @@ struct InitArgs {
     /// Skip OpenCode integration.
     #[arg(long = "no-opencode")]
     no_opencode: bool,
+    /// Bootstrap workspace identity at init time (workspace G-18). Mutually
+    /// exclusive with --no-developer. Validated per workspace C-3.
+    #[arg(long, conflicts_with = "no_developer")]
+    developer: Option<String>,
+    /// Skip workspace identity. Use the `ark agent workspace init --name <x>`
+    /// command later to bootstrap.
+    #[arg(long = "no-developer", conflicts_with = "developer")]
+    no_developer: bool,
 }
 
 /// Per-flag state from `InitArgs`: positive (`--<flag>`) vs negative
@@ -129,6 +138,17 @@ impl InitArgs {
             anyhow::bail!("init requires at least one platform");
         }
         Ok(resolved)
+    }
+
+    /// Resolve the workspace developer name from CLI flags + TTY state.
+    /// Per workspace G-18.
+    fn resolve_developer(&self) -> anyhow::Result<Option<String>> {
+        resolve_developer_pure(
+            self.developer.clone(),
+            self.no_developer,
+            std::io::stdin().is_terminal(),
+            interactive_select_developer,
+        )
     }
 }
 
@@ -185,6 +205,70 @@ fn interactive_select_platforms() -> anyhow::Result<Vec<&'static Platform>> {
         }
     }
     Ok(chosen)
+}
+
+/// Resolve the workspace developer name (workspace G-18). Mirrors
+/// `resolve_platforms_pure` for testability:
+/// - `--developer <name>` → `Some(name)`.
+/// - `--no-developer` → `None`.
+/// - Neither, TTY → run the interactive prompt.
+/// - Neither, non-TTY → error (mirrors the platform rule).
+fn resolve_developer_pure(
+    explicit: Option<String>,
+    no_dev: bool,
+    is_tty: bool,
+    interactive: impl FnOnce() -> anyhow::Result<Option<String>>,
+) -> anyhow::Result<Option<String>> {
+    if let Some(name) = explicit {
+        return Ok(Some(name));
+    }
+    if no_dev {
+        return Ok(None);
+    }
+    if is_tty {
+        return interactive();
+    }
+    anyhow::bail!(
+        "init requires --developer <name> or --no-developer when stdin is not a TTY (workspace \
+         identity bootstrap)"
+    );
+}
+
+/// Tiny stdin-driven name prompt. `Y` opens a follow-up name read; `n` skips.
+/// Default suggestion is `whoami` output if available.
+fn interactive_select_developer() -> anyhow::Result<Option<String>> {
+    let default_name = std::env::var("USER")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| std::env::var("USERNAME").ok().filter(|s| !s.is_empty()));
+
+    eprint!("  set up workspace identity? [Y/n] ");
+    let mut line = String::new();
+    std::io::stdin().lock().read_line(&mut line).ok();
+    if matches!(line.trim().to_ascii_lowercase().as_str(), "n" | "no") {
+        return Ok(None);
+    }
+
+    // Re-prompt until the user supplies a name (or accepts the default when
+    // present). Without this, a blank line + missing USER/USERNAME would
+    // silently skip identity setup despite the user opting in.
+    let prompt = match &default_name {
+        Some(d) => format!("  developer name [{d}]: "),
+        None => "  developer name: ".to_string(),
+    };
+    loop {
+        eprint!("{prompt}");
+        let mut name = String::new();
+        std::io::stdin().lock().read_line(&mut name).ok();
+        let trimmed = name.trim();
+        if !trimmed.is_empty() {
+            return Ok(Some(trimmed.to_string()));
+        }
+        if let Some(d) = default_name {
+            return Ok(Some(d));
+        }
+        eprintln!("  (name required; type a name or Ctrl-C to abort)");
+    }
 }
 
 #[derive(clap::Args)]
@@ -374,6 +458,7 @@ impl Command {
             Self::Init(a) => {
                 // ark-context C-21 carve-out: init creates `.ark/`; no walk-up.
                 let platforms = a.resolve_platforms()?;
+                let developer = a.resolve_developer()?;
                 let root = a.target.resolve();
                 let mode = if a.force {
                     WriteMode::Force
@@ -381,11 +466,13 @@ impl Command {
                     WriteMode::Skip
                 };
                 announce("initializing ark in", &root);
-                render(init(
-                    InitOptions::new(root)
-                        .with_mode(mode)
-                        .with_platforms(platforms),
-                )?);
+                let mut opts = InitOptions::new(root)
+                    .with_mode(mode)
+                    .with_platforms(platforms);
+                if let Some(name) = developer {
+                    opts = opts.with_developer(name);
+                }
+                render(init(opts)?);
             }
             Self::Load(a) => {
                 // `ark load` works on the explicit target: it either restores
@@ -485,6 +572,8 @@ enum AgentCommand {
     Task(TaskArgs),
     /// Feature-SPEC operations.
     Spec(SpecArgs),
+    /// Workspace (per-developer session journal) operations.
+    Workspace(WorkspaceCliArgs),
 }
 
 #[derive(clap::Args)]
@@ -567,7 +656,7 @@ struct TaskNewCliArgs {
     #[arg(long)]
     worktree: bool,
     /// Branch type prefix when --worktree is set; one of feat, fix, refactor,
-    /// chore, ci, docs. Defaults to `worktree.toml`'s `branch_prefix` (feat).
+    /// chore, ci, docs. Defaults to `config.toml`'s `[worktree].branch_prefix` (feat).
     /// Mutually exclusive with --branch.
     #[arg(long = "branch-type", conflicts_with = "branch", requires = "worktree")]
     branch_type: Option<String>,
@@ -637,6 +726,46 @@ struct SpecRegisterCliArgs {
     date: Option<String>,
 }
 
+#[derive(clap::Args)]
+struct WorkspaceCliArgs {
+    #[command(subcommand)]
+    command: WorkspaceSubcommand,
+}
+
+#[derive(Subcommand)]
+enum WorkspaceSubcommand {
+    /// Initialize developer identity (alternative to `ark init --developer <x>`).
+    /// Use this on already-installed projects, for idempotent re-init, or when
+    /// `ark init` was run with `--no-developer`.
+    Init(WorkspaceInitCliArgs),
+    /// Append a session entry to the developer's active journal.
+    Record(WorkspaceRecordCliArgs),
+}
+
+#[derive(clap::Args)]
+struct WorkspaceInitCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Developer name (1-40 chars, leading letter, then `[A-Za-z0-9_-]`).
+    #[arg(long)]
+    name: String,
+}
+
+#[derive(clap::Args)]
+struct WorkspaceRecordCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Session title.
+    #[arg(long)]
+    title: Option<String>,
+    /// Session summary body.
+    #[arg(long)]
+    summary: Option<String>,
+    /// Newline-separated next steps (leading `- ` is stripped).
+    #[arg(long)]
+    next: Option<String>,
+}
+
 fn parse_tier(s: &str) -> Result<Tier, String> {
     match s {
         "quick" => Ok(Tier::Quick),
@@ -653,7 +782,32 @@ impl AgentArgs {
         match self.command {
             AgentCommand::Task(a) => a.command.dispatch(),
             AgentCommand::Spec(a) => a.command.dispatch(),
+            AgentCommand::Workspace(a) => a.command.dispatch(),
         }
+    }
+}
+
+impl WorkspaceSubcommand {
+    fn dispatch(self) -> anyhow::Result<()> {
+        match self {
+            Self::Init(a) => {
+                let root = a.target.resolve();
+                render(workspace_init(WorkspaceInitOptions {
+                    project_root: root,
+                    name: a.name,
+                })?);
+            }
+            Self::Record(a) => {
+                let root = a.target.resolve();
+                render(workspace_record(WorkspaceRecordOptions {
+                    project_root: root,
+                    title: a.title,
+                    summary: a.summary,
+                    next: a.next,
+                })?);
+            }
+        }
+        Ok(())
     }
 }
 

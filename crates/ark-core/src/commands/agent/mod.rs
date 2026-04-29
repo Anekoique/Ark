@@ -11,5 +11,6 @@ pub mod spec;
 pub mod state;
 pub mod task;
 pub mod template;
+pub mod workspace;
 
 pub use state::{Phase, Status, TaskToml, Tier};

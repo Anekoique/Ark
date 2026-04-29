@@ -71,8 +71,12 @@ pub fn unload(opts: UnloadOptions) -> Result<UnloadSummary> {
     //    per-task git checkouts (which would capture `target/`, uncommitted
     //    edits, etc.). Use `WorktreeConfig` so a non-default `worktree_dir`
     //    setting is honored.
+    // Stage A skip: worktree dirs (worktree-support C-7) AND the gitignored
+    // per-machine `.ark/.developer` identity file (workspace C-7). Both walk
+    // sites must include the developer file or identity leaks across
+    // unload/load between machines.
     let cfg = WorktreeConfig::load_or_default(&layout)?;
-    let skip = [cfg.resolve_worktrees_dir(&layout)];
+    let skip = [cfg.resolve_worktrees_dir(&layout), layout.developer_file()];
     for owned in layout.owned_dirs() {
         for path in walk_files_excluding(&owned, &skip)? {
             let relative = path
@@ -154,10 +158,11 @@ fn managed_blocks(layout: &Layout) -> Result<Vec<(PathBuf, String)>> {
 /// surgical write — owned dirs are about to be deleted. Parse failures
 /// non-fatal (warn + skip).
 fn capture_orphan_hook_entries(layout: &Layout, snapshot: &mut Snapshot) -> Result<()> {
-    // worktree-support C-7: skip the configured worktrees dir here too.
-    // Per-task worktrees may carry user JSON we don't own.
+    // worktree-support C-7 + workspace C-7: skip the configured worktrees
+    // dir AND the gitignored `.ark/.developer` identity file. Both walk
+    // sites must agree (Stage A above).
     let cfg = WorktreeConfig::load_or_default(layout)?;
-    let skip = [cfg.resolve_worktrees_dir(layout)];
+    let skip = [cfg.resolve_worktrees_dir(layout), layout.developer_file()];
     for owned in layout.owned_dirs() {
         for path in walk_files_excluding(&owned, &skip)? {
             if path.extension().and_then(|e| e.to_str()) == Some("json") {

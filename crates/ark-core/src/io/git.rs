@@ -1,7 +1,7 @@
 //! Sanctioned subprocess spawns under `ark-core` (per the `ark-context`
 //! feature C-26 and `worktree-support` C-10). The two clients today are
 //! `git` (every `run_git` call) and shell hooks (`run_shell`, used by
-//! `task new --worktree` for `worktree.toml`'s `post_create` commands).
+//! `task new --worktree` for `config.toml [worktree].post_create` commands).
 //!
 //! Soft-fail on non-zero exit: the caller decides whether the exit code is
 //! a real failure (e.g. `git status` in a non-git directory returns 128) or
@@ -44,8 +44,8 @@ pub fn run_git(args: &[&str], cwd: &Path) -> Result<GitOutput> {
 }
 
 /// Run a shell command (`sh -c <command>`) with `cwd` as the working
-/// directory. Used by `task new --worktree` for `worktree.toml`'s
-/// `post_create` hooks (worktree-support F-3).
+/// directory. Used by `task new --worktree` for `config.toml`'s
+/// `[worktree].post_create` hooks (worktree-support F-3).
 ///
 /// Returns the exit code on completion. Spawn failure → `Error::GitSpawn`
 /// (the variant covers any sanctioned-subprocess spawn failure).

@@ -12,6 +12,7 @@ use crate::{
             register::{SpecRegisterOptions, spec_register},
         },
         state::{Phase, TaskToml, Tier, check_transition, validate_slug},
+        workspace::{RecordTaskOptions, WorkspaceRecorded, record_task},
     },
     error::{Error, Result},
     io::PathExt,
@@ -30,6 +31,11 @@ pub struct TaskArchiveSummary {
     pub tier: Tier,
     pub deep_spec_promoted: bool,
     pub archive_path: PathBuf,
+    /// Outcome of the auto-record into the developer's workspace journal
+    /// (workspace G-7 / C-18). `Recorded` on success, `SkippedNoIdentity`
+    /// when `.ark/.developer` is absent, `SkippedDisabled` when
+    /// `[workspace].auto_record_on_archive = false` in `.ark/config.toml`.
+    pub workspace_recorded: WorkspaceRecorded,
 }
 
 impl fmt::Display for TaskArchiveSummary {
@@ -43,6 +49,12 @@ impl fmt::Display for TaskArchiveSummary {
         )?;
         if self.deep_spec_promoted {
             write!(f, " [SPEC promoted]")?;
+        }
+        match &self.workspace_recorded {
+            WorkspaceRecorded::Recorded { session_number, .. } => {
+                write!(f, " [workspace session {session_number}]")?;
+            }
+            WorkspaceRecorded::SkippedNoIdentity | WorkspaceRecorded::SkippedDisabled => {}
         }
         Ok(())
     }
@@ -117,11 +129,30 @@ pub fn task_archive(opts: TaskArchiveOptions) -> Result<TaskArchiveSummary> {
         current_path.remove_if_exists()?;
     }
 
+    // Workspace auto-record (workspace C-18): regardless of tier, after
+    // `.current` cleanup and before `Ok(summary)`. `record_task` itself
+    // swallows `DeveloperNotInitialized` (returning `SkippedNoIdentity`)
+    // and respects `auto_record_on_archive = false`. Other errors
+    // propagate; per workspace NG-6 we do NOT roll back the archive on
+    // workspace failure (mirrors spec_extract policy).
+    let workspace_recorded = record_task(RecordTaskOptions {
+        project_root: opts.project_root.clone(),
+        slug: opts.slug.clone(),
+        title: toml.title.clone(),
+        tier,
+        branch: toml.branch.clone(),
+        base_branch: toml.base_branch.clone(),
+        worktree_path: toml.worktree_path.as_ref().map(|p| layout.root().join(p)),
+        archive_path: archive_path.clone(),
+        archived_at: now,
+    })?;
+
     Ok(TaskArchiveSummary {
         slug: opts.slug,
         tier,
         deep_spec_promoted,
         archive_path,
+        workspace_recorded,
     })
 }
 
@@ -211,5 +242,129 @@ mod tests {
         })
         .unwrap_err();
         assert!(matches!(err, Error::IllegalPhaseTransition { .. }));
+    }
+
+    /// V-F-1 (workspace): no `.developer` set → archive succeeds with
+    /// `SkippedNoIdentity`, stderr emits the documented diagnostic.
+    #[test]
+    fn archive_skips_workspace_record_when_no_identity() {
+        use crate::commands::agent::workspace::record::WorkspaceRecorded;
+        let tmp = tempfile::tempdir().unwrap();
+        standard_at_verify(tmp.path());
+        let s = task_archive(TaskArchiveOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+        })
+        .unwrap();
+        assert!(matches!(
+            s.workspace_recorded,
+            WorkspaceRecorded::SkippedNoIdentity
+        ));
+        assert!(!tmp.path().join(".ark/workspace").exists());
+    }
+
+    /// V-IT-8 (workspace): standard-tier archive auto-records.
+    #[test]
+    fn standard_tier_archive_records_session() {
+        use crate::commands::agent::workspace::{
+            init::{WorkspaceInitOptions, workspace_init},
+            record::WorkspaceRecorded,
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        workspace_init(WorkspaceInitOptions {
+            project_root: tmp.path().to_path_buf(),
+            name: "alice".into(),
+        })
+        .unwrap();
+        standard_at_verify(tmp.path());
+        let s = task_archive(TaskArchiveOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+        })
+        .unwrap();
+        let WorkspaceRecorded::Recorded { session_number, .. } = s.workspace_recorded else {
+            panic!("expected Recorded, got {:?}", s.workspace_recorded);
+        };
+        assert_eq!(session_number, 1);
+
+        let layout = Layout::new(tmp.path());
+        let journal = layout.workspace_journal("alice", 1).read_text().unwrap();
+        assert!(journal.contains("**Slug**: demo"));
+        assert!(journal.contains("**Kind**: task"));
+    }
+
+    /// V-IT-8 (workspace): quick-tier archive auto-records.
+    #[test]
+    fn quick_tier_archive_records_session() {
+        use crate::commands::agent::{
+            task::{
+                new::{TaskNewOptions, task_new},
+                phase::{TaskPhaseOptions, task_execute},
+            },
+            workspace::{
+                init::{WorkspaceInitOptions, workspace_init},
+                record::WorkspaceRecorded,
+            },
+        };
+
+        let tmp = tempfile::tempdir().unwrap();
+        workspace_init(WorkspaceInitOptions {
+            project_root: tmp.path().to_path_buf(),
+            name: "alice".into(),
+        })
+        .unwrap();
+        task_new(TaskNewOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "qd".into(),
+            title: "qd".into(),
+            tier: Tier::Quick,
+            worktree: None,
+        })
+        .unwrap();
+        task_execute(TaskPhaseOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "qd".into(),
+        })
+        .unwrap();
+        let s = task_archive(TaskArchiveOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "qd".into(),
+        })
+        .unwrap();
+        assert_eq!(s.tier, Tier::Quick);
+        assert!(matches!(
+            s.workspace_recorded,
+            WorkspaceRecorded::Recorded { .. }
+        ));
+    }
+
+    /// V-F-6 (workspace): auto_record_on_archive = false → SkippedDisabled.
+    #[test]
+    fn archive_skips_when_auto_record_disabled() {
+        use crate::commands::agent::workspace::{
+            init::{WorkspaceInitOptions, workspace_init},
+            record::WorkspaceRecorded,
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        workspace_init(WorkspaceInitOptions {
+            project_root: tmp.path().to_path_buf(),
+            name: "alice".into(),
+        })
+        .unwrap();
+        let layout = Layout::new(tmp.path());
+        layout
+            .config_file()
+            .write_bytes(b"[workspace]\nauto_record_on_archive = false\n")
+            .unwrap();
+        standard_at_verify(tmp.path());
+        let s = task_archive(TaskArchiveOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+        })
+        .unwrap();
+        assert!(matches!(
+            s.workspace_recorded,
+            WorkspaceRecorded::SkippedDisabled
+        ));
     }
 }

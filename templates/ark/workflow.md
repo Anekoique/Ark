@@ -57,7 +57,7 @@ standard: everything else
 
 Promote mid-flight with `ark agent task promote --to <tier>`; prior artifacts are preserved.
 
-To run multiple tasks in parallel without `.current` collisions, pass `--worktree` at scaffold time: `ark agent task new --slug foo --tier <t> --worktree` creates branch `feat/foo` (override with `--branch-type fix|refactor|...` or `--branch <full>`) at `.ark/worktrees/<branch>/` and scaffolds the task dir inside it. The parent checkout's `.current` is untouched. Configure copies and post-create hooks via `.ark/worktree.toml` (user-editable; preserved across `ark upgrade`).
+To run multiple tasks in parallel without `.current` collisions, pass `--worktree` at scaffold time: `ark agent task new --slug foo --tier <t> --worktree` creates branch `feat/foo` (override with `--branch-type fix|refactor|...` or `--branch <full>`) at `.ark/worktrees/<branch>/` and scaffolds the task dir inside it. The parent checkout's `.current` is untouched. Configure copies and post-create hooks via `.ark/config.toml`'s `[worktree]` section (user-editable; preserved across `ark upgrade`).
 
 ---
 
@@ -145,9 +145,11 @@ Each stage below names its **purpose**, the **calls** to make, and the **gate** 
 
 - **Purpose:** move the task to `tasks/archive/YYYY-MM/<slug>/`. Deep tier: extract the final PLAN's `## Spec` section to `specs/features/<name>/SPEC.md` and register it in the features INDEX.
 - **Calls:**
-  - `ark agent task archive` — moves the dir; on deep tier, internally invokes `ark agent spec extract` and `ark agent spec register`.
+  - `ark agent task archive` — moves the dir; on deep tier, internally invokes `ark agent spec extract` and `ark agent spec register`. If the project has an initialized developer (set at `ark init`), also appends a `task` entry to that developer's journal under `.ark/workspace/<dev>/`. Disable globally via `[workspace].auto_record_on_archive = false` in `.ark/config.toml`.
 - **Trigger:** `/ark:archive`. `/ark:design` and `/ark:quick` deliberately stop at VERIFY (or EXECUTE for quick); the user decides when to close out.
 - **Reopen:** move the archived dir back to `.ark/tasks/<slug>/` and reset `phase = "design"` + clear `archived_at` in `task.toml`. Refuse if a same-slug active task exists.
+
+For non-task work — research, debugging, doc edits — invoke `/ark:record [<title>]` to append a `manual` entry to the same journal. Mirrors archive's auto-record path; works whenever a developer is initialized.
 
 ---
 
@@ -174,4 +176,4 @@ Two CLI surfaces drive the workflow; both are referenced inline above.
 
 **Operations without a CLI.** Deep-tier iteration (copy `NN_PLAN.md`/`NN_REVIEW.md` to the next number, bump `iteration`, reset `phase = "plan"`) and task reopening are handled by direct file edits — the state machine is small enough that hand-edits stay manageable, and `ark agent task plan/review/...` rejects illegal transitions if the agent gets the phase wrong.
 
-**Worktree commands.** Beyond `task new --worktree` covered in §3 and the EXECUTE step in §4, two `ark agent task worktree` subcommands manage the lifecycle: `list` (one line per active worktree-backed task) and `cleanup --slug <s> [--delete-branch] [--force]` (remove the worktree dir; optionally prune the branch). Configuration in `.ark/worktree.toml` exposes `worktree_dir`, `branch_prefix`, `copy` (paths copied into each new worktree, e.g. `.env`), and `post_create` (shell hooks). `.ark/.gitignore` (shipped by `init`) ignores `worktrees/`, scoped to the `.ark/` subtree so the project root's `.gitignore` stays untouched.
+**Cleanup after merge.** When a `--worktree` task's branch has been merged, run `ark agent task worktree cleanup --slug <s> [--delete-branch]` from the parent to remove the worktree dir and (optionally) the branch. Archive does NOT auto-clean. `ark agent task worktree list` enumerates active worktree-backed tasks. `.ark/config.toml`'s `[worktree]` section configures the workflow knobs (`worktree_dir`, `branch_prefix`, `copy`, `post_create`); `[workspace]` configures journaling (`journal_max_lines`, `auto_record_on_archive`).

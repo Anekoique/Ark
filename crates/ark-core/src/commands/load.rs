@@ -37,7 +37,10 @@ impl LoadOptions {
 }
 
 /// Outcome of `load`. Each variant carries its own relevant counters.
-#[derive(Debug, Clone, Copy)]
+///
+/// `Clone` only — `InitSummary` carries an owned `Option<String>` (the
+/// bootstrapped developer name, workspace G-18) so `Copy` no longer applies.
+#[derive(Debug, Clone)]
 pub enum LoadSummary {
     /// Fresh scaffold from embedded templates (no snapshot was present).
     Fresh(InitSummary),

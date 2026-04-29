@@ -1,0 +1,12 @@
+id = "workspace"
+title = "add workspace support (per-developer session journal)"
+tier = "deep"
+phase = "archived"
+iteration = 2
+max_iterations = 3
+created_at = "2026-04-29T04:43:38.273880Z"
+updated_at = "2026-04-29T09:32:09.518142Z"
+archived_at = "2026-04-29T09:32:09.518142Z"
+branch = "feat/workspace"
+worktree_path = ".ark/worktrees/feat/workspace"
+base_branch = "main"

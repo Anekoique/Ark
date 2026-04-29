@@ -1,8 +1,10 @@
-//! `.ark/worktree.toml` model — user-editable config for the worktree feature.
+//! `[worktree]` section of `.ark/config.toml` — user-editable config for the
+//! worktree feature.
 //!
-//! Per worktree-support C-9: created by `ark init` from the embedded template;
-//! `ark upgrade` does NOT overwrite. Missing file → defaults (G-1). Corrupt
-//! file → [`Error::WorktreeConfigCorrupt`].
+//! Per worktree-support C-9: created by `ark init` from the embedded
+//! `config.toml` template; `ark upgrade` does NOT overwrite. Missing file
+//! or missing `[worktree]` section → defaults (G-1). Corrupt file →
+//! [`Error::WorktreeConfigCorrupt`].
 
 use std::path::{Component, Path, PathBuf};
 
@@ -13,6 +15,14 @@ use crate::{
     io::PathExt,
     layout::Layout,
 };
+
+/// On-disk shape of `.ark/config.toml`. Each feature owns its own section;
+/// missing sections fall through to that feature's `Default` impl.
+#[derive(Debug, Clone, Default, Deserialize)]
+struct RawConfig {
+    #[serde(default)]
+    worktree: Option<WorktreeConfig>,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct WorktreeConfig {
@@ -49,13 +59,17 @@ impl Default for WorktreeConfig {
 }
 
 impl WorktreeConfig {
-    /// Load `.ark/worktree.toml` from the layout, or return defaults if absent.
-    /// Distinguishes "file missing" (→ defaults) from real I/O errors.
+    /// Load the `[worktree]` section of `.ark/config.toml`, or return
+    /// defaults if the file or the section is absent. Distinguishes "file
+    /// missing" (→ defaults) from real I/O errors.
     pub fn load_or_default(layout: &Layout) -> Result<Self> {
-        let path = layout.worktree_config_file();
+        let path = layout.config_file();
         let cfg = match path.read_text_optional()? {
-            Some(text) => toml::from_str(&text)
-                .map_err(|source| Error::WorktreeConfigCorrupt { path, source })?,
+            Some(text) => {
+                let raw: RawConfig = toml::from_str(&text)
+                    .map_err(|source| Error::WorktreeConfigCorrupt { path, source })?;
+                raw.worktree.unwrap_or_default()
+            }
             None => Self::default(),
         };
         cfg.validate()?;
@@ -126,7 +140,7 @@ mod tests {
         let layout = Layout::new(tmp.path());
         layout.ark_dir().ensure_dir().unwrap();
         layout
-            .worktree_config_file()
+            .config_file()
             .write_bytes(b"not = valid = toml")
             .unwrap();
         let err = WorktreeConfig::load_or_default(&layout).unwrap_err();
@@ -140,8 +154,8 @@ mod tests {
         let layout = Layout::new(tmp.path());
         layout.ark_dir().ensure_dir().unwrap();
         layout
-            .worktree_config_file()
-            .write_bytes(b"worktree_dir = \"../escape\"\n")
+            .config_file()
+            .write_bytes(b"[worktree]\nworktree_dir = \"../escape\"\n")
             .unwrap();
         let err = WorktreeConfig::load_or_default(&layout).unwrap_err();
         assert!(matches!(
@@ -160,8 +174,8 @@ mod tests {
         let layout = Layout::new(tmp.path());
         layout.ark_dir().ensure_dir().unwrap();
         layout
-            .worktree_config_file()
-            .write_bytes(b"worktree_dir = \"/abs/path\"\n")
+            .config_file()
+            .write_bytes(b"[worktree]\nworktree_dir = \"/abs/path\"\n")
             .unwrap();
         let err = WorktreeConfig::load_or_default(&layout).unwrap_err();
         assert!(matches!(
@@ -179,9 +193,10 @@ mod tests {
         let layout = Layout::new(tmp.path());
         layout.ark_dir().ensure_dir().unwrap();
         layout
-            .worktree_config_file()
+            .config_file()
             .write_bytes(
                 br#"
+[worktree]
 worktree_dir = ".ark/worktrees"
 branch_prefix = "fix"
 copy = [".env", ".env.local"]
@@ -193,5 +208,21 @@ post_create = ["echo hi"]
         assert_eq!(cfg.branch_prefix, "fix");
         assert_eq!(cfg.copy.len(), 2);
         assert_eq!(cfg.post_create.len(), 1);
+    }
+
+    /// Missing `[worktree]` section → defaults (e.g. when only the
+    /// `[workspace]` section is set).
+    #[test]
+    fn missing_worktree_section_returns_defaults() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        layout.ark_dir().ensure_dir().unwrap();
+        layout
+            .config_file()
+            .write_bytes(b"[workspace]\njournal_max_lines = 500\n")
+            .unwrap();
+        let cfg = WorktreeConfig::load_or_default(&layout).unwrap();
+        assert_eq!(cfg.worktree_dir, ".ark/worktrees");
+        assert_eq!(cfg.branch_prefix, "feat");
     }
 }
