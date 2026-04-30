@@ -16,6 +16,7 @@ The table below is managed by `ark agent spec register` — new rows appear when
 | `opencode-support`    | add OpenCode platform support                         | 2026-04-28 from task `opencode-support`    |
 | `worktree`            | add worktree support                                  | 2026-04-28 from task `worktree-support`    |
 | `workspace`           | add workspace support (per-developer session journal) | 2026-04-29 from task `workspace`           |
+| `project-spec` | add project-spec | 2026-04-30 from task `project-spec` |
 
 <!-- ARK:FEATURES:END -->
 

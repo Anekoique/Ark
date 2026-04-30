@@ -1,0 +1,394 @@
+//! `ark agent` — hidden namespace packaging the structural workflow operations
+//! as Rust subcommands. Not covered by semver — prefer the slash commands over
+//! calling these directly.
+
+use std::path::{Path, PathBuf};
+
+use ark_core::{
+    Layout, PathExt, SpecExtractOptions, SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions,
+    TaskNewWorktree, TaskPhaseOptions, TaskPromoteOptions, Tier, WorkspaceInitOptions,
+    WorkspaceRecordOptions, WorktreeCleanupOptions, WorktreeListOptions, spec_extract,
+    spec_register, task_archive, task_execute, task_new, task_plan, task_promote, task_review,
+    task_verify, workspace_init, workspace_record, worktree_cleanup, worktree_list,
+};
+use chrono::NaiveDate;
+use clap::Subcommand;
+
+use crate::{TargetArgs, render};
+
+#[derive(clap::Args)]
+pub(crate) struct AgentArgs {
+    #[command(subcommand)]
+    command: AgentCommand,
+}
+
+#[derive(Subcommand)]
+enum AgentCommand {
+    /// Task-lifecycle operations.
+    Task(TaskArgs),
+    /// Feature-SPEC operations.
+    Spec(SpecArgs),
+    /// Workspace (per-developer session journal) operations.
+    Workspace(WorkspaceCliArgs),
+}
+
+#[derive(clap::Args)]
+struct TaskArgs {
+    #[command(subcommand)]
+    command: TaskCommand,
+}
+
+#[derive(Subcommand)]
+enum TaskCommand {
+    /// Scaffold a new task directory with PRD and task.toml.
+    ///
+    /// Pass `--worktree` to bind the task to a git worktree under
+    /// `.ark/worktrees/<branch>/`.
+    New(TaskNewCliArgs),
+    /// Transition: -> Plan.
+    Plan(TaskSlugArgs),
+    /// Transition: -> Review (deep tier).
+    Review(TaskSlugArgs),
+    /// Transition: -> Execute.
+    Execute(TaskSlugArgs),
+    /// Transition: -> Verify.
+    Verify(TaskSlugArgs),
+    /// Transition: -> Archived; deep tier extracts + registers SPEC.
+    Archive(TaskSlugArgs),
+    /// Change tier mid-flight. Does not rewrite artifacts.
+    Promote(TaskPromoteCliArgs),
+    /// Worktree lifecycle (cleanup / list). Creation lives in `task new --worktree`.
+    Worktree(WorktreeCliArgs),
+}
+
+#[derive(clap::Args)]
+struct WorktreeCliArgs {
+    #[command(subcommand)]
+    command: WorktreeSubcommand,
+}
+
+#[derive(Subcommand)]
+enum WorktreeSubcommand {
+    /// Remove the worktree dir; optionally delete the branch.
+    Cleanup(WorktreeCleanupCliArgs),
+    /// List active worktree-backed tasks.
+    List(WorktreeListCliArgs),
+}
+
+#[derive(clap::Args)]
+struct WorktreeCleanupCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug. Defaults to the value in `.ark/tasks/.current`.
+    #[arg(long)]
+    slug: Option<String>,
+    /// After removing the worktree dir, delete the git branch too.
+    #[arg(long = "delete-branch")]
+    delete_branch: bool,
+    /// Force removal of dirty worktree and force-delete unmerged branch.
+    #[arg(long)]
+    force: bool,
+}
+
+#[derive(clap::Args)]
+struct WorktreeListCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+}
+
+#[derive(clap::Args)]
+struct TaskNewCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug (filesystem-safe identifier).
+    #[arg(long)]
+    slug: String,
+    /// One-line title.
+    #[arg(long)]
+    title: String,
+    /// Task tier (`quick`, `standard`, or `deep`).
+    #[arg(long, value_parser = parse_tier)]
+    tier: Tier,
+    /// Creates a git worktree under `.ark/worktrees/<branch>/`.
+    ///
+    /// The task directory is scaffolded inside that worktree.
+    #[arg(long)]
+    worktree: bool,
+    /// Branch type prefix used when `--worktree` is set.
+    ///
+    /// One of `feat`, `fix`, `refactor`, `chore`, `ci`, or `docs`. Defaults
+    /// to `config.toml`'s `[worktree].branch_prefix` (`feat`).
+    /// Mutually exclusive with --branch.
+    #[arg(long = "branch-type", conflicts_with = "branch", requires = "worktree")]
+    branch_type: Option<String>,
+    /// Full branch name override; bypasses `--branch-type/<slug>` resolution.
+    /// Validated via `git check-ref-format --branch`.
+    #[arg(long, conflicts_with = "branch_type", requires = "worktree")]
+    branch: Option<String>,
+}
+
+#[derive(clap::Args)]
+struct TaskSlugArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug. Defaults to the value in `.ark/tasks/.current`.
+    #[arg(long)]
+    slug: Option<String>,
+}
+
+#[derive(clap::Args)]
+struct TaskPromoteCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    #[arg(long)]
+    slug: Option<String>,
+    /// Target tier.
+    #[arg(long = "to", value_parser = parse_tier)]
+    to: Tier,
+}
+
+#[derive(clap::Args)]
+struct SpecArgs {
+    #[command(subcommand)]
+    command: SpecCommand,
+}
+
+#[derive(Subcommand)]
+enum SpecCommand {
+    /// Extract the final PLAN's `## Spec` section into `specs/features/<slug>/SPEC.md`.
+    Extract(SpecExtractCliArgs),
+    /// Upsert a row in specs/features/INDEX.md.
+    Register(SpecRegisterCliArgs),
+}
+
+#[derive(clap::Args)]
+struct SpecExtractCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    #[arg(long)]
+    slug: Option<String>,
+    /// Optional explicit PLAN path. Default: highest-NN `NN_PLAN.md`.
+    #[arg(long)]
+    plan: Option<PathBuf>,
+}
+
+#[derive(clap::Args)]
+struct SpecRegisterCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    #[arg(long)]
+    feature: String,
+    #[arg(long)]
+    scope: String,
+    #[arg(long = "from-task")]
+    from_task: String,
+    /// Override the registration date (YYYY-MM-DD). Default: today UTC.
+    #[arg(long)]
+    date: Option<String>,
+}
+
+#[derive(clap::Args)]
+struct WorkspaceCliArgs {
+    #[command(subcommand)]
+    command: WorkspaceSubcommand,
+}
+
+#[derive(Subcommand)]
+enum WorkspaceSubcommand {
+    /// Initialize developer identity (alternative to `ark init --developer <x>`).
+    /// Use this on already-installed projects, for idempotent re-init, or when
+    /// `ark init` was run with `--no-developer`.
+    Init(WorkspaceInitCliArgs),
+    /// Append a session entry to the developer's active journal.
+    Record(WorkspaceRecordCliArgs),
+}
+
+#[derive(clap::Args)]
+struct WorkspaceInitCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Developer name (1-40 chars, leading letter, then `[A-Za-z0-9_-]`).
+    #[arg(long)]
+    name: String,
+}
+
+#[derive(clap::Args)]
+struct WorkspaceRecordCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Session title.
+    #[arg(long)]
+    title: Option<String>,
+    /// Session summary body.
+    #[arg(long)]
+    summary: Option<String>,
+    /// Newline-separated next steps (leading `- ` is stripped).
+    #[arg(long)]
+    next: Option<String>,
+}
+
+fn parse_tier(s: &str) -> Result<Tier, String> {
+    match s {
+        "quick" => Ok(Tier::Quick),
+        "standard" => Ok(Tier::Standard),
+        "deep" => Ok(Tier::Deep),
+        other => Err(format!(
+            "unknown tier `{other}`; expected quick | standard | deep"
+        )),
+    }
+}
+
+impl AgentArgs {
+    pub(crate) fn dispatch(self) -> anyhow::Result<()> {
+        match self.command {
+            AgentCommand::Task(a) => a.command.dispatch(),
+            AgentCommand::Spec(a) => a.command.dispatch(),
+            AgentCommand::Workspace(a) => a.command.dispatch(),
+        }
+    }
+}
+
+impl WorkspaceSubcommand {
+    fn dispatch(self) -> anyhow::Result<()> {
+        match self {
+            Self::Init(a) => {
+                let root = a.target.resolve();
+                render(workspace_init(WorkspaceInitOptions {
+                    project_root: root,
+                    name: a.name,
+                })?);
+            }
+            Self::Record(a) => {
+                let root = a.target.resolve();
+                render(workspace_record(WorkspaceRecordOptions {
+                    project_root: root,
+                    title: a.title,
+                    summary: a.summary,
+                    next: a.next,
+                })?);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl TaskCommand {
+    fn dispatch(self) -> anyhow::Result<()> {
+        match self {
+            Self::New(a) => {
+                let root = a.target.resolve();
+                let worktree = if a.worktree {
+                    Some(TaskNewWorktree {
+                        branch_type: a.branch_type,
+                        branch_override: a.branch,
+                    })
+                } else {
+                    None
+                };
+                render(task_new(TaskNewOptions {
+                    project_root: root,
+                    slug: a.slug,
+                    title: a.title,
+                    tier: a.tier,
+                    worktree,
+                })?);
+            }
+            Self::Plan(a) => run_phase(a, task_plan)?,
+            Self::Review(a) => run_phase(a, task_review)?,
+            Self::Execute(a) => run_phase(a, task_execute)?,
+            Self::Verify(a) => run_phase(a, task_verify)?,
+            Self::Archive(a) => {
+                let root = a.target.resolve();
+                let slug = resolve_slug(&root, a.slug)?;
+                render(task_archive(TaskArchiveOptions {
+                    project_root: root,
+                    slug,
+                })?);
+            }
+            Self::Promote(a) => {
+                let root = a.target.resolve();
+                let slug = resolve_slug(&root, a.slug)?;
+                render(task_promote(TaskPromoteOptions {
+                    project_root: root,
+                    slug,
+                    to: a.to,
+                })?);
+            }
+            Self::Worktree(a) => match a.command {
+                WorktreeSubcommand::Cleanup(c) => {
+                    let root = c.target.resolve();
+                    let slug = resolve_slug(&root, c.slug)?;
+                    render(worktree_cleanup(WorktreeCleanupOptions {
+                        project_root: root,
+                        slug,
+                        delete_branch: c.delete_branch,
+                        force: c.force,
+                    })?);
+                }
+                WorktreeSubcommand::List(l) => {
+                    let root = l.target.resolve();
+                    render(worktree_list(WorktreeListOptions { project_root: root })?);
+                }
+            },
+        }
+        Ok(())
+    }
+}
+
+fn run_phase(
+    a: TaskSlugArgs,
+    f: impl FnOnce(TaskPhaseOptions) -> ark_core::Result<ark_core::TaskPhaseSummary>,
+) -> anyhow::Result<()> {
+    let root = a.target.resolve();
+    let slug = resolve_slug(&root, a.slug)?;
+    render(f(TaskPhaseOptions {
+        project_root: root,
+        slug,
+    })?);
+    Ok(())
+}
+
+impl SpecCommand {
+    fn dispatch(self) -> anyhow::Result<()> {
+        match self {
+            Self::Extract(a) => {
+                let root = a.target.resolve();
+                let slug = resolve_slug(&root, a.slug)?;
+                render(spec_extract(SpecExtractOptions {
+                    project_root: root,
+                    slug,
+                    plan_override: a.plan,
+                    task_dir_override: None,
+                })?);
+            }
+            Self::Register(a) => {
+                let root = a.target.resolve();
+                let date = match a.date {
+                    Some(s) => NaiveDate::parse_from_str(&s, "%Y-%m-%d")
+                        .map_err(|e| anyhow::anyhow!("invalid --date `{s}`: {e}"))?,
+                    None => chrono::Utc::now().date_naive(),
+                };
+                render(spec_register(SpecRegisterOptions {
+                    project_root: root,
+                    feature: a.feature,
+                    scope: a.scope,
+                    from_task: a.from_task,
+                    date,
+                })?);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Resolve `--slug` with fallback to `.ark/tasks/.current`.
+fn resolve_slug(root: &Path, explicit: Option<String>) -> anyhow::Result<String> {
+    if let Some(slug) = explicit {
+        return Ok(slug);
+    }
+    let current = Layout::new(root).tasks_current();
+    match current.read_text_optional()? {
+        Some(text) if !text.trim().is_empty() => Ok(text.trim().to_string()),
+        _ => Err(ark_core::Error::NoCurrentTask { path: current }.into()),
+    }
+}

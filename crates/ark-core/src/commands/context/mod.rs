@@ -217,7 +217,11 @@ mod tests {
             ("commands/load.rs", include_str!("../load.rs")),
             ("commands/unload.rs", include_str!("../unload.rs")),
             ("commands/remove.rs", include_str!("../remove.rs")),
-            ("commands/upgrade.rs", include_str!("../upgrade.rs")),
+            ("commands/upgrade/mod.rs", include_str!("../upgrade/mod.rs")),
+            (
+                "commands/upgrade/plan.rs",
+                include_str!("../upgrade/plan.rs"),
+            ),
             ("commands/mod.rs", include_str!("../mod.rs")),
             ("commands/agent/mod.rs", include_str!("../agent/mod.rs")),
             ("commands/agent/state.rs", include_str!("../agent/state.rs")),

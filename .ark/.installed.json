@@ -1,6 +1,6 @@
 {
-  "version": "0.1.2",
-  "installed_at": "2026-04-29T09:35:15.254845Z",
+  "version": "0.1.3",
+  "installed_at": "2026-04-30T10:44:56.111111Z",
   "files": [
     ".claude/commands/ark/archive.md",
     ".claude/commands/ark/design.md",
@@ -40,7 +40,7 @@
     ".ark/.gitignore": "7f45f34d37a857d58e77ce365b1d622fc59e11e606da159dd24c6baf6b309eb4",
     ".ark/config.toml": "19cdc2ada8d80d2f51eb6fac26894482051fcb254d0f2bf523c1f5e8a847c208",
     ".ark/specs/INDEX.md": "0e404d5c47fd687afe97aa94f55ade016ecb729b671a7a97f1ccd9f55e67c246",
-    ".ark/specs/features/INDEX.md": "bf15e7f6d7d69b77069753f0de093ce0575dee58818942d1d6845b6ee011393e",
+    ".ark/specs/features/INDEX.md": "0383bdcb4f0a69b29b12c6240281fea53077b8b3c4f3617c3d639d0a4064b060",
     ".ark/specs/project/INDEX.md": "4159bba123b9aa9d3fe3bce35582eb88d0b7da2fdb4d6e69bc8236f76814a2a2",
     ".ark/templates/PLAN.md": "9ed190a058dd289299d1ff7dfe09908df88d7e2035ed4798bf9d4e531cc94bd8",
     ".ark/templates/PRD.md": "ec3ff89b872f90084379eba7bf97ddf6cdc9bcb7d175be663cd0a1df07e24dae",
@@ -51,7 +51,7 @@
     ".claude/commands/ark/archive.md": "04089f57144e17bc75a6266ea8baaa140c5107afa87275fa55bd4967342605f2",
     ".claude/commands/ark/design.md": "89c3d9bdb855e55459cb2d28f10ffc82b773a39fc8871e1d7f262b4d53cd3e93",
     ".claude/commands/ark/quick.md": "420e2d2d8c1e8a8e00f5ffce0e2050d107dfa03e78e7f6780eebef7cb05960ef",
-    ".claude/commands/ark/record.md": "d5dc4d51e64b1ce7694666dfee1a5a84f3f68b4a9e4288905f1e3b1142b64706",
+    ".claude/commands/ark/record.md": "023cbeeafeb6a5bae7c00f45bff9c121ae5d6addf24306b0769a3b9502596195",
     ".codex/skills/ark-archive/SKILL.md": "1aa79abe48dbed9c51d60c759d17fe66ada08e8592e408b74887292c44784aa9",
     ".codex/skills/ark-design/SKILL.md": "c106365b6778cdd5ba74e2a1e81a116bce772cbc36afd0787936bee4d2ad46a8",
     ".codex/skills/ark-quick/SKILL.md": "bb5938b5f21e08d2302563275a3e03e81c370aaf65dffc0d32137950c7576606",
