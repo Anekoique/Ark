@@ -1,0 +1,11 @@
+id = "ark-book"
+title = "add ark-book"
+tier = "standard"
+phase = "archived"
+iteration = 0
+created_at = "2026-04-29T12:27:14.420682Z"
+updated_at = "2026-04-30T03:25:06.855669Z"
+archived_at = "2026-04-30T03:25:06.855669Z"
+branch = "feat/ark-book"
+worktree_path = ".ark/worktrees/feat/ark-book"
+base_branch = "main"

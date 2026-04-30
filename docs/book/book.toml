@@ -1,0 +1,16 @@
+[book]
+title = "Ark"
+description = "An agent harness and development workflow for AI-driven programming tasks."
+authors = ["Anekoique"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/Anekoique/ark"
+edit-url-template = "https://github.com/Anekoique/ark/edit/main/docs/book/{path}"
+
+[output.html.search]
+enable = true
+limit-results = 30
