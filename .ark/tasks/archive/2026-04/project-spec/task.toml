@@ -1,0 +1,12 @@
+id = "project-spec"
+title = "add project-spec"
+tier = "deep"
+phase = "archived"
+iteration = 2
+max_iterations = 3
+created_at = "2026-04-30T09:28:20.258495Z"
+updated_at = "2026-04-30T10:42:51.049681Z"
+archived_at = "2026-04-30T10:42:51.049681Z"
+branch = "feat/project-spec"
+worktree_path = ".ark/worktrees/feat/project-spec"
+base_branch = "main"
