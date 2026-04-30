@@ -5,10 +5,11 @@
 //! `.ark/tasks/.current` at the new slug. Refuses to overwrite an existing
 //! task directory.
 //!
-//! When `opts.worktree.is_some()`, the worktree-first protocol kicks in
-//! (worktree-support C-2): create a git worktree under `.ark/worktrees/`
-//! first, then scaffold the task dir *inside the worktree*. The parent
-//! checkout's `.ark/tasks/` is never modified by this path.
+//! When `opts.worktree.is_some()`, creation uses the worktree-first protocol.
+//!
+//! Ark creates a git worktree under `.ark/worktrees/` first, then scaffolds the
+//! task dir *inside the worktree*. The parent checkout's `.ark/tasks/` is never
+//! modified by this path.
 
 use std::{
     fmt,
@@ -35,18 +36,24 @@ use crate::{
     layout::Layout,
 };
 
+/// Options for creating a new Ark task.
 #[derive(Debug, Clone)]
 pub struct TaskNewOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// New task slug.
     pub slug: String,
+    /// Human-readable task title.
     pub title: String,
+    /// Workflow tier for the task.
     pub tier: Tier,
-    /// When `Some`, run the worktree-first protocol (worktree-support G-3).
+    /// When `Some`, run the worktree-first protocol.
     pub worktree: Option<TaskNewWorktree>,
 }
 
-/// Per-invocation worktree settings for `task new --worktree`.
-/// Validated by [`task_new`] (worktree-support C-4, C-5, C-6).
+/// Stores per-invocation worktree settings for `task new --worktree`.
+///
+/// Validated by [`task_new`].
 #[derive(Debug, Clone, Default)]
 pub struct TaskNewWorktree {
     /// `--branch-type <type>` — one of `BRANCH_TYPES`. `None` → `cfg.branch_prefix`.
@@ -55,18 +62,27 @@ pub struct TaskNewWorktree {
     pub branch_override: Option<String>,
 }
 
+/// Summary of a new task creation.
 #[derive(Debug, Clone)]
 pub struct TaskNewSummary {
+    /// Created task slug.
     pub slug: String,
+    /// Workflow tier for the created task.
     pub tier: Tier,
+    /// Path to the created task directory.
     pub task_dir: PathBuf,
+    /// Worktree details when the task was created with `--worktree`.
     pub worktree: Option<TaskNewWorktreeSummary>,
 }
 
+/// Summary of worktree state created for a new task.
 #[derive(Debug, Clone)]
 pub struct TaskNewWorktreeSummary {
+    /// Branch checked out in the worktree.
     pub branch: String,
+    /// Path to the created worktree checkout.
     pub worktree_path: PathBuf,
+    /// Base branch or detached HEAD used to create the worktree.
     pub base_branch: String,
 }
 
@@ -92,6 +108,7 @@ impl fmt::Display for TaskNewSummary {
     }
 }
 
+/// Creates a new task directory and optional task worktree.
 pub fn task_new(opts: TaskNewOptions) -> Result<TaskNewSummary> {
     validate_slug(&opts.slug)?;
     validate_title(&opts.title)?;
@@ -102,8 +119,7 @@ pub fn task_new(opts: TaskNewOptions) -> Result<TaskNewSummary> {
     }
 }
 
-/// The original (pre-worktree-support) flow: scaffold the task dir on the
-/// parent checkout. Used when `--worktree` is absent.
+/// Scaffolds the task directory on the parent checkout, without worktree creation.
 fn task_new_no_worktree(opts: TaskNewOptions) -> Result<TaskNewSummary> {
     let layout = Layout::new(&opts.project_root);
     let task_dir = layout.task_dir(&opts.slug);
@@ -128,18 +144,18 @@ fn task_new_no_worktree(opts: TaskNewOptions) -> Result<TaskNewSummary> {
     })
 }
 
-/// Worktree-first flow per worktree-support G-3 / C-2.
+/// Runs the worktree-first creation flow.
 fn task_new_with_worktree(opts: TaskNewOptions, wt: TaskNewWorktree) -> Result<TaskNewSummary> {
     let layout = Layout::new(&opts.project_root);
 
-    // C-13: reject when invoked from inside an existing `.ark/worktrees/<branch>/` tree.
+    // Reject when invoked from inside an existing `.ark/worktrees/<branch>/` tree.
     if is_under_worktrees(layout.root()) {
         return Err(Error::NestedWorktreeForbidden {
             current_root: layout.root().to_path_buf(),
         });
     }
 
-    // F-8: refuse to silently shadow an existing parent task dir.
+    // Refuse to silently shadow an existing parent task dir.
     let parent_task_dir = layout.task_dir(&opts.slug);
     if parent_task_dir.exists() {
         return Err(Error::TaskExistsOnParent {
@@ -150,7 +166,7 @@ fn task_new_with_worktree(opts: TaskNewOptions, wt: TaskNewWorktree) -> Result<T
 
     let cfg = WorktreeConfig::load_or_default(&layout)?;
 
-    // F-8 cross-worktree extension: also refuse if some existing worktree
+    // Cross-worktree extension: also refuse if some existing worktree
     // already owns the slug. Without this guard, a second `task new
     // --worktree --slug foo --branch other/foo` would succeed and leave
     // discovery ambiguous (find_worktree_for_slug returns the first match).
@@ -171,7 +187,7 @@ fn task_new_with_worktree(opts: TaskNewOptions, wt: TaskNewWorktree) -> Result<T
     )?;
     let base_branch = resolve_base_branch(layout.root())?;
 
-    // C-5: reject malformed branch names early, before any side effects.
+    // Reject malformed branch names early, before any side effects.
     let ref_check = run_git(&["check-ref-format", "--branch", &branch], layout.root())?;
     if !ref_check.is_success() {
         return Err(Error::InvalidBranchName {
@@ -180,12 +196,12 @@ fn task_new_with_worktree(opts: TaskNewOptions, wt: TaskNewWorktree) -> Result<T
         });
     }
 
-    // F-4: refuse if the branch is checked out elsewhere.
+    // Refuse if the branch is checked out elsewhere.
     if let Some(where_at) = branch_in_use(layout.root(), &branch)? {
         return Err(Error::BranchInUse { branch, where_at });
     }
 
-    // F-6: refuse if the worktree path already exists on disk.
+    // Refuse if the worktree path already exists on disk.
     let worktree_path = cfg.resolve_worktree_dir(&layout, &branch);
     if worktree_path.exists() {
         return Err(Error::WorktreeDirExists {
@@ -230,7 +246,7 @@ fn scaffold_inside_worktree(
     task_dir.ensure_dir()?;
     copy_template("PRD", &task_dir.join("PRD.md"))?;
 
-    // C-21: store worktree_path as project-relative for snapshot portability.
+    // Store worktree_path as project-relative for snapshot portability.
     let relative_path = worktree_path
         .strip_prefix(project_root)
         .map(Path::to_path_buf)
@@ -246,7 +262,7 @@ fn scaffold_inside_worktree(
         .tasks_current()
         .write_bytes(format!("{}\n", opts.slug).as_bytes())?;
 
-    // F-2: hard-fail on missing copy source.
+    // Hard-fail on missing copy source so partial worktrees never escape creation.
     for rel in &cfg.copy {
         let src = project_root.join(rel);
         if !src.exists() {
@@ -259,7 +275,7 @@ fn scaffold_inside_worktree(
         dst.write_bytes(&src.read_bytes()?)?;
     }
 
-    // F-3: post_create hooks run sequentially; abort on first non-zero.
+    // Run post-creation hooks sequentially; abort on the first non-zero exit.
     for cmd in &cfg.post_create {
         let exit_code = run_shell(cmd, worktree_path)?;
         if exit_code != 0 {
@@ -303,7 +319,7 @@ fn build_task_toml(opts: &TaskNewOptions) -> TaskToml {
     }
 }
 
-/// True iff `root` resolves under any `.ark/worktrees/...` path. C-13 guard.
+/// Returns `true` if `root` resolves under any `.ark/worktrees/` path.
 fn is_under_worktrees(root: &Path) -> bool {
     root.components()
         .map(|c| c.as_os_str())
@@ -312,8 +328,9 @@ fn is_under_worktrees(root: &Path) -> bool {
         .any(|w| w[0] == ".ark" && w[1] == "worktrees")
 }
 
-/// F-17: detached-HEAD fallback. Try `symbolic-ref --short HEAD` first; on
-/// failure, fall back to `git rev-parse HEAD` and store the SHA verbatim.
+/// Resolves the current branch name, falling back to the commit SHA on a detached HEAD.
+///
+/// Tries `symbolic-ref --short HEAD` first; on failure, falls back to `git rev-parse HEAD`.
 fn resolve_base_branch(root: &Path) -> Result<String> {
     let sym = run_git(&["symbolic-ref", "--short", "HEAD"], root)?;
     if sym.is_success() {
@@ -321,7 +338,7 @@ fn resolve_base_branch(root: &Path) -> Result<String> {
     }
     let rev = run_git(&["rev-parse", "HEAD"], root)?;
     if !rev.is_success() {
-        // F-16: unborn HEAD — both fail.
+        // Both symbolic-ref and rev-parse fail on an unborn HEAD.
         return Err(git_error(
             root,
             "could not resolve HEAD (unborn?)",
@@ -331,8 +348,7 @@ fn resolve_base_branch(root: &Path) -> Result<String> {
     Ok(rev.stdout.trim().to_string())
 }
 
-/// Returns `Some(path)` if `branch` is currently checked out by another
-/// worktree, else `None`. F-4 detection.
+/// Returns the path of another worktree currently using `branch`.
 fn branch_in_use(root: &Path, branch: &str) -> Result<Option<PathBuf>> {
     Ok(parse_git_worktree_list(root)?
         .into_iter()
@@ -340,8 +356,10 @@ fn branch_in_use(root: &Path, branch: &str) -> Result<Option<PathBuf>> {
         .map(|e| e.path))
 }
 
-/// Best-effort rollback per F-1. Errors during rollback are swallowed —
-/// the original error is what the user sees.
+/// Performs best-effort worktree rollback.
+///
+/// Errors during rollback are swallowed; the original error is what the user
+/// sees.
 fn rollback_worktree(root: &Path, worktree_path: &Path, branch: &str) {
     let Some(wt_str) = worktree_path.to_str() else {
         return;
@@ -350,7 +368,7 @@ fn rollback_worktree(root: &Path, worktree_path: &Path, branch: &str) {
     let _ = run_git(&["branch", "-D", branch], root);
 }
 
-/// Wrap a non-zero git exit as `Error::Io` carrying the trimmed stderr.
+/// Wraps a non-zero git exit as [`Error::Io`] carrying the trimmed stderr.
 fn git_error(path: &Path, action: &str, stderr: &str) -> Error {
     Error::Io {
         path: path.to_path_buf(),
@@ -364,8 +382,9 @@ mod tests {
 
     use super::*;
 
-    /// Helper: initialize a temp git repo with one commit so worktree-add
-    /// works. Returns the repo root.
+    /// Initializes a temp git repo with one commit.
+    ///
+    /// The initial commit lets `git worktree add` run. Returns the repo root.
     fn init_repo() -> tempfile::TempDir {
         let tmp = tempfile::tempdir().unwrap();
         run_git(&["init", "--quiet"], tmp.path()).unwrap();
@@ -486,7 +505,10 @@ mod tests {
         assert_eq!(toml.max_iterations, Some(3));
     }
 
-    /// V-IT-1: task_new_worktree_happy_path.
+    /// Verifies that `task new --worktree` scaffolds inside the worktree.
+    ///
+    /// The parent checkout is untouched, and `task.toml` stores `branch`,
+    /// `base_branch`, and a project-relative `worktree_path`.
     #[test]
     fn worktree_happy_path() {
         let tmp = init_repo();
@@ -517,7 +539,7 @@ mod tests {
         let toml = TaskToml::load(&wt_task_dir).unwrap();
         assert_eq!(toml.branch.as_deref(), Some("feat/foo"));
         assert_eq!(toml.base_branch.as_deref(), Some("main"));
-        // C-21: project-relative path stored.
+        // Project-relative path stored.
         assert_eq!(
             toml.worktree_path.as_deref(),
             Some(Path::new(".ark/worktrees/feat/foo"))
@@ -530,7 +552,7 @@ mod tests {
         assert_eq!(wt_sum.base_branch, "main");
     }
 
-    /// V-IT-19: task_exists_on_parent_rejected.
+    /// Verifies same-slug parent task rejection for worktree tasks.
     #[test]
     fn worktree_rejects_when_parent_task_dir_exists() {
         let tmp = init_repo();
@@ -555,8 +577,9 @@ mod tests {
         assert!(matches!(err, Error::TaskExistsOnParent { .. }));
     }
 
-    /// V-IT-3: task_new_worktree_rejected_inside_worktree.
-    /// Simulates: cwd is `<repo>/.ark/worktrees/feat/foo` — must reject.
+    /// Verifies nested worktree rejection.
+    ///
+    /// The current root resolves under `.ark/worktrees/`.
     #[test]
     fn worktree_rejects_when_cwd_is_inside_worktree() {
         let tmp = init_repo();
@@ -574,11 +597,14 @@ mod tests {
         assert!(matches!(err, Error::NestedWorktreeForbidden { .. }));
     }
 
-    /// V-IT-7: task_new_worktree_copy_missing_source_hard_fails.
+    /// Verifies missing copy-source rollback.
+    ///
+    /// A missing `[worktree].copy` source aborts with
+    /// `WorktreeCopySourceMissing` and rolls back the worktree dir.
     #[test]
     fn worktree_copy_missing_source_hard_fails_and_rolls_back() {
         let tmp = init_repo();
-        // Configure copy = [".env"] but don't create .env.
+        // Configure copy = [".env"] but do not create .env.
         tmp.path().join(".ark").ensure_dir().unwrap();
         tmp.path()
             .join(".ark/config.toml")
@@ -601,7 +627,10 @@ mod tests {
         );
     }
 
-    /// V-IT-2: task_new_worktree_rollback_on_post_create.
+    /// Verifies failing post-create rollback.
+    ///
+    /// A failing `[worktree].post_create` command rolls back the worktree dir
+    /// and returns `PostCreateHookFailed`.
     #[test]
     fn worktree_rollback_on_post_create_failure() {
         let tmp = init_repo();
@@ -623,7 +652,7 @@ mod tests {
         assert!(!tmp.path().join(".ark/worktrees/feat/foo").exists());
     }
 
-    /// V-IT-8: task_new_worktree_post_create_runs_in_worktree.
+    /// Verifies that post-create commands run in the worktree.
     #[test]
     fn worktree_post_create_runs_in_worktree() {
         let tmp = init_repo();
@@ -649,7 +678,7 @@ mod tests {
         );
     }
 
-    /// V-IT-17: task_new_worktree_invalid_branch_rejected.
+    /// Verifies invalid branch rejection before side effects.
     #[test]
     fn worktree_invalid_branch_rejected() {
         let tmp = init_repo();
@@ -667,7 +696,7 @@ mod tests {
         assert!(matches!(err, Error::InvalidBranchName { .. }));
     }
 
-    /// V-IT-18: task_new_worktree_dir_exists_rejected.
+    /// Verifies existing worktree path rejection.
     #[test]
     fn worktree_dir_exists_rejected() {
         let tmp = init_repo();
@@ -688,7 +717,7 @@ mod tests {
         assert!(matches!(err, Error::WorktreeDirExists { .. }));
     }
 
-    /// V-IT-10: task_new_without_worktree_makes_no_worktree_changes.
+    /// Verifies that non-worktree tasks leave `.ark/worktrees/` empty.
     #[test]
     fn task_new_without_worktree_writes_nothing_under_worktrees_dir() {
         let tmp = tempfile::tempdir().unwrap();
@@ -707,8 +736,10 @@ mod tests {
         );
     }
 
-    /// PR#8 fix: a second `task new --worktree --slug foo` with a different
-    /// branch must reject — otherwise discovery (cleanup/list) is ambiguous.
+    /// Verifies duplicate-slug rejection across worktrees.
+    ///
+    /// A second `task new --worktree --slug foo` with a different branch is
+    /// rejected to keep worktree discovery unambiguous.
     #[test]
     fn worktree_rejects_duplicate_slug_across_worktrees() {
         let tmp = init_repo();
@@ -721,8 +752,8 @@ mod tests {
             worktree: Some(TaskNewWorktree::default()),
         })
         .unwrap();
-        // Parent's task dir is empty (worktree-first), so the F-8 parent guard
-        // doesn't fire. The new cross-worktree guard must.
+        // The parent's task dir is empty under worktree-first, so the parent-slug guard
+        // does not fire; the cross-worktree guard must catch this.
         let err = task_new(TaskNewOptions {
             project_root: tmp.path().to_path_buf(),
             slug: "foo".into(),
@@ -737,9 +768,7 @@ mod tests {
         assert!(matches!(err, Error::TaskExistsOnParent { .. }));
     }
 
-    /// PR#8 fix: `[worktree].worktree_dir` in `.ark/config.toml` must control
-    /// where worktrees land — previously it was loaded but ignored, so the
-    /// layout default always won.
+    /// Verifies that `[worktree].worktree_dir` controls worktree placement.
     #[test]
     fn worktree_honors_custom_worktree_dir_from_config() {
         let tmp = init_repo();
@@ -768,7 +797,7 @@ mod tests {
         );
     }
 
-    /// Branch-type override: --branch-type fix → branch is `fix/<slug>`.
+    /// Verifies that `--branch-type fix` produces the branch `fix/<slug>`.
     #[test]
     fn worktree_branch_type_override() {
         let tmp = init_repo();

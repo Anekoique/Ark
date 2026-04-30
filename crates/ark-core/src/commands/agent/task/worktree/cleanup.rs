@@ -1,6 +1,7 @@
-//! `ark agent task worktree cleanup` — remove the worktree dir, optionally
-//! delete the branch. Discovery via `git worktree list --porcelain`
-//! (worktree-support C-20).
+//! `ark agent task worktree cleanup` removes worktree-backed task checkouts.
+//!
+//! The command can optionally delete the branch. Discovery uses
+//! `git worktree list --porcelain`.
 
 use std::{
     fmt,
@@ -17,19 +18,29 @@ use crate::{
     layout::Layout,
 };
 
+/// Options for removing a task-bound worktree.
 #[derive(Debug, Clone)]
 pub struct WorktreeCleanupOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// Task slug whose worktree should be removed.
     pub slug: String,
+    /// Reports whether the backing branch should also be deleted.
     pub delete_branch: bool,
+    /// Reports whether dirty worktrees and branch deletion should be forced.
     pub force: bool,
 }
 
+/// Summary of a task-bound worktree cleanup.
 #[derive(Debug, Clone)]
 pub struct WorktreeCleanupSummary {
+    /// Task slug whose worktree was removed.
     pub slug: String,
+    /// Branch associated with the removed worktree.
     pub branch: Option<String>,
+    /// Reports whether the branch was deleted.
     pub branch_deleted: bool,
+    /// Path to the removed worktree checkout.
     pub worktree_path: PathBuf,
 }
 
@@ -50,6 +61,7 @@ impl fmt::Display for WorktreeCleanupSummary {
     }
 }
 
+/// Removes a task-bound worktree and optionally deletes its branch.
 pub fn worktree_cleanup(opts: WorktreeCleanupOptions) -> Result<WorktreeCleanupSummary> {
     validate_slug(&opts.slug)?;
 
@@ -57,14 +69,14 @@ pub fn worktree_cleanup(opts: WorktreeCleanupOptions) -> Result<WorktreeCleanupS
     let cfg = WorktreeConfig::load_or_default(&layout)?;
     let worktrees_dir = cfg.resolve_worktrees_dir(&layout);
 
-    // C-20: discover via `git worktree list --porcelain`. Missing → F-15
-    // (script-safe — second cleanup of the same slug returns this).
+    // Discovery uses `git worktree list --porcelain`. Missing maps to
+    // `WorktreeNotFound`, which keeps repeated cleanup script-safe.
     let Some((wt_path, toml)) = find_worktree_for_slug(layout.root(), &worktrees_dir, &opts.slug)?
     else {
         return Err(Error::WorktreeNotFound { slug: opts.slug });
     };
 
-    // F-10: dirty check unless --force. A non-zero exit (broken repo,
+    // Dirty check unless --force. A non-zero exit (broken repo,
     // permission issue, stale path) must NOT be treated as clean — surface
     // it instead of silently proceeding to remove the worktree.
     if !opts.force {
@@ -98,7 +110,7 @@ pub fn worktree_cleanup(opts: WorktreeCleanupOptions) -> Result<WorktreeCleanupS
         ));
     }
 
-    // F-11: surface git's error for unmerged branches; user re-runs with
+    // Surface git's error for unmerged branches; user re-runs with
     // --force to escalate to `-D`.
     let mut branch_deleted = false;
     if opts.delete_branch
@@ -116,7 +128,7 @@ pub fn worktree_cleanup(opts: WorktreeCleanupOptions) -> Result<WorktreeCleanupS
         branch_deleted = true;
     }
 
-    // C-15: prune empty parent dirs up to (not including) worktrees_dir().
+    // Prune empty parent dirs up to (not including) worktrees_dir().
     prune_empty_parents(&wt_path, &worktrees_dir)?;
 
     Ok(WorktreeCleanupSummary {
@@ -127,7 +139,7 @@ pub fn worktree_cleanup(opts: WorktreeCleanupOptions) -> Result<WorktreeCleanupS
     })
 }
 
-/// Wrap a non-zero git exit as `Error::Io` carrying the trimmed stderr.
+/// Wraps a non-zero git exit as [`Error::Io`] carrying the trimmed stderr.
 fn git_error(path: &Path, action: &str, stderr: &str) -> Error {
     Error::Io {
         path: path.to_path_buf(),
@@ -135,12 +147,14 @@ fn git_error(path: &Path, action: &str, stderr: &str) -> Error {
     }
 }
 
-/// Walk up from `start.parent()` toward `stop_at`, removing each empty
-/// directory. Does not remove `stop_at` itself. Stops as soon as a dir is
-/// non-empty or we reach `stop_at`.
+/// Removes empty parent directories until `stop_at`.
+///
+/// Walks up from `start.parent()` toward `stop_at` without removing
+/// `stop_at` itself. Stops as soon as a dir is non-empty or reaches
+/// `stop_at`.
 ///
 /// macOS canonicalizes `/tmp` → `/private/tmp`; `git worktree remove` reports
-/// the canonical path while `Layout` paths aren't canonicalized. Comparing
+/// the canonical path while `Layout` paths are not canonicalized. Comparing
 /// canonical forms keeps the loop bounded.
 fn prune_empty_parents(start: &Path, stop_at: &Path) -> Result<()> {
     let canonicalize = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
@@ -198,15 +212,20 @@ mod tests {
         .unwrap();
     }
 
-    /// Commit the scaffolding so cleanup without --force succeeds. Mirrors
-    /// the user's typical workflow: scaffold → commit → work → merge → cleanup.
+    /// Commits scaffolding so cleanup without `--force` succeeds.
+    ///
+    /// Mirrors the user's typical workflow: scaffold → commit → work → merge
+    /// → cleanup.
     fn commit_scaffolding(tmp: &std::path::Path, slug: &str) {
         let wt = tmp.join(".ark/worktrees/feat").join(slug);
         run_git(&["add", "."], &wt).unwrap();
         run_git(&["commit", "-m", "scaffold", "--quiet"], &wt).unwrap();
     }
 
-    /// V-IT-4: cleanup happy path with --delete-branch.
+    /// Verifies cleanup with `--delete-branch`.
+    ///
+    /// The worktree dir is removed, empty parent dirs are pruned up to
+    /// `.ark/worktrees/`, and the branch is deleted.
     #[test]
     fn cleanup_happy_path_with_delete_branch() {
         let tmp = init_repo();
@@ -225,7 +244,7 @@ mod tests {
 
         assert!(!wt.exists(), "worktree dir should be gone");
         assert!(summary.branch_deleted);
-        // C-15: empty parent `feat/` pruned, but `worktrees/` stays.
+        // Empty parent `feat/` pruned, but `worktrees/` stays.
         assert!(!tmp.path().join(".ark/worktrees/feat").exists());
         assert!(tmp.path().join(".ark/worktrees").exists());
         // Branch gone.
@@ -233,9 +252,10 @@ mod tests {
         assert!(branches.stdout.trim().is_empty());
     }
 
-    /// V-IT-5: cleanup on dirty without --force is rejected. The scaffolding
-    /// from `task new --worktree` itself is uncommitted; that alone trips
-    /// the dirty check (which is the contract — user must commit/--force).
+    /// Verifies that cleanup of a dirty worktree without `--force` is rejected.
+    ///
+    /// The scaffolding from `task new --worktree` is uncommitted, which alone trips
+    /// the dirty check (the contract is: commit or `--force`).
     #[test]
     fn cleanup_on_dirty_without_force_rejected() {
         let tmp = init_repo();
@@ -253,7 +273,7 @@ mod tests {
         assert!(wt.is_dir(), "dirty cleanup should not have removed");
     }
 
-    /// V-IT-6: idempotence via second-run returns WorktreeNotFound.
+    /// Verifies repeated cleanup returns `WorktreeNotFound`.
     #[test]
     fn cleanup_idempotent_via_second_run() {
         let tmp = init_repo();
@@ -279,7 +299,7 @@ mod tests {
         assert!(matches!(err, Error::WorktreeNotFound { .. }));
     }
 
-    /// V-IT-11: list round-trips two worktreed tasks + a non-worktreed one.
+    /// Verifies that `worktree list` skips non-worktree tasks.
     #[test]
     fn worktree_list_round_trip() {
         let tmp = init_repo();
@@ -306,7 +326,7 @@ mod tests {
         assert!(slugs.contains(&"beta"));
     }
 
-    /// V-IT-12: zero rows → empty Display output.
+    /// Verifies that zero rows produces empty `Display` output (no header).
     #[test]
     fn worktree_list_zero_rows_silent() {
         let tmp = init_repo();
@@ -318,7 +338,10 @@ mod tests {
         assert_eq!(format!("{summary}"), "");
     }
 
-    /// V-IT-9: archive does not modify the worktree dir or branch.
+    /// Verifies that archive leaves worktree state intact.
+    ///
+    /// `worktree cleanup` frees the worktree dir and branch; `archive` never
+    /// does.
     #[test]
     fn archive_leaves_worktree_intact() {
         use crate::commands::agent::task::{
@@ -351,7 +374,7 @@ mod tests {
         })
         .unwrap();
 
-        // C-18: worktree dir + branch survive archive.
+        // Worktree dir + branch survive archive.
         assert!(wt.is_dir(), "worktree dir must survive archive");
         let branches = run_git(&["branch", "--list", "feat/foo"], tmp.path()).unwrap();
         assert!(

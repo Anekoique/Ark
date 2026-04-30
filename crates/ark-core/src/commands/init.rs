@@ -4,7 +4,7 @@
 //! platform's managed block (e.g. `CLAUDE.md`, `AGENTS.md`), records every
 //! artifact in `.ark/.installed.json` so later commands can clean up without
 //! touching user work, and re-applies each platform's `SessionStart` hook
-//! entry (per ark-context C-17 / codex-support C-11).
+//! entry.
 
 use std::{
     fmt,
@@ -23,25 +23,31 @@ use crate::{
     templates::{ARK_TEMPLATES, walk},
 };
 
+/// Options for scaffolding Ark into a project.
 #[derive(Debug, Clone)]
 pub struct InitOptions {
+    /// Project root where Ark should be initialized.
     pub project_root: PathBuf,
+    /// File write behavior for template extraction.
     pub mode: WriteMode,
-    /// Platforms to install. Defaults to all `PLATFORMS`. Empty selections are
-    /// rejected at the CLI layer (see `resolve_platforms`); the library
-    /// honors whatever the caller passes (an empty set yields a Claude-and-
-    /// Codex-free install with only `.ark/` artifacts).
+    /// Platforms to install. Defaults to all of [`PLATFORMS`].
+    ///
+    /// Empty selections are rejected at the CLI layer; the library honors
+    /// whatever the caller passes (an empty set yields a platform-free
+    /// install with only `.ark/` artifacts).
     pub platforms: Vec<&'static Platform>,
-    /// Workspace developer name to bootstrap (workspace G-18). When `Some`,
-    /// init runs `workspace_init` after platform extraction, creating
-    /// `.ark/.developer` and `.ark/workspace/<name>/`. `None` skips identity
-    /// entirely (the user can run `ark agent workspace init --name <x>`
-    /// later). Library default is `None`; the CLI adapter resolves the
-    /// value via interactive prompt or `--developer`/`--no-developer` flags.
+    /// Workspace developer name to bootstrap.
+    ///
+    /// When `Some`, init runs [`workspace_init`] after platform extraction,
+    /// creating `.ark/.developer` and `.ark/workspace/<name>/`. When `None`,
+    /// identity is skipped — callers can run `ark agent workspace init
+    /// --name <x>` later. The CLI adapter resolves this via interactive
+    /// prompt or `--developer` / `--no-developer` flags.
     pub developer: Option<String>,
 }
 
 impl InitOptions {
+    /// Creates init options for `project_root`.
     pub fn new(project_root: impl Into<PathBuf>) -> Self {
         Self {
             project_root: project_root.into(),
@@ -51,19 +57,21 @@ impl InitOptions {
         }
     }
 
+    /// Sets the template write mode.
     pub fn with_mode(mut self, mode: WriteMode) -> Self {
         self.mode = mode;
         self
     }
 
-    /// Override the default (all-platforms) selection. Useful for tests and
-    /// for the CLI's per-flag opt-in behavior.
+    /// Overrides the default (all-platforms) selection.
+    ///
+    /// Useful for tests and for the CLI's per-flag opt-in behavior.
     pub fn with_platforms(mut self, platforms: Vec<&'static Platform>) -> Self {
         self.platforms = platforms;
         self
     }
 
-    /// Bootstrap the workspace identity at init time (workspace G-18).
+    /// Bootstraps the workspace identity at init time.
     pub fn with_developer(mut self, name: impl Into<String>) -> Self {
         self.developer = Some(name.into());
         self
@@ -73,16 +81,22 @@ impl InitOptions {
 /// Counts of per-file outcomes produced by `init`.
 #[derive(Debug, Default, Clone)]
 pub struct InitSummary {
+    /// Number of files created.
     pub created: usize,
+    /// Number of files already matching the desired content.
     pub unchanged: usize,
+    /// Number of existing files preserved.
     pub skipped: usize,
+    /// Number of files overwritten.
     pub overwritten: usize,
-    /// Developer name bootstrapped at init time (workspace G-18). `None` if
-    /// identity was skipped (`InitOptions::developer == None`).
+    /// Developer name bootstrapped at init time.
+    ///
+    /// `None` if identity was skipped (`InitOptions::developer == None`).
     pub developer: Option<String>,
 }
 
 impl InitSummary {
+    /// Returns the total number of file outcomes.
     pub fn total(&self) -> usize {
         self.created + self.unchanged + self.skipped + self.overwritten
     }
@@ -122,8 +136,7 @@ impl fmt::Display for InitSummary {
     }
 }
 
-/// Scaffold a fresh Ark installation into `opts.project_root`, or refresh an
-/// existing one with an additional platform.
+/// Scaffolds or refreshes an Ark installation.
 ///
 /// Safe to re-run: files that already match are left untouched. Files that
 /// differ are skipped unless `opts.mode == WriteMode::Force`. Each platform
@@ -132,13 +145,12 @@ impl fmt::Display for InitSummary {
 ///
 /// Additive on the manifest: if a manifest already exists, this call only
 /// rewrites entries under the platform-neutral `.ark/` tree and under each
-/// selected platform's `dest_dir`. Other-platform entries (e.g. Claude
-/// artifacts when `opts.platforms = [Codex]`) are preserved. Per
-/// codex-support G-14: `ark init --codex` on a Claude-installed project
-/// adds Codex without forgetting Claude.
+/// selected platform's `dest_dir`. Other-platform entries are preserved, so
+/// `ark init --codex` on a Claude-installed project adds Codex without
+/// forgetting Claude.
 pub fn init(opts: InitOptions) -> Result<InitSummary> {
-    // Validate identity *first* (workspace G-18 / V-UT-14): a malformed
-    // `--developer` should fail before we scaffold any platform files.
+    // Validate identity *first*: a malformed `--developer` should fail
+    // before we scaffold any platform files.
     if let Some(name) = &opts.developer {
         identity::validate_developer_name(name)?;
     }
@@ -177,9 +189,9 @@ pub fn init(opts: InitOptions) -> Result<InitSummary> {
 
     manifest.write(layout.root())?;
 
-    // Workspace identity bootstrap (workspace G-18). Runs after manifest
-    // write so a `workspace_init` failure doesn't roll back the platform
-    // scaffolding — the user can re-run `ark agent workspace init`.
+    // Workspace identity bootstrap. Runs after manifest write so a
+    // `workspace_init` failure does not roll back the platform scaffolding —
+    // the user can re-run `ark agent workspace init`.
     if let Some(name) = opts.developer {
         workspace_init(WorkspaceInitOptions {
             project_root: opts.project_root.clone(),
@@ -191,9 +203,10 @@ pub fn init(opts: InitOptions) -> Result<InitSummary> {
     Ok(summary)
 }
 
-/// Drop every manifest entry whose path starts with `prefix`. Used before
-/// re-extracting a tree so templates removed between versions don't linger
-/// as ghost manifest rows.
+/// Drops every manifest entry whose path starts with `prefix`.
+///
+/// Called before re-extracting a tree so templates removed between
+/// versions do not linger as ghost manifest rows.
 fn drop_manifest_entries_under(manifest: &mut Manifest, prefix: &str) {
     let prefix_path = Path::new(prefix);
     let stale: Vec<PathBuf> = manifest
@@ -207,9 +220,11 @@ fn drop_manifest_entries_under(manifest: &mut Manifest, prefix: &str) {
     }
 }
 
-/// Extract every file in `tree` under `dest_root`, recording each into
-/// `manifest` and counting outcomes into `summary`. The shared backbone of
-/// `init` — used once for `ARK_TEMPLATES` and once per selected platform.
+/// Extracts every file in `tree` under `dest_root`.
+///
+/// Records each file into `manifest` and counts outcomes into `summary`.
+///
+/// Called once for [`ARK_TEMPLATES`] and once per selected platform.
 ///
 /// For every template that carries an `ARK:*` managed block, the on-disk
 /// block body (if any) is spliced into the template before writing. This
@@ -247,9 +262,10 @@ fn extract(
 mod tests {
     use super::*;
 
-    /// worktree-support C-16: init ships `.ark/.gitignore` as a regular
-    /// template file. The file is fully Ark-owned (single-line content
-    /// `worktrees/`); no managed block needed since users don't co-author it.
+    /// Ships `.ark/.gitignore` as a regular template file.
+    ///
+    /// The file is fully Ark-owned (single-line content `worktrees/`); no
+    /// managed block is needed since users do not co-author it.
     #[test]
     fn init_writes_ark_gitignore_template() {
         let tmp = tempfile::tempdir().unwrap();
@@ -306,8 +322,9 @@ mod tests {
         assert_eq!(summary.overwritten, 0);
     }
 
-    /// V-IT-2 (codex-support G-3): `--no-codex` (i.e. `with_platforms(&[CLAUDE])`)
-    /// installs only Claude artifacts. No `.codex/` dir, no `AGENTS.md`.
+    /// Installs only Claude artifacts when `--no-codex` is set (i.e.
+    /// `with_platforms(&[CLAUDE])`); produces no `.codex/` dir and no
+    /// `AGENTS.md`.
     #[test]
     fn init_claude_only_omits_codex_paths() {
         use crate::CLAUDE_PLATFORM;
@@ -320,7 +337,7 @@ mod tests {
         assert!(!tmp.path().join("AGENTS.md").exists());
     }
 
-    /// V-IT-3: symmetric — `--no-claude` installs only Codex artifacts.
+    /// Installs only Codex artifacts when `--no-claude` is set.
     #[test]
     fn init_codex_only_omits_claude_paths() {
         use crate::CODEX_PLATFORM;
@@ -337,17 +354,17 @@ mod tests {
         assert!(!tmp.path().join("CLAUDE.md").exists());
     }
 
-    /// codex-support C-18: source-scan invariant for `init.rs`. Mirrors
-    /// `upgrade_source_has_no_bare_std_fs_or_dot_ark_literals`.
+    /// Enforces the source-scan invariant for `init.rs`.
     #[test]
     fn init_source_no_bare_std_fs_or_dot_path_literals() {
         crate::commands::tests_common::assert_source_clean(include_str!("init.rs"));
     }
 
-    /// Regression: `ark init --codex` on a project that already has Claude
-    /// installed must keep Claude's manifest entries intact. Pre-fix, init
-    /// rebuilt the manifest from scratch, so the second call dropped Claude's
-    /// `.claude/commands/ark/*` rows even though the files survived on disk.
+    /// Verifies additive `ark init --codex` manifest behavior.
+    ///
+    /// Pre-fix, init rebuilt the manifest from scratch, so the second call
+    /// dropped Claude's `.claude/commands/ark/*` rows even though the files
+    /// survived on disk.
     #[test]
     fn second_init_with_subset_keeps_other_platform_in_manifest() {
         use crate::CODEX_PLATFORM;
@@ -386,8 +403,8 @@ mod tests {
         );
     }
 
-    /// Regression: `init --force` must NOT clobber managed-block bodies that
-    /// other commands (e.g. `spec register`) wrote into the live file.
+    /// Verifies that `init --force` preserves managed-block bodies.
+    ///
     /// Pre-fix, re-running `init` after registering features wiped the rows.
     #[test]
     fn init_force_preserves_existing_managed_block_rows() {
@@ -484,10 +501,11 @@ mod tests {
         assert_ne!(std::fs::read_to_string(&target).unwrap(), "user edit\n");
     }
 
-    /// V-UT-29 (carve-out): `init(target)` operates exclusively on `target`,
-    /// regardless of any Arked ancestor. The CLI ensures the wrong target
-    /// can never be picked via discovery; the library is consistent with
-    /// that — passing a child of an Arked parent scaffolds in the child.
+    /// Operates exclusively on `target`, regardless of any Arked ancestor.
+    ///
+    /// The CLI ensures the wrong target can never be picked via discovery;
+    /// the library is consistent with that — passing a child of an Arked
+    /// parent scaffolds in the child.
     #[test]
     fn init_in_subdir_of_arked_parent_scaffolds_in_subdir() {
         let parent = tempfile::tempdir().unwrap();
@@ -505,8 +523,7 @@ mod tests {
         assert!(parent.path().join(".ark/workflow.md").is_file());
     }
 
-    /// V-IT-7: `ark init` writes the `SessionStart` hook entry in
-    /// `.claude/settings.json` per ark-context G-8 / G-11.
+    /// Writes the `SessionStart` hook entry into `.claude/settings.json`.
     #[test]
     fn init_writes_session_start_hook() {
         use crate::io::ARK_CONTEXT_HOOK_COMMAND;
@@ -523,9 +540,10 @@ mod tests {
         assert_eq!(v["hooks"]["SessionStart"][0]["hooks"][0]["timeout"], 5000);
     }
 
-    /// V-IT-13: `ark init` followed by deleting the Ark entry → next `init`
-    /// re-adds it. (Idempotent re-application is also covered by C-29 at
-    /// the upgrade layer.) This verifies the same invariant for `init`.
+    /// Re-adds the `SessionStart` Ark entry after the user deleted it.
+    ///
+    /// Idempotent re-application is also covered at the upgrade layer; this
+    /// pins the same invariant for `init`.
     #[test]
     fn init_re_adds_deleted_session_start_hook() {
         use crate::io::ARK_CONTEXT_HOOK_COMMAND;
@@ -553,8 +571,7 @@ mod tests {
         );
     }
 
-    /// V-UT-9 (workspace G-2 / G-18): library default skips identity. The CLI
-    /// `--no-developer` flag maps to `developer: None`; this test mirrors that.
+    /// Verifies that library init skips workspace identity by default.
     #[test]
     fn ark_init_with_no_developer_flag_skips_identity() {
         let tmp = tempfile::tempdir().unwrap();
@@ -564,8 +581,7 @@ mod tests {
         assert!(!tmp.path().join(".ark/workspace").exists());
     }
 
-    /// V-UT-13 (workspace G-18): `--developer alice` bootstraps identity in
-    /// the same flow as `ark agent workspace init --name alice`.
+    /// Verifies identity bootstrap from `--developer alice`.
     #[test]
     fn ark_init_with_developer_flag_bootstraps_identity() {
         let tmp = tempfile::tempdir().unwrap();
@@ -585,8 +601,7 @@ mod tests {
         assert!(idx.contains("ARK:WORKSPACE_SESSIONS:START"));
     }
 
-    /// V-UT-14 (workspace G-18 / C-3): invalid `--developer` errors before
-    /// any platform extraction (no partial scaffolding).
+    /// Verifies invalid developer names fail before extraction.
     #[test]
     fn ark_init_with_invalid_developer_name_errors() {
         let tmp = tempfile::tempdir().unwrap();

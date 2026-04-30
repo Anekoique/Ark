@@ -1,9 +1,14 @@
 //! `ark agent task` — task-lifecycle subcommands.
 
+/// Archives completed tasks.
 pub mod archive;
+/// Creates task directories and optional git worktrees.
 pub mod new;
+/// Moves tasks through legal lifecycle phases.
 pub mod phase;
+/// Promotes tasks between workflow tiers.
 pub mod promote;
+/// Manages task-bound git worktrees.
 pub mod worktree;
 
 pub use archive::{TaskArchiveOptions, TaskArchiveSummary, task_archive};

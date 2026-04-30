@@ -12,48 +12,73 @@ use crate::commands::context::model::{
 };
 
 /// Top-level scope selector. `Phase` carries the concrete phase filter.
+/// Context projection scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
+    /// Full session-start context.
     Session,
+    /// Phase-specific context.
     Phase(PhaseFilter),
 }
 
+/// Phase selector for scoped context projections.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PhaseFilter {
+    /// Design-phase projection.
     Design,
+    /// Plan-phase projection.
     Plan,
+    /// Review-phase projection.
     Review,
+    /// Execute-phase projection.
     Execute,
+    /// Verify-phase projection.
     Verify,
 }
 
+/// Serializable tag identifying the projection scope.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(tag = "scope", rename_all = "lowercase")]
 pub enum ScopeTag {
+    /// Session-start projection.
     Session,
-    Phase { phase: PhaseFilter },
+    /// Phase-specific projection.
+    Phase {
+        /// Selected phase.
+        phase: PhaseFilter,
+    },
 }
 
+/// Context view after applying a scope projection.
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectedContext {
+    /// Context schema version.
     pub schema: u32,
     #[serde(flatten)]
+    /// Serializable scope tag.
     pub scope: ScopeTag,
+    /// Timestamp when the context snapshot was generated.
     pub generated_at: DateTime<Utc>,
+    /// Project root used for gathering.
     pub project_root: PathBuf,
+    /// Git repository state.
     pub git: GitState,
+    /// Active task state, when included by the projection.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tasks: Option<TasksState>,
+    /// Current task state, when included by the projection.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_task: Option<CurrentTask>,
+    /// SPEC rows, when included by the projection.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub specs: Option<SpecsState>,
+    /// Archive rows, when included by the projection.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archive: Option<ArchiveState>,
 }
 
-/// Project `ctx` per `scope`. See ark-context plan G-6 / G-7.
+/// Projects `ctx` per `scope`.
 pub fn project(ctx: Context, scope: Scope) -> ProjectedContext {
     let Context {
         schema,
@@ -131,9 +156,11 @@ fn apply_phase_filter(
     }
 }
 
-/// Per ark-context C-20 second half: a `SpecRow` `f` is kept iff any
-/// `r ∈ related` satisfies `normalize(r).ends_with(&normalize(f.path))`.
-/// Both sides normalized: leading `./` and leading `.ark/` stripped.
+/// Keeps feature specs whose paths match a related-spec entry.
+///
+/// A `SpecRow` `f` is kept iff any `r` in `related` satisfies
+/// `normalize(r).ends_with(&normalize(f.path))`. Both sides strip leading
+/// `./` and `.ark/`.
 fn filter_features_by_related(features: Vec<SpecRow>, related: &[String]) -> Vec<SpecRow> {
     if related.is_empty() {
         return Vec::new();

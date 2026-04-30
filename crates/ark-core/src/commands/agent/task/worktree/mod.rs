@@ -1,13 +1,16 @@
-//! `ark agent task worktree {cleanup, list}` — post-creation lifecycle for
-//! tasks bound to git worktrees.
+//! `ark agent task worktree {cleanup, list}` manages worktree-backed tasks.
 //!
-//! Worktree *creation* lives in [`super::new`] under the `--worktree` flag —
-//! per worktree-support G-2, that's the sole creation entry point. This
-//! module owns the `cleanup` and `list` subcommands plus shared helpers.
+//! Worktree *creation* lives in [`crate::commands::agent::task::new`] under the `--worktree`
+//! flag; that is the sole creation entry point. This module owns the
+//! `cleanup` and `list` subcommands plus shared helpers.
 
+/// Cleans up task-bound git worktrees.
 pub mod cleanup;
+/// Loads worktree configuration from Ark config.
 pub mod config;
+/// Discovers git worktrees and their task bindings.
 pub mod discovery;
+/// Lists task-bound worktrees.
 pub mod list;
 
 pub use cleanup::{WorktreeCleanupOptions, WorktreeCleanupSummary, worktree_cleanup};
@@ -16,10 +19,10 @@ pub use list::{WorktreeListOptions, WorktreeListSummary, WorktreeRow, worktree_l
 
 use crate::error::{Error, Result};
 
-/// Branch types accepted by `--branch-type` (worktree-support C-4).
+/// Branch types accepted by `--branch-type`.
 pub const BRANCH_TYPES: &[&str] = &["feat", "fix", "refactor", "chore", "ci", "docs"];
 
-/// Reject `value` if it isn't in [`BRANCH_TYPES`].
+/// Rejects `value` if it is not in [`BRANCH_TYPES`].
 pub(crate) fn validate_branch_type(value: &str) -> Result<()> {
     if BRANCH_TYPES.contains(&value) {
         Ok(())
@@ -30,8 +33,9 @@ pub(crate) fn validate_branch_type(value: &str) -> Result<()> {
     }
 }
 
-/// Resolve a branch name from worktree-options + config + slug, per C-6:
-/// `--branch` > `<--branch-type>/<slug>` > `<cfg.branch_prefix>/<slug>`.
+/// Resolves a branch name from worktree options, config, and slug.
+///
+/// Priority order: `--branch` > `<--branch-type>/<slug>` > `<cfg.branch_prefix>/<slug>`.
 pub(crate) fn resolve_branch(
     branch_override: Option<&str>,
     branch_type: Option<&str>,
@@ -55,7 +59,7 @@ pub(crate) fn resolve_branch(
 mod tests {
     use super::*;
 
-    /// V-UT-6: branch precedence — `--branch` > `--branch-type/slug` > `prefix/slug`.
+    /// Verifies branch precedence.
     #[test]
     fn resolve_branch_precedence() {
         // --branch wins over both
@@ -79,7 +83,7 @@ mod tests {
         );
     }
 
-    /// V-UT-7: --branch-type rejects unknown values.
+    /// Verifies that `--branch-type` rejects unknown values.
     #[test]
     fn resolve_branch_rejects_unknown_branch_type() {
         let err = resolve_branch(None, Some("oops"), "feat", "foo").unwrap_err();

@@ -1,10 +1,10 @@
-//! `[worktree]` section of `.ark/config.toml` — user-editable config for the
-//! worktree feature.
+//! `[worktree]` section of `.ark/config.toml`.
 //!
-//! Per worktree-support C-9: created by `ark init` from the embedded
-//! `config.toml` template; `ark upgrade` does NOT overwrite. Missing file
-//! or missing `[worktree]` section → defaults (G-1). Corrupt file →
-//! [`Error::WorktreeConfigCorrupt`].
+//! This is user-editable config for the worktree feature.
+//!
+//! Created by `ark init` from the embedded `config.toml` template;
+//! `ark upgrade` does NOT overwrite. Missing file or missing `[worktree]`
+//! section → defaults. Corrupt file → [`Error::WorktreeConfigCorrupt`].
 
 use std::path::{Component, Path, PathBuf};
 
@@ -16,33 +16,40 @@ use crate::{
     layout::Layout,
 };
 
-/// On-disk shape of `.ark/config.toml`. Each feature owns its own section;
-/// missing sections fall through to that feature's `Default` impl.
+/// Represents the on-disk shape of `.ark/config.toml`.
+///
+/// Each feature owns its own section; missing sections fall through to that
+/// feature's `Default` impl.
 #[derive(Debug, Clone, Default, Deserialize)]
 struct RawConfig {
     #[serde(default)]
     worktree: Option<WorktreeConfig>,
 }
 
+/// User-editable worktree configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WorktreeConfig {
-    /// Project-relative path; default `.ark/worktrees`. Absolute paths
-    /// rejected via [`Error::InvalidConfigField`] (worktree-support C-8).
+    /// Stores the project-relative worktree root path.
+    ///
+    /// Defaults to `.ark/worktrees`. Absolute paths are rejected via
+    /// [`crate::error::Error::InvalidConfigField`].
     #[serde(default = "default_worktree_dir")]
     pub worktree_dir: String,
 
-    /// Default branch prefix when neither `--branch-type` nor `--branch` is
-    /// passed. Default `feat`.
+    /// Stores the default branch prefix.
+    ///
+    /// Used when neither `--branch-type` nor `--branch` is passed. Defaults
+    /// to `feat`.
     #[serde(default = "default_branch_prefix")]
     pub branch_prefix: String,
 
-    /// Project-relative paths to copy into each new worktree on creation
-    /// (e.g. `.env`).
+    /// Lists project-relative paths to copy into each new worktree.
     #[serde(default)]
     pub copy: Vec<String>,
 
-    /// Shell commands run in the worktree dir after `git worktree add`,
-    /// sequential, abort on first non-zero (worktree-support F-3).
+    /// Lists shell commands run in the worktree dir after `git worktree add`.
+    ///
+    /// Commands run sequentially and abort on first non-zero exit.
     #[serde(default)]
     pub post_create: Vec<String>,
 }
@@ -59,9 +66,11 @@ impl Default for WorktreeConfig {
 }
 
 impl WorktreeConfig {
-    /// Load the `[worktree]` section of `.ark/config.toml`, or return
-    /// defaults if the file or the section is absent. Distinguishes "file
-    /// missing" (→ defaults) from real I/O errors.
+    /// Loads the `[worktree]` section of `.ark/config.toml`.
+    ///
+    /// Returns defaults if the file or the section is absent.
+    ///
+    /// Distinguishes "file missing" (returns defaults) from real I/O errors.
     pub fn load_or_default(layout: &Layout) -> Result<Self> {
         let path = layout.config_file();
         let cfg = match path.read_text_optional()? {
@@ -76,21 +85,23 @@ impl WorktreeConfig {
         Ok(cfg)
     }
 
-    /// Absolute worktrees-storage dir derived from `cfg.worktree_dir` joined
-    /// onto the project root. Falls back to `layout.worktrees_dir()` when the
-    /// caller has only the layout — they're equal under the default config.
+    /// Resolves the absolute worktrees-storage dir.
+    ///
+    /// Derived from `cfg.worktree_dir` joined onto the project root. Falls
+    /// back to `layout.worktrees_dir()` when the caller has only the layout;
+    /// they are equal under the default config.
     pub fn resolve_worktrees_dir(&self, layout: &Layout) -> PathBuf {
         layout.root().join(&self.worktree_dir)
     }
 
-    /// Absolute path for a specific branch's worktree under this config.
+    /// Returns the absolute path for a specific branch's worktree.
     pub fn resolve_worktree_dir(&self, layout: &Layout, branch: &str) -> PathBuf {
         self.resolve_worktrees_dir(layout).join(branch)
     }
 
     fn validate(&self) -> Result<()> {
-        // worktree-support C-8: worktree_dir must stay inside the project. Reject
-        // absolute paths and any `..` traversal that would escape the root.
+        // `worktree_dir` must stay inside the project. Reject absolute paths
+        // and any `..` traversal that would escape the root.
         let p = Path::new(&self.worktree_dir);
         if p.is_absolute() {
             return Err(Error::InvalidConfigField {
@@ -121,7 +132,7 @@ mod tests {
     use super::*;
     use crate::io::PathExt;
 
-    /// V-UT-1: missing file → defaults.
+    /// Verifies that a missing config file returns default values.
     #[test]
     fn load_or_default_returns_defaults_when_missing() {
         let tmp = tempfile::tempdir().unwrap();
@@ -133,7 +144,7 @@ mod tests {
         assert!(cfg.post_create.is_empty());
     }
 
-    /// V-UT-2: corrupt TOML → WorktreeConfigCorrupt.
+    /// Verifies that corrupt TOML returns `WorktreeConfigCorrupt`.
     #[test]
     fn load_or_default_errors_on_corrupt_toml() {
         let tmp = tempfile::tempdir().unwrap();
@@ -147,7 +158,7 @@ mod tests {
         assert!(matches!(err, Error::WorktreeConfigCorrupt { .. }));
     }
 
-    /// worktree_dir containing `..` → InvalidConfigField (must stay in-project).
+    /// Verifies that a `worktree_dir` containing `..` returns `InvalidConfigField`.
     #[test]
     fn load_or_default_errors_on_parent_dir_traversal() {
         let tmp = tempfile::tempdir().unwrap();
@@ -167,7 +178,7 @@ mod tests {
         ));
     }
 
-    /// V-UT-3: absolute worktree_dir → InvalidConfigField.
+    /// Verifies that an absolute `worktree_dir` returns `InvalidConfigField`.
     #[test]
     fn load_or_default_errors_on_absolute_worktree_dir() {
         let tmp = tempfile::tempdir().unwrap();
@@ -210,8 +221,7 @@ post_create = ["echo hi"]
         assert_eq!(cfg.post_create.len(), 1);
     }
 
-    /// Missing `[worktree]` section → defaults (e.g. when only the
-    /// `[workspace]` section is set).
+    /// Verifies that a missing `[worktree]` section returns defaults.
     #[test]
     fn missing_worktree_section_returns_defaults() {
         let tmp = tempfile::tempdir().unwrap();

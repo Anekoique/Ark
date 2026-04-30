@@ -1,5 +1,6 @@
-//! `ark agent spec register` — upsert a row in `specs/features/INDEX.md`'s
-//! `ARK:FEATURES` managed block.
+//! Registers a feature SPEC in the feature index.
+//!
+//! Upserts a row in `specs/features/INDEX.md`'s `ARK:FEATURES` managed block.
 //!
 //! `feature` and `scope` are trimmed, then rejected if empty or containing
 //! `|` (markdown table separator) or any newline character.
@@ -14,18 +15,27 @@ use crate::{
     layout::{FEATURES_MARKER, Layout},
 };
 
+/// Options for registering a feature SPEC in the feature index.
 #[derive(Debug, Clone)]
 pub struct SpecRegisterOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// Feature slug or name to upsert.
     pub feature: String,
+    /// Short scope description rendered in the index table.
     pub scope: String,
+    /// Task slug that promoted the feature SPEC.
     pub from_task: String,
+    /// Promotion date rendered in the index table.
     pub date: NaiveDate,
 }
 
+/// Summary of a feature SPEC registration.
 #[derive(Debug, Clone)]
 pub struct SpecRegisterSummary {
+    /// Feature slug or name that was registered.
     pub feature: String,
+    /// Reports whether an existing index row was replaced.
     pub was_update: bool,
 }
 
@@ -40,6 +50,7 @@ impl fmt::Display for SpecRegisterSummary {
     }
 }
 
+/// Registers or updates one feature row in the feature index.
 pub fn spec_register(opts: SpecRegisterOptions) -> Result<SpecRegisterSummary> {
     let feature = sanitize_field("feature", &opts.feature)?;
     let scope = sanitize_field("scope", &opts.scope)?;
@@ -62,8 +73,10 @@ pub fn spec_register(opts: SpecRegisterOptions) -> Result<SpecRegisterSummary> {
     })
 }
 
-/// Trim `raw` and reject empty / pipe / newline — all of which would corrupt
-/// the markdown table row.
+/// Sanitizes a markdown table field.
+///
+/// Rejects empty, pipe, and newline values because all would corrupt the
+/// markdown table row.
 fn sanitize_field(name: &'static str, raw: &str) -> Result<String> {
     let trimmed = raw.trim();
     let reason = if trimmed.is_empty() {
@@ -86,8 +99,9 @@ const HEADER: [&str; 2] = [
     "|---------|-------|----------|",
 ];
 
-/// Upsert a markdown table row for `feature` in `body`. Preserves any existing
-/// rows for other features. Returns `(new_body, was_update)`.
+/// Upserts a markdown table row for `feature` in `body`.
+///
+/// Preserves rows for other features. Returns `(new_body, was_update)`.
 fn upsert_row(
     body: &str,
     feature: &str,

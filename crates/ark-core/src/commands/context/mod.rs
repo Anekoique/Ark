@@ -1,13 +1,19 @@
-//! `ark context` — print a structured snapshot of git + `.ark/` workflow
-//! state. Read-only; no mutation.
+//! `ark context` prints a structured snapshot of workflow state.
+//!
+//! The command reads git and `.ark/` state without mutation.
 //!
 //! This is the top-level public command, paired with [`ark agent`] which
 //! handles workflow mutation.
 
+/// Gathers raw context state from disk and git.
 pub mod gather;
+/// Serializable context model types.
 pub mod model;
+/// Projects full context into scope-specific views.
 pub mod projection;
+/// Parses related feature SPEC references from task plans.
 pub mod related_specs;
+/// Renders context projections as text.
 pub mod render;
 
 use std::{fmt, path::PathBuf};
@@ -25,20 +31,28 @@ use crate::{
     layout::Layout,
 };
 
+/// Output format for `ark context`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
+    /// JSON output.
     Json,
+    /// Human-readable text output.
     Text,
 }
 
+/// Options for producing a context snapshot.
 #[derive(Debug, Clone)]
 pub struct ContextOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// Projection scope.
     pub scope: Scope,
+    /// Output format.
     pub format: Format,
 }
 
 impl ContextOptions {
+    /// Creates context options for `project_root`.
     pub fn new(project_root: impl Into<PathBuf>) -> Self {
         Self {
             project_root: project_root.into(),
@@ -47,11 +61,13 @@ impl ContextOptions {
         }
     }
 
+    /// Sets the projection scope.
     pub fn with_scope(mut self, scope: Scope) -> Self {
         self.scope = scope;
         self
     }
 
+    /// Sets the output format.
     pub fn with_format(mut self, format: Format) -> Self {
         self.format = format;
         self
@@ -60,12 +76,14 @@ impl ContextOptions {
 
 /// Implements [`fmt::Display`]; the CLI calls `render(summary)` once.
 ///
-/// JSON mode pre-serializes to a `String` (with trailing newline per C-23)
-/// so `Display` is a single byte-write. Text mode formats on demand.
+/// JSON mode pre-serializes to a `String` (with trailing newline) so
+/// `Display` is a single byte-write. Text mode formats on demand.
 /// `Text` boxes the projection to keep the enum's stack size small.
 #[derive(Debug)]
 pub enum ContextSummary {
+    /// Pre-rendered JSON output.
     Json(String),
+    /// Text-rendered projected context.
     Text(Box<ProjectedContext>),
 }
 
@@ -84,7 +102,7 @@ impl fmt::Display for ContextSummary {
 /// `SessionStart` hook envelope (`{hookSpecificOutput: {hookEventName,
 /// additionalContext}}`) so the SessionStart hook's stdout is recognized
 /// and injected as additional context. Every other `(scope, format)`
-/// combination returns raw output. See ark-context C-23.
+/// combination returns raw output.
 pub fn context(opts: ContextOptions) -> Result<ContextSummary> {
     let layout = Layout::new(&opts.project_root);
     let ark_dir = layout.ark_dir();
@@ -110,9 +128,10 @@ pub fn context(opts: ContextOptions) -> Result<ContextSummary> {
     }
 }
 
-/// Wrap a JSON payload in Claude Code's SessionStart envelope. The payload
-/// is embedded as a stringified value of `additionalContext` because the
-/// hook contract requires that field to be a string.
+/// Wraps a JSON payload in Claude Code's SessionStart envelope.
+///
+/// The payload is embedded as a stringified value of `additionalContext`
+/// because the hook contract requires that field to be a string.
 fn wrap_session_start_envelope(payload: &str) -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "hookSpecificOutput": {
@@ -185,10 +204,9 @@ mod tests {
         assert!(s.ends_with('\n'));
     }
 
-    /// C-26 / R-103 enforcement: no `Command::new` call sites under
-    /// `commands/`. The git helper lives in `io/git.rs`, which is not under
-    /// `commands/` — so a literal scan over `commands/**/*.rs` should find
-    /// no occurrences (excluding tests).
+    /// Verifies that `commands/` contains no `Command::new` call sites.
+    ///
+    /// The git helper lives in `io/git.rs`, which is not under `commands/`.
     #[test]
     fn commands_no_bare_command_new() {
         // Concatenate every commands/*.rs source via include_str! at compile
@@ -262,8 +280,7 @@ mod tests {
             };
             assert!(
                 !live.contains("Command::new"),
-                "non-test code in {name} contains Command::new — use io::git::run_git instead per \
-                 ark-context C-26"
+                "non-test code in {name} contains Command::new — use io::git::run_git instead",
             );
         }
     }

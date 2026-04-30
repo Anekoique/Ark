@@ -1,6 +1,6 @@
 //! End-to-end integration tests for `ark upgrade`.
 //!
-//! Exercises the library surface (not the binary) in a tempdir so tests don't
+//! Exercises the library surface (not the binary) in a tempdir so tests do not
 //! depend on spawning the compiled CLI. The binary's CLI-facing tests live in
 //! `cli_help.rs` / `cli_upgrade.rs`.
 
@@ -69,7 +69,7 @@ fn template_change_with_unmodified_file_auto_updates() {
     // To trigger AutoUpdate: on-disk content must NOT match the embedded
     // template, but the recorded hash must match on-disk. Write a known body
     // and pin the manifest's hash to sha(that body); the embedded template
-    // then classifies as "changed since recording, user hasn't touched it".
+    // then classifies as "changed since recording, user has not touched it".
     let target = tmp.path().join(".ark/workflow.md");
     std::fs::write(&target, b"prior template content").unwrap();
     modify_manifest(tmp.path(), |m| {

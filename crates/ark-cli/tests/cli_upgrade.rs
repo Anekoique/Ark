@@ -1,4 +1,6 @@
-//! CLI-level tests for `ark upgrade` — help output and flag parsing.
+//! CLI-level tests for `ark upgrade`.
+//!
+//! Covers help output and flag parsing.
 
 use std::process::Command;
 
@@ -63,11 +65,12 @@ fn upgrade_rejects_skip_plus_create_new() {
     assert!(!ok);
 }
 
-/// `--allow-downgrade` is orthogonal to the policy group — pairing with any
-/// single policy flag must parse successfully. We can't fully test runtime
-/// (no initialized project in tempdir, so we expect NotLoaded), but parsing
-/// succeeding means the runtime error is the `NotLoaded` one rather than clap's
-/// group-conflict error.
+/// Verifies that `--allow-downgrade` is orthogonal to policy flags.
+///
+/// Pairing it with any single policy flag must parse successfully. Runtime
+/// cannot be fully tested here because the tempdir is not initialized, so the
+/// expected runtime error is `NotLoaded` rather than clap's group-conflict
+/// error.
 #[test]
 fn allow_downgrade_orthogonal_to_policy() {
     let tmp = tempfile::tempdir().unwrap();

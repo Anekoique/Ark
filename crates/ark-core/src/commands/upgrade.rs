@@ -26,8 +26,7 @@ use crate::{
     templates::{ARK_TEMPLATES, walk},
 };
 
-/// How to resolve a conflict when the user has modified a template locally
-/// AND the template's canonical content has changed between versions.
+/// Selects conflict behavior for user-modified templates.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictPolicy {
     /// Ask the caller's [`Prompter`] per file.
@@ -41,27 +40,38 @@ pub enum ConflictPolicy {
     CreateNew,
 }
 
+/// Selects a concrete action for one modified template conflict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictChoice {
+    /// Replace the user-modified file with the embedded template.
     Overwrite,
+    /// Preserve the user-modified file unchanged.
     Skip,
+    /// Write the embedded template to a `.new` sidecar.
     CreateNew,
 }
 
-/// Callback invoked for each user-modified file when the policy is
-/// [`ConflictPolicy::Interactive`]. The library never reads stdin itself.
+/// Prompts for each user-modified file in interactive mode.
+///
+/// The library never reads stdin itself.
 pub trait Prompter {
+    /// Prompts for how to handle one user-modified relative path.
     fn prompt(&mut self, relative_path: &Path) -> Result<ConflictChoice>;
 }
 
+/// Options for refreshing an Ark installation to the current CLI version.
 #[derive(Debug, Clone)]
 pub struct UpgradeOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// Conflict handling policy for modified template files.
     pub conflict_policy: ConflictPolicy,
+    /// Reports whether older CLI templates may replace a newer install.
     pub allow_downgrade: bool,
 }
 
 impl UpgradeOptions {
+    /// Creates upgrade options for `project_root`.
     pub fn new(project_root: impl Into<PathBuf>) -> Self {
         Self {
             project_root: project_root.into(),
@@ -70,11 +80,13 @@ impl UpgradeOptions {
         }
     }
 
+    /// Sets conflict handling behavior.
     pub fn with_policy(mut self, policy: ConflictPolicy) -> Self {
         self.conflict_policy = policy;
         self
     }
 
+    /// Sets whether downgrades are allowed.
     pub fn with_allow_downgrade(mut self, allow: bool) -> Self {
         self.allow_downgrade = allow;
         self
@@ -84,15 +96,25 @@ impl UpgradeOptions {
 /// Per-outcome counters produced by [`upgrade`].
 #[derive(Debug, Default, Clone)]
 pub struct UpgradeSummary {
+    /// Number of newly added template files.
     pub added: usize,
+    /// Number of template files updated automatically.
     pub updated: usize,
+    /// Number of template files already up to date.
     pub unchanged: usize,
+    /// Number of modified files preserved.
     pub modified_preserved: usize,
+    /// Number of modified files overwritten.
     pub overwritten: usize,
+    /// Number of `.new` sidecars written.
     pub created_new: usize,
+    /// Number of removed template files deleted.
     pub deleted: usize,
+    /// Number of removed template files left in place.
     pub orphaned: usize,
+    /// Version recorded before upgrade.
     pub version_from: String,
+    /// CLI version applied by upgrade.
     pub version_to: String,
 }
 
@@ -150,10 +172,11 @@ enum WriteKind {
     Overwrite,
 }
 
-/// A planned mutation. `Preserve` is a variant (not just a counter bump) so
-/// the sorted apply pass can report it alongside real writes. Counter-only
-/// `Unchanged{refresh_hash=false}` cases are tallied inline during planning
-/// and never emit a `PlannedAction`.
+/// Represents one planned upgrade mutation.
+///
+/// `Preserve` is a variant so the sorted apply pass can report it alongside
+/// real writes. Counter-only `Unchanged{refresh_hash=false}` cases are tallied
+/// inline during planning and never emit a `PlannedAction`.
 #[derive(Debug, Clone)]
 enum PlannedAction {
     Write {
@@ -181,9 +204,9 @@ enum PlannedAction {
 }
 
 impl PlannedAction {
-    /// C-19 bucket order — writes before the manifest flush barrier, deletions
-    /// after. `WriteKind`'s declared order (`Add < AutoUpdate < Overwrite`)
-    /// sub-orders the write bucket.
+    /// Returns the deterministic action sort key.
+    ///
+    /// Writes happen before the manifest flush barrier, deletions after.
     fn sort_key(&self) -> (u8, Option<WriteKind>, &Path) {
         match self {
             PlannedAction::Write { kind, relative, .. } => (0, Some(*kind), relative),
@@ -200,14 +223,14 @@ fn is_exempted(relative: &Path) -> bool {
     relative == Path::new(MANIFEST_RELATIVE_PATH)
 }
 
-/// Walk the embedded template trees and produce project-relative keys (per
-/// C-18). This mirrors `init.rs`'s extraction shape so the keys are byte-equal
-/// to what `manifest.files` stores.
+/// Walks the embedded template trees and produces project-relative keys.
 ///
-/// Per codex-support G-14: only platforms whose `dest_dir` already appears in
-/// `manifest.files` are included. A Claude-only project upgraded by a CLI
-/// that knows about Codex stays Claude-only. To opt in, the user re-runs
-/// `ark init --codex`.
+/// This mirrors `init.rs`'s extraction shape so the keys are byte-equal to
+/// what `manifest.files` stores.
+///
+/// Only platforms whose `dest_dir` already appears in `manifest.files` are
+/// included. A Claude-only project upgraded by a CLI that knows about Codex
+/// stays Claude-only. To opt in, the user re-runs `ark init --codex`.
 fn collect_desired_templates(
     layout: &Layout,
     manifest: &Manifest,
@@ -228,10 +251,10 @@ fn collect_desired_templates(
         .collect()
 }
 
-/// Splice on-disk managed-block bodies into every desired template that
-/// carries one. Without this step, upgrade would hash-classify the divergent
-/// (template vs on-disk) bytes as "user-modified" and prompt to overwrite —
-/// which would destroy rows that `spec register` (and similar) wrote.
+/// Splices on-disk managed-block bodies into desired templates.
+///
+/// Without this step, upgrade would hash-classify divergent managed blocks as
+/// user-modified and prompt to overwrite.
 ///
 /// Delegates to [`merge_managed_blocks`]; the loop is the only upgrade-side
 /// logic.
@@ -248,7 +271,7 @@ fn reconcile_managed_blocks(
     Ok(())
 }
 
-/// C-17: normalize every `manifest.files` entry through `Layout::resolve_safe`.
+/// Normalizes every `manifest.files` entry through `Layout::resolve_safe`.
 fn validate_manifest_paths(layout: &Layout, files: &[PathBuf]) -> Result<()> {
     for path in files {
         layout.resolve_safe(path).map_err(remap_unsafe_path)?;
@@ -256,8 +279,7 @@ fn validate_manifest_paths(layout: &Layout, files: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
-/// Rebadge a `resolve_safe` failure as a manifest-trust-boundary failure. The
-/// underlying reason strings come from `Layout::classify_unsafe`, unchanged.
+/// Rebadges a `resolve_safe` failure for the manifest trust boundary.
 fn remap_unsafe_path(e: Error) -> Error {
     match e {
         Error::UnsafeSnapshotPath { path, reason } => Error::UnsafeManifestPath { path, reason },
@@ -403,7 +425,7 @@ fn plan_actions(
         }
     }
 
-    // C-19: deterministic order.
+    // Deterministic order.
     actions.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
 
     Ok(Plan {
@@ -442,15 +464,15 @@ pub fn upgrade(opts: UpgradeOptions, prompter: &mut dyn Prompter) -> Result<Upgr
     let version_from = manifest.version.clone();
     let cli_version = env!("CARGO_PKG_VERSION").to_string();
 
-    // C-17: path safety runs before any semantic check.
+    // Path safety runs before any semantic check.
     validate_manifest_paths(&layout, &manifest.files)?;
     check_version(&manifest.version, &cli_version, opts.allow_downgrade)?;
 
     let mut desired = collect_desired_templates(&layout, &manifest);
-    // C-17 symmetry note: desired paths come from `include_dir!` joined under
+    // Desired paths come from `include_dir!` joined under
     // `layout.ark_dir()` / `layout.claude_dir()`, so they are safe by
-    // construction. V-UT-17 asserts parity against `init.rs::extract`. No
-    // runtime check needed here.
+    // construction; a unit test asserts parity against `init.rs::extract`.
+    // No runtime check needed here.
 
     // Splice on-disk managed-block bodies into the desired bytes so blocks
     // written by other commands (e.g. `spec register`) are not flagged as
@@ -509,16 +531,15 @@ pub fn upgrade(opts: UpgradeOptions, prompter: &mut dyn Prompter) -> Result<Upgr
     }
 
     // Per-platform managed block + SessionStart hook + extra files — re-
-    // applied on every upgrade, not hash-tracked. Per ark-upgrade C-8 /
-    // ark-context C-17 / codex-support G-11. Only platforms already in the
-    // manifest are touched (preserves G-14: Claude-only stays Claude-only).
+    // applied on every upgrade, not hash-tracked. Only platforms already in
+    // the manifest are touched (Claude-only stays Claude-only).
     for platform in PLATFORMS {
         if platform.is_installed(&manifest) {
             platform.apply_managed_state(&layout, &mut manifest)?;
         }
     }
 
-    // R-004: durable manifest write BEFORE any delete can fail.
+    // Durable manifest write BEFORE any delete can fail.
     manifest.version = cli_version;
     manifest.installed_at = Utc::now();
     manifest.write(layout.root())?;
@@ -729,8 +750,8 @@ mod tests {
 
     #[test]
     fn upgrade_source_has_no_bare_std_fs_or_dot_ark_literals() {
-        // V-UT-18: enforces C-12 (no bare std::fs::*) and C-13 (no `.ark/` literal
-        // path composition) at compile time. Line-by-line scan, excluding the
+        // Enforces "no bare `std::fs::*`" and "no `.ark/` literal path
+        // composition" at compile time. Line-by-line scan, excluding the
         // tests module itself and `//` comments.
         let source = include_str!("upgrade.rs");
         let mut in_tests = false;
@@ -808,10 +829,7 @@ mod tests {
         assert!(summary.unchanged > 0);
     }
 
-    /// V-IT-14 / C-29: running `ark upgrade` twice produces a byte-identical
-    /// `.claude/settings.json`. The hook re-application is unconditional but
-    /// idempotent at the helper level; this asserts the integration is
-    /// drift-free.
+    /// Verifies that repeated `ark upgrade` leaves settings unchanged.
     #[test]
     fn upgrade_settings_hook_idempotent() {
         let tmp = tempfile::tempdir().unwrap();
@@ -829,8 +847,7 @@ mod tests {
         assert_eq!(after_first, after_second, "upgrade→upgrade drifted");
     }
 
-    /// V-IT-13: deleting the Ark hook entry then running `ark upgrade`
-    /// re-adds it (no prompt, no hash check).
+    /// Verifies that `ark upgrade` re-adds a deleted Ark hook entry.
     #[test]
     fn upgrade_re_adds_deleted_session_start_hook() {
         use crate::io::ARK_CONTEXT_HOOK_COMMAND;
@@ -951,10 +968,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "user edit");
     }
 
-    /// worktree-support V-IT-15 / C-9 + workspace C-10: `.ark/config.toml` is
-    /// user-editable; upgrade preserves the user's edits via the hash-mismatch
-    /// path. Covers both `[worktree]` and `[workspace]` sections through one
-    /// shared file.
+    /// Verifies that `.ark/config.toml` is preserved across upgrade.
     #[test]
     fn upgrade_does_not_overwrite_config_toml() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1080,9 +1094,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "user edit");
     }
 
-    /// V-IT-15 (codex-support G-14): a Claude-only project upgraded with the
-    /// new CLI version remains Claude-only — `ark upgrade` does NOT install
-    /// `.codex/` artifacts or write the AGENTS.md managed block.
+    /// Verifies that a Claude-only project remains Claude-only after upgrade.
     #[test]
     fn upgrade_on_claude_only_project_does_not_install_codex() {
         use crate::CLAUDE_PLATFORM;

@@ -17,16 +17,23 @@ use crate::{
     layout::Layout,
 };
 
+/// Options for moving a task to another lifecycle phase.
 #[derive(Debug, Clone)]
 pub struct TaskPhaseOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// Task slug to transition.
     pub slug: String,
 }
 
+/// Summary of a task phase transition.
 #[derive(Debug, Clone)]
 pub struct TaskPhaseSummary {
+    /// Task slug that was transitioned.
     pub slug: String,
+    /// Previous phase.
     pub from: Phase,
+    /// New phase.
     pub to: Phase,
 }
 
@@ -36,18 +43,22 @@ impl fmt::Display for TaskPhaseSummary {
     }
 }
 
+/// Moves a task into the plan phase.
 pub fn task_plan(opts: TaskPhaseOptions) -> Result<TaskPhaseSummary> {
     transition(opts, Phase::Plan)
 }
 
+/// Moves a task into the review phase.
 pub fn task_review(opts: TaskPhaseOptions) -> Result<TaskPhaseSummary> {
     transition(opts, Phase::Review)
 }
 
+/// Moves a task into the execute phase.
 pub fn task_execute(opts: TaskPhaseOptions) -> Result<TaskPhaseSummary> {
     transition(opts, Phase::Execute)
 }
 
+/// Moves a task into the verify phase.
 pub fn task_verify(opts: TaskPhaseOptions) -> Result<TaskPhaseSummary> {
     transition(opts, Phase::Verify)
 }
@@ -88,8 +99,7 @@ fn transition(opts: TaskPhaseOptions, to: Phase) -> Result<TaskPhaseSummary> {
     })
 }
 
-/// Which embedded template should be seeded when entering `phase`, and at what
-/// filename under the task directory.
+/// Returns the template and filename to seed when entering `phase`.
 fn artifact_for(phase: Phase, iteration: u32) -> Option<(&'static str, String)> {
     match phase {
         Phase::Plan => Some(("PLAN", format!("{iteration:02}_PLAN.md"))),

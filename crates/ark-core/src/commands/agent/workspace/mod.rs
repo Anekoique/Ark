@@ -1,6 +1,6 @@
 //! `ark agent workspace` — per-developer session journals.
 //!
-//! Identity has two bootstrap paths (workspace G-2 / G-18):
+//! Identity has two bootstrap paths:
 //! - `ark init` prompts for a developer name interactively (default), or
 //!   takes `--developer <name>` / `--no-developer` non-interactively.
 //! - `ark agent workspace init --name <x>` for already-installed projects
@@ -21,11 +21,17 @@
 //! - `init`     — `workspace_init`.
 //! - `record`   — `workspace_record` (manual) + `record_task` (task bridge).
 
+/// Loads workspace configuration from Ark config.
 pub mod config;
+/// Reads and writes the per-machine developer identity.
 pub mod identity;
+/// Renders the per-developer workspace index.
 pub mod index;
+/// Initializes per-developer workspace state.
 pub mod init;
+/// Renders, parses, and rotates workspace journals.
 pub mod journal;
+/// Records manual and task-archive sessions.
 pub mod record;
 
 pub use config::WorkspaceConfig;

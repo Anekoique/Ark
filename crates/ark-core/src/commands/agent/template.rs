@@ -8,8 +8,10 @@ use crate::{
     templates::ARK_TEMPLATES,
 };
 
-/// Write the embedded template `<name>.md` (e.g. `PRD`, `PLAN`, `REVIEW`,
-/// `VERIFY`, `SPEC`) to `to`, overwriting if present.
+/// Writes the embedded template `<name>.md` to `to`.
+///
+/// Examples include `PRD`, `PLAN`, `REVIEW`, `VERIFY`, and `SPEC`.
+/// Existing files are overwritten.
 pub(crate) fn copy_template(name: &str, to: &Path) -> Result<()> {
     let rel = format!("templates/{name}.md");
     let file = ARK_TEMPLATES

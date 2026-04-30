@@ -2,7 +2,7 @@
 //!
 //! Both entrypoints share the same journal-write path and write to the
 //! **current checkout's** `.ark/workspace/<dev>/`. The session entry rides
-//! along with the task commit on the same branch (workspace G-6 / C-6).
+//! along with the task commit on the same branch.
 
 use std::{fmt, path::PathBuf};
 
@@ -24,20 +24,31 @@ use crate::{
     layout::Layout,
 };
 
+/// Options for manually recording a workspace session.
 #[derive(Debug, Clone)]
 pub struct WorkspaceRecordOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// Optional session title.
     pub title: Option<String>,
+    /// Optional session summary body.
     pub summary: Option<String>,
+    /// Optional newline-delimited next-step list.
     pub next: Option<String>,
 }
 
+/// Summary of a manual workspace record operation.
 #[derive(Debug, Clone)]
 pub struct WorkspaceRecordSummary {
+    /// Developer identity that received the journal entry.
     pub dev: String,
+    /// Path to the journal file that was written.
     pub journal_path: PathBuf,
+    /// Journal file index.
     pub journal_index: u32,
+    /// Session number assigned to the entry.
     pub session_number: u32,
+    /// Reports whether a new journal file was opened.
     pub rotated: bool,
 }
 
@@ -56,11 +67,16 @@ impl fmt::Display for WorkspaceRecordSummary {
 /// Outcome of `record_task` invoked from `task::archive::task_archive`.
 #[derive(Debug, Clone)]
 pub enum WorkspaceRecorded {
+    /// Session was recorded into a workspace journal.
     Recorded {
+        /// Path to the journal file that was written.
         journal_path: PathBuf,
+        /// Session number assigned to the entry.
         session_number: u32,
     },
+    /// Identity was absent, so task archive skipped workspace recording.
     SkippedNoIdentity,
+    /// Workspace config disabled archive auto-recording.
     SkippedDisabled,
 }
 
@@ -84,21 +100,32 @@ impl fmt::Display for WorkspaceRecorded {
     }
 }
 
+/// Options for recording an archived task into a workspace journal.
 #[derive(Debug, Clone)]
 pub struct RecordTaskOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// Archived task slug.
     pub slug: String,
+    /// Archived task title.
     pub title: String,
+    /// Archived task workflow tier.
     pub tier: Tier,
+    /// Branch associated with the archived task.
     pub branch: Option<String>,
+    /// Base branch captured when the task worktree was created.
     pub base_branch: Option<String>,
+    /// Task worktree path, when the task used a worktree.
     pub worktree_path: Option<PathBuf>,
+    /// Path where the task was archived.
     pub archive_path: PathBuf,
+    /// Timestamp when the task was archived.
     pub archived_at: DateTime<Utc>,
 }
 
 // -- Manual record ---------------------------------------------------------
 
+/// Records a manual workspace session.
 pub fn workspace_record(opts: WorkspaceRecordOptions) -> Result<WorkspaceRecordSummary> {
     let layout = Layout::new(&opts.project_root);
     let dev = require_developer_name(&layout)?;
@@ -126,10 +153,11 @@ pub fn workspace_record(opts: WorkspaceRecordOptions) -> Result<WorkspaceRecordS
     )
 }
 
-/// Parse a `\n`-separated list of next-step bullets. Each line may begin with
-/// a single leading bullet character (`-` or `*`) followed by whitespace;
-/// only that one bullet is stripped (so `"-- literal"` keeps its second
-/// dash). Empty lines after stripping are dropped.
+/// Parses a `\n`-separated list of next-step bullets.
+///
+/// Each line may begin with a single leading bullet character (`-` or `*`)
+/// followed by whitespace; only that one bullet is stripped (so `"-- literal"`
+/// keeps its second dash). Empty lines after stripping are dropped.
 fn parse_next_steps(input: &str) -> Vec<String> {
     input
         .lines()
@@ -151,6 +179,7 @@ fn strip_bullet(line: &str) -> &str {
 
 // -- task → workspace bridge ----------------------------------------------
 
+/// Records an archived task into the developer workspace journal.
 pub fn record_task(opts: RecordTaskOptions) -> Result<WorkspaceRecorded> {
     let layout = Layout::new(&opts.project_root);
     let cfg = WorkspaceConfig::load_or_default(&layout)?;
@@ -200,8 +229,7 @@ pub fn record_task(opts: RecordTaskOptions) -> Result<WorkspaceRecorded> {
     })
 }
 
-/// Lowercase tier label, matching the serde representation. Used in the
-/// task-archive journal-entry summary (V-009).
+/// Returns the lowercase tier label matching the serde representation.
 fn tier_label(tier: Tier) -> &'static str {
     match tier {
         Tier::Quick => "quick",
@@ -210,9 +238,10 @@ fn tier_label(tier: Tier) -> &'static str {
     }
 }
 
-/// Resolve the cwd for git lookups (workspace G-6 fallback chain): prefer
-/// the live worktree path if it still exists; else the archived task dir;
-/// else the project root.
+/// Returns the working directory for git lookups.
+///
+/// The fallback chain is the live worktree path if it exists, then the archived
+/// task dir, then the project root.
 fn resolve_task_cwd(opts: &RecordTaskOptions, layout: &Layout) -> PathBuf {
     if let Some(wt) = &opts.worktree_path
         && wt.is_dir()
@@ -225,11 +254,13 @@ fn resolve_task_cwd(opts: &RecordTaskOptions, layout: &Layout) -> PathBuf {
     layout.root().to_path_buf()
 }
 
-/// `git log` cap shared across collection sites (workspace C-13).
+/// `git log` cap shared across collection sites.
 const COMMIT_LOG_CAP: &str = "20";
 
-/// Run `git log` with the given range argument (or the bare `-n N` form when
-/// `range` is `None`). Non-zero exit / spawn failure → empty list.
+/// Runs `git log` for workspace journal collection.
+///
+/// Uses the given range argument, or the bare `-n N` form when `range` is
+/// `None`. Returns an empty list on non-zero exit or spawn failure.
 fn collect_commits(cwd: &std::path::Path, range: Option<&str>) -> Vec<JournalCommit> {
     let mut args: Vec<&str> = vec!["log"];
     if let Some(r) = range {
@@ -346,7 +377,7 @@ mod tests {
         .unwrap();
     }
 
-    /// V-F-4: manual record without `.developer` errors.
+    /// Verifies that a manual record without `.developer` returns an error.
     #[test]
     fn workspace_record_no_identity_errors() {
         let tmp = tempfile::tempdir().unwrap();
@@ -361,7 +392,7 @@ mod tests {
         assert!(!tmp.path().join(".ark/workspace").exists());
     }
 
-    /// V-IT-3: appends to journal + re-renders index.
+    /// Verifies that `workspace_record` appends and re-renders the index.
     #[test]
     fn workspace_record_appends_to_journal() {
         let tmp = tempfile::tempdir().unwrap();
@@ -389,7 +420,7 @@ mod tests {
         assert!(idx.contains(" | hello | manual | - | "));
     }
 
-    /// V-IT-4: rotation when journal is at the line cap.
+    /// Verifies that the journal rotates when the active file reaches the line cap.
     #[test]
     fn workspace_record_rotates_at_cap() {
         let tmp = tempfile::tempdir().unwrap();
@@ -422,7 +453,7 @@ mod tests {
         assert!(idx.contains("**Active File**: `journal-2.md`"));
     }
 
-    /// V-F-1: record_task with no identity → SkippedNoIdentity, no writes.
+    /// Verifies that `record_task` skips cleanly when identity is missing.
     #[test]
     fn record_task_skips_when_no_identity() {
         let tmp = tempfile::tempdir().unwrap();
@@ -444,7 +475,7 @@ mod tests {
         assert!(!tmp.path().join(".ark/workspace").exists());
     }
 
-    /// V-F-6: record_task with auto_record_on_archive=false → SkippedDisabled.
+    /// Verifies that `record_task` returns `SkippedDisabled` when auto-record is disabled.
     #[test]
     fn record_task_skips_when_disabled() {
         let tmp = tempfile::tempdir().unwrap();
@@ -471,7 +502,7 @@ mod tests {
         assert!(matches!(outcome, WorkspaceRecorded::SkippedDisabled));
     }
 
-    /// V-IT-5: record_task happy path writes a `kind = task` entry.
+    /// Verifies that `record_task` writes a task-kind journal entry on the happy path.
     #[test]
     fn record_task_writes_entry() {
         let tmp = tempfile::tempdir().unwrap();
@@ -503,7 +534,7 @@ mod tests {
         assert!(idx.contains(" | task | demo | "));
     }
 
-    /// V-E-7: worktree_path that no longer exists → falls back to archive_path.
+    /// Verifies that a missing `worktree_path` falls back to `archive_path`.
     #[test]
     fn record_task_falls_back_when_worktree_dir_missing() {
         let tmp = tempfile::tempdir().unwrap();

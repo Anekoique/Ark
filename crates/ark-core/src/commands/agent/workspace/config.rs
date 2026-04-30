@@ -1,11 +1,11 @@
-//! `[workspace]` section of `.ark/config.toml` — user-editable config for
-//! the workspace feature.
+//! `[workspace]` section of `.ark/config.toml`.
 //!
-//! Per workspace C-10: created by `ark init` from the embedded `config.toml`
-//! template; `ark upgrade` does NOT overwrite. Missing file or missing
-//! `[workspace]` section → defaults. Corrupt file →
-//! [`Error::WorkspaceConfigCorrupt`]. `journal_max_lines < 100` →
-//! [`Error::InvalidConfigField`] (workspace C-9).
+//! This is user-editable config for the workspace feature.
+//!
+//! Created by `ark init` from the embedded `config.toml` template;
+//! `ark upgrade` does NOT overwrite. Missing file or missing `[workspace]`
+//! section → defaults. Corrupt file → [`crate::error::Error::WorkspaceConfigCorrupt`].
+//! `journal_max_lines < 100` → [`crate::error::Error::InvalidConfigField`].
 
 use serde::Deserialize;
 
@@ -15,28 +15,34 @@ use crate::{
     layout::Layout,
 };
 
-/// Minimum allowed `journal_max_lines`. Smaller caps would rotate so often
-/// that the index re-render thrashes (workspace C-9).
+/// Minimum allowed `journal_max_lines`.
+///
+/// Smaller caps would rotate so often that the index re-render thrashes.
 const MIN_JOURNAL_MAX_LINES: u32 = 100;
 
-/// On-disk shape of `.ark/config.toml`. Mirrors the worktree-side `RawConfig`
-/// but only reads the `[workspace]` section. Each feature module keeps its
-/// own raw shape so adding a new section in another feature is independent.
+/// Represents the on-disk shape of `.ark/config.toml`.
+///
+/// Mirrors the worktree-side `RawConfig` but only reads the `[workspace]`
+/// section. Each feature module keeps its own raw shape so adding a new
+/// section in another feature is independent.
 #[derive(Debug, Clone, Default, Deserialize)]
 struct RawConfig {
     #[serde(default)]
     workspace: Option<WorkspaceConfig>,
 }
 
+/// User-editable workspace configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WorkspaceConfig {
     /// Lines per journal file before rotation. Default 2000.
     #[serde(default = "default_journal_max_lines")]
     pub journal_max_lines: u32,
 
+    /// Controls whether `task archive` auto-records workspace entries.
+    ///
     /// When `false`, `task archive` skips auto-record and returns
-    /// [`super::record::WorkspaceRecorded::SkippedDisabled`] without reading
-    /// identity or invoking git (workspace G-8 / C-11).
+    /// [`super::record::WorkspaceRecorded::SkippedDisabled`] without
+    /// reading identity or invoking git.
     #[serde(default = "default_auto_record_on_archive")]
     pub auto_record_on_archive: bool,
 }
@@ -51,8 +57,9 @@ impl Default for WorkspaceConfig {
 }
 
 impl WorkspaceConfig {
-    /// Load the `[workspace]` section of `.ark/config.toml`, or return
-    /// defaults if the file or the section is absent.
+    /// Loads the `[workspace]` section of `.ark/config.toml`.
+    ///
+    /// Returns defaults if the file or the section is absent.
     pub fn load_or_default(layout: &Layout) -> Result<Self> {
         let path = layout.config_file();
         let cfg = match path.read_text_optional()? {
@@ -91,7 +98,7 @@ mod tests {
     use super::*;
     use crate::io::PathExt;
 
-    /// V-UT-3: missing file → defaults.
+    /// Verifies that a missing file returns the default configuration.
     #[test]
     fn load_or_default_returns_defaults_when_missing() {
         let tmp = tempfile::tempdir().unwrap();
@@ -101,7 +108,7 @@ mod tests {
         assert!(cfg.auto_record_on_archive);
     }
 
-    /// V-UT-3: corrupt TOML → WorkspaceConfigCorrupt.
+    /// Verifies that corrupt TOML yields a `WorkspaceConfigCorrupt` error.
     #[test]
     fn load_or_default_errors_on_corrupt_toml() {
         let tmp = tempfile::tempdir().unwrap();
@@ -115,7 +122,7 @@ mod tests {
         assert!(matches!(err, Error::WorkspaceConfigCorrupt { .. }));
     }
 
-    /// V-UT-3 / V-E-1: journal_max_lines < 100 → InvalidConfigField.
+    /// Verifies that too-small `journal_max_lines` is rejected.
     #[test]
     fn load_or_default_errors_on_too_small_max_lines() {
         let tmp = tempfile::tempdir().unwrap();

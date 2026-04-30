@@ -29,19 +29,24 @@ pub enum WriteMode {
 /// Outcome of a single write.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteOutcome {
+    /// File did not exist and was created.
     Created,
+    /// File already contained the requested bytes.
     Unchanged,
+    /// Existing file was overwritten.
     Overwritten,
+    /// Existing differing file was preserved.
     Skipped,
 }
 
 impl WriteOutcome {
+    /// Reports whether bytes were written to disk.
     pub fn wrote(self) -> bool {
         matches!(self, Self::Created | Self::Overwritten)
     }
 }
 
-/// Write `contents` to `path`, obeying [`WriteMode`] on conflicts.
+/// Writes `contents` to `path`, obeying [`WriteMode`] on conflicts.
 ///
 /// Skips silently when the file already contains byte-identical content.
 pub fn write_file(
@@ -62,9 +67,9 @@ pub fn write_file(
     Ok(outcome)
 }
 
-/// Read the body between `<!-- {marker}:START -->` and `<!-- {marker}:END -->`
-/// in `path`, if both delimiters exist. Returns `Ok(None)` if the file or the
-/// markers are missing.
+/// Reads a managed block body from `path`.
+///
+/// Returns `Ok(None)` if the file or the markers are missing.
 pub fn read_managed_block(path: impl AsRef<Path>, marker: &str) -> Result<Option<String>> {
     Ok(path
         .as_ref()
@@ -72,15 +77,17 @@ pub fn read_managed_block(path: impl AsRef<Path>, marker: &str) -> Result<Option
         .and_then(|text| Marker::new(marker).extract_body(&text)))
 }
 
-/// Replace the body between `<!-- {marker}:START -->` and `<!-- {marker}:END -->`
-/// in `text` with `body`. Returns `None` if the marker pair is not present.
+/// Replaces a managed block body in `text`.
+///
+/// Returns `None` if the marker pair is not present.
 pub fn splice_managed_block(text: &str, marker: &str, body: &str) -> Option<String> {
     Marker::new(marker).replace_in(text, body)
 }
 
-/// Return every `ARK:*` marker name whose START+END pair appears in `text`, in
-/// document order, de-duplicated. Used by upgrade to discover which regions of
-/// a desired template should be reconciled against on-disk content.
+/// Returns every complete `ARK:*` marker pair in document order.
+///
+/// Names are de-duplicated. Used by upgrade to discover which regions of a
+/// desired template should be reconciled against on-disk content.
 pub fn scan_managed_markers(text: &str) -> Vec<String> {
     const PREFIX: &str = "<!-- ARK:";
     const END: &str = ":END -->";
@@ -102,10 +109,13 @@ pub fn scan_managed_markers(text: &str) -> Vec<String> {
     names
 }
 
-/// Insert or replace a delimited managed block in a text file. Creates the
-/// file if it doesn't exist. Returns `true` once written.
+/// Inserts or replaces a delimited managed block in a text file.
 ///
-/// Errors with [`Error::ManagedBlockCorrupt`] if the file contains a START
+/// Creates the file if it does not exist. Returns `true` once written.
+///
+/// # Errors
+///
+/// Returns [`Error::ManagedBlockCorrupt`] if the file contains a START
 /// marker without a matching END — appending a fresh block in that case would
 /// silently duplicate the marker and yield garbled state on subsequent reads.
 pub fn update_managed_block(path: impl AsRef<Path>, marker: &str, body: &str) -> Result<bool> {
@@ -129,10 +139,10 @@ pub fn update_managed_block(path: impl AsRef<Path>, marker: &str, body: &str) ->
     Ok(true)
 }
 
-/// Splice every `ARK:*` managed-block body from the file at `path` into
-/// `template`, returning the merged bytes. If `path` doesn't exist, returns
-/// the template bytes unchanged. If `template` carries no managed blocks,
-/// returns the template bytes unchanged.
+/// Splices on-disk managed-block bodies into `template`.
+///
+/// Returns the template bytes unchanged if `path` does not exist or if the
+/// template carries no managed blocks.
 ///
 /// This lets `init` and `upgrade` write embedded templates without clobbering
 /// managed-block content that other commands (e.g. `spec register`) wrote
@@ -161,13 +171,10 @@ pub fn merge_managed_blocks(path: impl AsRef<Path>, template: &[u8]) -> Result<V
     Ok(spliced.into_bytes())
 }
 
-/// Extract the body between START/END tags, trimming exactly one leading and
-/// one trailing `\n`. Round-trip-safe with `splice_managed_block` /
-/// `Marker::render` (which write `\n{body}\n`); does NOT collapse interior
-/// blank lines, so a body like "row\n\n" survives a splice round-trip
-/// byte-identically. Distinct from [`Marker::extract_body`], which trims
-/// *all* leading/trailing newlines and is appropriate when the caller only
-/// wants a clean string for human consumption.
+/// Extracts a managed block body for splice round-trips.
+///
+/// Trims exactly one leading and one trailing `\n`. Interior blank lines are
+/// preserved byte-identically.
 fn extract_block_body_for_splice<'a>(text: &'a str, marker: &str) -> Option<&'a str> {
     let m = Marker::new(marker);
     let span = m.locate(text)?;
@@ -177,8 +184,9 @@ fn extract_block_body_for_splice<'a>(text: &'a str, marker: &str) -> Option<&'a 
     Some(body)
 }
 
-/// Remove a managed block from a text file if present. If the resulting file
-/// would be effectively empty, deletes it so no Ark-orphaned file lingers.
+/// Removes a managed block from a text file if present.
+///
+/// Deletes the file if the resulting content would be effectively empty.
 /// Returns `true` if the block was present and removed.
 pub fn remove_managed_block(path: impl AsRef<Path>, marker: &str) -> Result<bool> {
     let path = path.as_ref();
@@ -196,28 +204,25 @@ pub fn remove_managed_block(path: impl AsRef<Path>, marker: &str) -> Result<bool
     Ok(true)
 }
 
-// === Hook-file helpers — Ark hook entry surgery (ark-context C-17, codex-support C-19/C-22/C-25) ===
+// === Hook-file helpers — Ark hook entry surgery ===
 
-/// Canonical command string identifying the Ark-owned `SessionStart` hook
-/// entry within a platform's hook file (`.claude/settings.json`,
-/// `.codex/hooks.json`). Used as the identity value for upserts via
-/// [`update_hook_file`] and removals via [`remove_hook_file`].
+/// Canonical command string identifying the Ark-owned hook entry.
+///
+/// Used as the identity value for upserts via [`update_hook_file`] and removals
+/// via [`remove_hook_file`].
 pub const ARK_CONTEXT_HOOK_COMMAND: &str = "ark context --scope session --format json";
 
-/// Specification for a JSON-array hook region in a config file. Carried by
-/// `Platform::hook_file` so the platform-iteration plumbing in
-/// `init`/`upgrade`/`load`/`unload`/`remove` can drive each platform's
-/// hook surface from one descriptor.
+/// Describes a JSON-array hook region in a config file.
+///
+/// Carried by `Platform::hook_file` so platform-iteration plumbing can drive
+/// each platform's hook surface from one descriptor.
 #[derive(Debug, Clone, Copy)]
 pub struct HookFileSpec {
     /// Project-relative path to the JSON file (e.g. `.claude/settings.json`).
     pub path: &'static str,
-    /// Array key under root `hooks` carrying the Ark entry. Both shipping
-    /// platforms use `"SessionStart"`; future platforms with the same JSON
-    /// shape pass a different key.
+    /// Stores the array key under root `hooks` carrying the Ark entry.
     pub hooks_array_key: &'static str,
-    /// Field name used to identify Ark's entry within the array. Both
-    /// shipping platforms use `"command"`.
+    /// Stores the field name used to identify Ark's entry.
     pub identity_key: &'static str,
     /// Value of `identity_key` Ark uses to find its own entry.
     pub identity_value: &'static str,
@@ -225,7 +230,7 @@ pub struct HookFileSpec {
     pub entry_builder: fn() -> serde_json::Value,
 }
 
-/// Build the canonical Ark Claude Code `SessionStart` hook entry.
+/// Builds the canonical Ark Claude Code `SessionStart` hook entry.
 ///
 /// Schema follows Claude Code's hooks contract: each `SessionStart` array
 /// entry is a `{matcher, hooks: [...]}` wrapper. The empty matcher matches
@@ -233,8 +238,8 @@ pub struct HookFileSpec {
 /// key Ark uses to detect (and replace) its own entry across runs.
 ///
 /// Note: `timeout` is in **milliseconds** (Claude Code's hook schema). 5000
-/// is the existing canonical value (per ark-context C-15). Codex's hook
-/// schema uses seconds, not milliseconds — see [`ark_codex_hook_entry`].
+/// is the existing canonical value. Codex's hook schema uses seconds, not
+/// milliseconds — see [`ark_codex_hook_entry`].
 pub fn ark_session_start_hook_entry() -> serde_json::Value {
     serde_json::json!({
         "matcher": "",
@@ -248,13 +253,12 @@ pub fn ark_session_start_hook_entry() -> serde_json::Value {
     })
 }
 
-/// Build the canonical Ark Codex `SessionStart` hook entry.
+/// Builds the canonical Ark Codex `SessionStart` hook entry.
 ///
 /// Schema follows Codex's hooks contract (parallel to Claude's). Note:
 /// `timeout` is in **seconds**, not milliseconds — Codex's hook schema
 /// (`developers.openai.com/codex/hooks`) defaults to 600 seconds when
 /// omitted. 30 seconds gives `ark context` more than enough budget.
-/// Per codex-support C-25.
 pub fn ark_codex_hook_entry() -> serde_json::Value {
     serde_json::json!({
         "matcher": "",
@@ -268,7 +272,7 @@ pub fn ark_codex_hook_entry() -> serde_json::Value {
     })
 }
 
-/// Insert or replace the Ark-owned hook entry in a platform hook file.
+/// Inserts or replaces the Ark-owned hook entry in a platform hook file.
 /// Idempotent: callable on every `init` / `load` / `upgrade` without
 /// surprise. Preserves unrelated keys and sibling entries in the array.
 ///
@@ -278,11 +282,11 @@ pub fn ark_codex_hook_entry() -> serde_json::Value {
 /// the inner `entry.hooks[*][identity_key]` (Claude/Codex hook wrapper
 /// shape `{matcher, hooks: [...]}`).
 ///
-/// Per codex-support C-19: `hooks_array_key` must match `[A-Za-z0-9_-]+`.
-/// Both shipping platforms pass `"SessionStart"`.
+/// `hooks_array_key` must match `[A-Za-z0-9_-]+`. Both shipping platforms
+/// pass `"SessionStart"`.
 ///
-/// Per ark-context C-17 / codex-support C-11: the file is *not* hash-
-/// tracked. Re-applied unconditionally on every init/load/upgrade.
+/// The file is *not* hash-tracked. Re-applied unconditionally on every
+/// init/load/upgrade.
 ///
 /// Returns `Ok(true)` if a write happened, `Ok(false)` if the on-disk JSON
 /// already encoded the canonical entry byte-identically (idempotence skip).
@@ -305,10 +309,10 @@ pub fn update_hook_file(
     Ok(true)
 }
 
-/// Remove the Ark-owned hook entry by identity value. Returns `Ok(true)`
-/// if an entry was removed, `Ok(false)` if absent. The hook array is left
-/// in place even if it becomes empty so users can re-add siblings without
-/// re-init.
+/// Removes the Ark-owned hook entry by identity value.
+///
+/// Returns `Ok(true)` if an entry was removed, `Ok(false)` if absent. The hook
+/// array is left in place even if it becomes empty.
 ///
 /// `identity_value` is matched against `entry.hooks[*][identity_key]`.
 pub fn remove_hook_file(
@@ -334,7 +338,7 @@ pub fn remove_hook_file(
     Ok(true)
 }
 
-/// Read the Ark-owned hook entry as a snapshot-ready JSON value, if present.
+/// Reads the Ark-owned hook entry as a snapshot-ready JSON value, if present.
 /// Returns `None` if the file is missing or contains no Ark entry.
 ///
 /// `identity_value` is matched against `entry.hooks[*][identity_key]`.
@@ -358,24 +362,30 @@ pub fn read_hook_file(
         .cloned())
 }
 
-// --- Deprecated thin wrappers (codex-support C-23). Removed at 0.3.0. ---
+// --- Deprecated thin wrappers. Removed at 0.3.0. ---
 
-/// Deprecated alias for [`update_hook_file`] with `hooks_array_key =
-/// "SessionStart"` and `identity_key = "command"`. Removed at 0.3.0.
+/// Deprecated alias updates the Claude Code `SessionStart` hook.
+///
+/// Uses [`update_hook_file`] with `hooks_array_key = "SessionStart"` and
+/// `identity_key = "command"`. Removed at 0.3.0.
 #[deprecated(since = "0.2.0", note = "use update_hook_file")]
 pub fn update_settings_hook(path: impl AsRef<Path>, entry: serde_json::Value) -> Result<bool> {
     update_hook_file(path, entry, "SessionStart", "command")
 }
 
-/// Deprecated alias for [`remove_hook_file`] with `hooks_array_key =
-/// "SessionStart"` and `identity_key = "command"`. Removed at 0.3.0.
+/// Deprecated alias removes the Claude Code `SessionStart` hook.
+///
+/// Uses [`remove_hook_file`] with `hooks_array_key = "SessionStart"` and
+/// `identity_key = "command"`. Removed at 0.3.0.
 #[deprecated(since = "0.2.0", note = "use remove_hook_file")]
 pub fn remove_settings_hook(path: impl AsRef<Path>, identity_value: &str) -> Result<bool> {
     remove_hook_file(path, identity_value, "SessionStart", "command")
 }
 
-/// Deprecated alias for [`read_hook_file`] with `hooks_array_key =
-/// "SessionStart"` and `identity_key = "command"`. Removed at 0.3.0.
+/// Deprecated alias reads the Claude Code `SessionStart` hook.
+///
+/// Uses [`read_hook_file`] with `hooks_array_key = "SessionStart"` and
+/// `identity_key = "command"`. Removed at 0.3.0.
 #[deprecated(since = "0.2.0", note = "use read_hook_file")]
 pub fn read_settings_hook(
     path: impl AsRef<Path>,
@@ -399,10 +409,10 @@ fn validate_hooks_array_key(key: &str) -> Result<()> {
     }
 }
 
-/// `true` if `entry` is a Claude/Codex hook wrapper whose inner `hooks[*]`
-/// array contains a step with `[identity_key] == identity_value`. Tolerates
-/// the older flat shape (`entry[identity_key]`) for forward-compat with
-/// snapshots captured before the wrapper was introduced.
+/// Returns `true` if `entry` carries the given hook identity.
+///
+/// Tolerates the older flat shape for forward compatibility with snapshots
+/// captured before the wrapper was introduced.
 pub(crate) fn entry_carries_command(
     entry: &serde_json::Value,
     identity_value: &str,
@@ -426,9 +436,10 @@ fn read_settings_or_empty(path: &Path) -> Result<serde_json::Value> {
     Ok(read_settings_json(path)?.unwrap_or_else(|| serde_json::json!({})))
 }
 
-/// Parse `.claude/settings.json` if it exists. Returns `None` for a missing
-/// or empty file, `Some(value)` for a successful parse, and `Err` for malformed
-/// JSON.
+/// Parses a hook JSON file if it exists.
+///
+/// Returns `None` for a missing or empty file, `Some(value)` for a successful
+/// parse, and `Err` for malformed JSON.
 fn read_settings_json(path: &Path) -> Result<Option<serde_json::Value>> {
     let Some(text) = path.read_text_optional()? else {
         return Ok(None);
@@ -522,30 +533,27 @@ fn navigate_hook_array<'a>(
         .as_array_mut()
 }
 
-/// Pretty-print with a trailing newline. `serde_json` defaults to BTreeMap-
-/// ordered objects, which gives stable byte-identical output across runs
-/// (per ark-context C-29).
+/// Pretty-prints JSON with a trailing newline.
 fn render_settings_json(root: &serde_json::Value) -> String {
     let mut s = serde_json::to_string_pretty(root).expect("settings json serializes");
     s.push('\n');
     s
 }
 
-/// Yield every file under `root` recursively, in an unspecified order.
+/// Yields every file under `root` recursively, in an unspecified order.
 ///
 /// Directories are skipped; only regular files are reported. Returns an empty
-/// vector if `root` doesn't exist.
+/// vector if `root` does not exist.
 pub fn walk_files(root: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
     walk_files_excluding::<&Path>(root, &[])
 }
 
-/// Recursively enumerate files under `root`, pruning any subtree whose path
-/// starts with one of the `skip_under` prefixes (lexical `Path::starts_with`).
+/// Enumerates files under `root` recursively while pruning skipped subtrees.
 ///
-/// Per worktree-support C-7: both `root` and `skip_under` entries are expected
-/// to be absolute paths. No symlink canonicalization is performed — a prefix
-/// that resolves through a symlink will not match. Callers in `unload.rs` get
-/// absolute paths for free via `Layout` helpers.
+/// Both `root` and `skip_under` entries are expected to be absolute paths.
+/// No symlink canonicalization is performed — a prefix that resolves through
+/// a symlink will not match. Callers in `unload.rs` get absolute paths for
+/// free via `Layout` helpers.
 pub fn walk_files_excluding<P: AsRef<Path>>(
     root: impl AsRef<Path>,
     skip_under: &[P],
@@ -583,8 +591,10 @@ fn append_block(text: &str, block: &str) -> String {
 
 // --- Internal: managed-block delimiter helpers ---
 
-/// `<!-- NAME:START -->` / `<!-- NAME:END -->` delimiter pair. Internal helper
-/// for the managed-block functions above.
+/// Represents a managed-block delimiter pair.
+///
+/// The rendered delimiters are `<!-- NAME:START -->` and `<!-- NAME:END -->`.
+/// This is an internal helper for the managed-block functions above.
 #[derive(Debug, Clone, Copy)]
 struct Marker<'a> {
     name: &'a str,
@@ -656,7 +666,7 @@ struct MarkerSpan {
 }
 
 #[cfg(test)]
-#[allow(deprecated)] // exercises the deprecated SessionStart-aliased helpers (codex-support C-23)
+#[allow(deprecated)] // exercises the deprecated SessionStart-aliased helpers
 mod tests {
     use super::*;
 
@@ -757,7 +767,7 @@ mod tests {
         assert_eq!(files.len(), 2);
     }
 
-    /// worktree-support V-UT-9: skip prefix prunes the matching subtree.
+    /// Skip prefix prunes the matching subtree.
     #[test]
     fn walk_files_excluding_prunes_skip_subtree() {
         let tmp = tempfile::tempdir().unwrap();
@@ -773,8 +783,9 @@ mod tests {
         assert!(files[0].ends_with("keep/a.txt"));
     }
 
-    /// worktree-support C-7: lexical match — relative skip vs absolute root
-    /// does NOT prune (callers must pass absolute paths).
+    /// Verifies that relative skip paths do not prune absolute roots.
+    ///
+    /// Callers must pass absolute paths because the match is lexical.
     #[test]
     fn walk_files_excluding_skip_is_lexical_not_canonicalized() {
         let tmp = tempfile::tempdir().unwrap();
@@ -801,8 +812,10 @@ mod tests {
         assert!(files.is_empty());
     }
 
-    /// Canonical Claude-Code-shaped Ark entry for testing. Mirrors what
-    /// `commands::context::ark_session_start_hook_entry()` produces.
+    /// Returns a canonical Claude-Code-shaped Ark entry for testing.
+    ///
+    /// Mirrors what `commands::context::ark_session_start_hook_entry()`
+    /// produces.
     fn ark_entry() -> serde_json::Value {
         serde_json::json!({
             "matcher": "",
@@ -948,9 +961,10 @@ mod tests {
         assert_eq!(entry["hooks"][0]["command"], ARK_CONTEXT_HOOK_COMMAND);
     }
 
-    /// Forward-compat: the identity matcher tolerates a flat-shape entry
-    /// (no `matcher`/`hooks` wrapper) so older snapshots whose `hook_bodies`
-    /// captured the pre-wrapper form can still be detected and replaced.
+    /// Verifies that the identity matcher tolerates a flat-shape entry.
+    ///
+    /// Older snapshots whose `hook_bodies` captured the pre-wrapper form can
+    /// still be detected and replaced.
     #[test]
     fn entry_carries_command_tolerates_legacy_flat_shape() {
         let legacy = serde_json::json!({
@@ -979,8 +993,7 @@ mod tests {
         );
     }
 
-    /// V-UT-4 (codex-support G-6, C-4): `update_hook_file` round-trips with
-    /// explicit `(hooks_array_key, identity_key)` arguments.
+    /// Verifies that `update_hook_file` round-trips with explicit keys.
     #[test]
     fn update_hook_file_round_trips_with_explicit_key() {
         let tmp = tempfile::tempdir().unwrap();
@@ -992,8 +1005,7 @@ mod tests {
         assert_eq!(written["hooks"][0]["command"], ARK_CONTEXT_HOOK_COMMAND);
     }
 
-    /// codex-support C-19: `update_hook_file` rejects an empty / out-of-charset
-    /// `hooks_array_key`.
+    /// Verifies that `update_hook_file` rejects invalid array keys.
     #[test]
     fn update_hook_file_rejects_invalid_array_key() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1004,9 +1016,10 @@ mod tests {
         assert!(matches!(err, Error::Io { .. }));
     }
 
-    /// codex-support C-23: deprecated alias delegates to the new helper. The
-    /// pre-existing `update_settings_hook_*` tests above already exercise the
-    /// alias path; this test pins the alias-to-new equivalence explicitly.
+    /// Verifies that the deprecated alias delegates to the new helper.
+    ///
+    /// The pre-existing `update_settings_hook_*` tests above already exercise
+    /// the alias path; this test pins the alias-to-new equivalence explicitly.
     #[test]
     fn deprecated_alias_delegates_to_update_hook_file() {
         let tmp = tempfile::tempdir().unwrap();

@@ -9,7 +9,7 @@
 //! Adding a new platform is a registry entry (a `pub const` here plus an
 //! addition to [`PLATFORMS`]) plus a new template tree. The command bodies
 //! (`init`/`upgrade`/`unload`/`load`/`remove`) iterate this slice via the
-//! behavior methods below — they don't grow new arms per platform.
+//! behavior methods below — they do not grow new arms per platform.
 
 use std::path::Path;
 
@@ -35,68 +35,56 @@ use crate::{
     },
 };
 
-/// A coding-agent integration target. Each entry is the single source of
-/// truth for that integration's installation surface.
+/// Describes one coding-agent integration target.
 #[derive(Debug, Clone, Copy)]
 pub struct Platform {
-    /// Stable string id, used in CLI flags and snapshot tags. ASCII, hyphen-
-    /// separated, lowercase.
+    /// Stores the stable platform id.
     pub id: &'static str,
     /// Embedded template tree, extracted under `dest_dir` of the project root.
     pub templates: &'static Dir<'static>,
-    /// Project-relative directory where `templates` extracts (e.g. `.claude`,
-    /// `.codex`).
+    /// Stores the project-relative template extraction directory.
     pub dest_dir: &'static str,
-    /// Project-relative directory `remove` wipes wholesale. Usually equal to
-    /// `dest_dir`. For Claude it's narrower (`.claude/commands/ark`) because
-    /// `.claude/settings.json` carries an Ark-managed entry alongside user
-    /// content that survives removal — only the wholly Ark-owned subtree is
-    /// nuked.
+    /// Stores the project-relative directory `remove` wipes wholesale.
     pub removal_root: &'static str,
     /// CLI flag stem: `--<flag>` enables, `--no-<flag>` disables.
     pub cli_flag: &'static str,
-    /// Optional managed-block target. If `Some`, `init` calls
-    /// `update_managed_block(layout.resolve(file), "ARK", MANAGED_BLOCK_BODY)`
-    /// and records the block in the manifest.
+    /// Stores the optional managed-block target.
     pub managed_block_target: Option<&'static str>,
-    /// Optional `SessionStart` hook descriptor. If `Some`, `init` / `load` /
-    /// `upgrade` call `update_hook_file` with these parameters.
+    /// Stores the optional `SessionStart` hook descriptor.
     pub hook_file: Option<HookFileSpec>,
-    /// Whole-file writes that are NOT hash-tracked. `init` and `upgrade`
-    /// rewrite each entry's contents at the named path unconditionally.
-    /// Codex uses this for `.codex/config.toml` (Ark-owned, refreshed every
-    /// run); `.codex/hooks.json` is owned by `hook_file`'s surgical edits.
+    /// Stores whole-file writes that are not hash-tracked.
     pub extra_files: &'static [(&'static str, &'static str)],
 }
 
 impl Platform {
-    /// Look up a platform by its stable id (e.g. `"claude-code"`).
+    /// Looks up a platform by its stable id (e.g. `"claude-code"`).
     pub fn by_id(id: &str) -> Option<&'static Platform> {
         PLATFORMS.iter().copied().find(|p| p.id == id)
     }
 
-    /// Look up a platform by its CLI flag stem (e.g. `"claude"`).
+    /// Looks up a platform by its CLI flag stem (e.g. `"claude"`).
     pub fn by_cli_flag(flag: &str) -> Option<&'static Platform> {
         PLATFORMS.iter().copied().find(|p| p.cli_flag == flag)
     }
 
-    /// `true` iff the manifest records any file under this platform's
-    /// `dest_dir` — i.e. a previous `init` or `init --<flag>` selected it.
+    /// Returns `true` iff the manifest records this platform's files.
     pub fn is_installed(&self, manifest: &Manifest) -> bool {
         let prefix = Path::new(self.dest_dir);
         manifest.files.iter().any(|p| p.starts_with(prefix))
     }
 
-    /// `true` iff any file in the snapshot lives under this platform's
-    /// `dest_dir`. Used by `load` to decide which platforms still need a
-    /// canonical hook re-apply post-restore.
+    /// Returns `true` iff the snapshot contains this platform's files.
+    ///
+    /// Used by `load` to decide which platforms still need a canonical
+    /// hook re-apply post-restore.
     pub fn is_in_snapshot(&self, snapshot: &Snapshot) -> bool {
         let prefix = Path::new(self.dest_dir);
         snapshot.files.iter().any(|f| f.path.starts_with(prefix))
     }
 
-    /// Re-apply this platform's managed block, hook entry, and any extra
-    /// files. Idempotent and not hash-tracked — callable from every `init`,
+    /// Re-applies this platform's managed state.
+    ///
+    /// Idempotent and not hash-tracked — callable from every `init`,
     /// `upgrade`, and `load` step that needs to converge to the canonical
     /// shape. Records the managed block on `manifest` if newly inserted.
     pub fn apply_managed_state(&self, layout: &Layout, manifest: &mut Manifest) -> Result<()> {
@@ -115,9 +103,9 @@ impl Platform {
         Ok(())
     }
 
-    /// Capture this platform's Ark-owned hook entry into `snapshot` (if
-    /// present on disk) and surgically remove it. Returns the on-disk path
-    /// for the caller to track in dedupe sets. Per ark-context C-18.
+    /// Captures and removes this platform's Ark-owned hook entry.
+    ///
+    /// Returns the on-disk path for the caller to track in dedupe sets.
     pub fn capture_hook(
         &self,
         layout: &Layout,
@@ -141,8 +129,11 @@ impl Platform {
         Ok(Some(absolute))
     }
 
-    /// Remove this platform's Ark-owned hook entry surgically (sibling user
-    /// entries preserved). `Ok(true)` iff an entry was found and removed.
+    /// Removes this platform's Ark-owned hook entry.
+    ///
+    /// Sibling user entries are left in place.
+    ///
+    /// Returns `Ok(true)` iff an entry was found and removed.
     pub fn remove_hook(&self, layout: &Layout) -> Result<bool> {
         match self.hook_file {
             Some(spec) => spec.remove(layout),
@@ -150,20 +141,21 @@ impl Platform {
         }
     }
 
-    /// Wipe this platform's `removal_root` from disk. `Ok(true)` iff
-    /// anything was removed.
+    /// Wipes this platform's `removal_root` from disk.
+    ///
+    /// Returns `Ok(true)` iff anything was removed.
     pub fn remove_dir(&self, layout: &Layout) -> Result<bool> {
         layout.resolve(self.removal_root).remove_dir_all()
     }
 }
 
 impl HookFileSpec {
-    /// Build the canonical Ark entry from this spec.
+    /// Builds the canonical Ark entry from this spec.
     pub fn canonical_entry(&self) -> Value {
         (self.entry_builder)()
     }
 
-    /// Insert or replace the canonical Ark entry in this hook file.
+    /// Inserts or replaces the canonical Ark entry in this hook file.
     pub fn apply_canonical(&self, layout: &Layout) -> Result<bool> {
         update_hook_file(
             layout.resolve(self.path),
@@ -173,7 +165,7 @@ impl HookFileSpec {
         )
     }
 
-    /// Read the Ark-owned hook entry, if present.
+    /// Reads the Ark-owned hook entry, if present.
     pub fn read(&self, layout: &Layout) -> Result<Option<Value>> {
         read_hook_file(
             layout.resolve(self.path),
@@ -183,7 +175,9 @@ impl HookFileSpec {
         )
     }
 
-    /// Surgically remove the Ark-owned entry. `Ok(true)` iff one was found.
+    /// Surgically removes the Ark-owned entry.
+    ///
+    /// Returns `Ok(true)` iff one was found.
     pub fn remove(&self, layout: &Layout) -> Result<bool> {
         remove_hook_file(
             layout.resolve(self.path),
@@ -195,9 +189,12 @@ impl HookFileSpec {
 }
 
 impl SnapshotHookBody {
-    /// Replay this captured entry verbatim onto disk via `update_hook_file`.
-    /// The trailing segment of `json_pointer` is the array key; falls back
-    /// to `"SessionStart"` for malformed historical pointers.
+    /// Replays this captured entry verbatim onto disk.
+    ///
+    /// Uses [`update_hook_file`] with the captured identity fields.
+    ///
+    /// The trailing segment of `json_pointer` is the array key; falls
+    /// back to `"SessionStart"` for malformed historical pointers.
     pub fn apply(&self, layout: &Layout) -> Result<bool> {
         let array_key = self
             .json_pointer
@@ -214,13 +211,16 @@ impl SnapshotHookBody {
     }
 }
 
-/// All known platforms, in canonical iteration order. Used by `init` /
-/// `upgrade` / `unload` / `load` / `remove` to drive per-platform plumbing.
+/// All known platforms, in canonical iteration order.
+///
+/// Used by `init` / `upgrade` / `unload` / `load` / `remove` to drive
+/// per-platform plumbing.
 pub const PLATFORMS: &[&Platform] = &[&CLAUDE_PLATFORM, &CODEX_PLATFORM, &OPENCODE_PLATFORM];
 
-/// Iterate platforms whose templates appear in `manifest.files` — i.e. the
-/// project has opted into them. Preserves G-14 (Claude-only stays
-/// Claude-only) for `upgrade`.
+/// Iterates platforms whose templates appear in `manifest.files` — i.e.
+/// the project has opted into them.
+///
+/// Preserves the Claude-only-stays-Claude-only invariant for `upgrade`.
 pub fn installed<'a>(manifest: &'a Manifest) -> impl Iterator<Item = &'static Platform> + 'a {
     PLATFORMS
         .iter()
@@ -228,9 +228,11 @@ pub fn installed<'a>(manifest: &'a Manifest) -> impl Iterator<Item = &'static Pl
         .filter(|p| p.is_installed(manifest))
 }
 
-/// Claude Code integration. Templates extract under `.claude/`; managed
-/// block lives in `CLAUDE.md`; SessionStart hook lives in
-/// `.claude/settings.json` and uses milliseconds for `timeout`.
+/// Claude Code integration.
+///
+/// Templates extract under `.claude/`; managed block lives in `CLAUDE.md`;
+/// the `SessionStart` hook lives in `.claude/settings.json` and uses
+/// milliseconds for `timeout`.
 pub const CLAUDE_PLATFORM: Platform = Platform {
     id: "claude-code",
     templates: &CLAUDE_TEMPLATES,
@@ -248,9 +250,11 @@ pub const CLAUDE_PLATFORM: Platform = Platform {
     extra_files: &[],
 };
 
-/// OpenAI Codex CLI integration. Templates extract under `.codex/`; managed
-/// block lives in `AGENTS.md`; SessionStart hook lives in `.codex/hooks.json`
-/// and uses **seconds** for `timeout` (Codex schema differs from Claude).
+/// OpenAI Codex CLI integration.
+///
+/// Templates extract under `.codex/`; managed block lives in `AGENTS.md`;
+/// the `SessionStart` hook lives in `.codex/hooks.json` and uses **seconds**
+/// for `timeout` (Codex schema differs from Claude).
 pub const CODEX_PLATFORM: Platform = Platform {
     id: "codex",
     templates: &CODEX_TEMPLATES,
@@ -268,10 +272,13 @@ pub const CODEX_PLATFORM: Platform = Platform {
     extra_files: &[(CODEX_CONFIG_FILE, CODEX_CONFIG_TOML)],
 };
 
-/// OpenCode integration. Templates extract under `.opencode/`; managed block
-/// shares `AGENTS.md` with Codex (manifest dedupes on `(file, marker)`).
-/// SessionStart-equivalent context injection rides a Bun-loaded TS plugin
-/// shipped via `extra_files`; OpenCode has no native JSON hook surface.
+/// OpenCode integration.
+///
+/// Templates extract under `.opencode/`; the managed block shares
+/// `AGENTS.md` with Codex (manifest dedupes on `(file, marker)`).
+/// `SessionStart`-equivalent context injection rides a Bun-loaded TS
+/// plugin shipped via `extra_files`; OpenCode has no native JSON hook
+/// surface.
 pub const OPENCODE_PLATFORM: Platform = Platform {
     id: "opencode",
     templates: &OPENCODE_TEMPLATES,
@@ -287,7 +294,7 @@ pub const OPENCODE_PLATFORM: Platform = Platform {
 mod tests {
     use super::*;
 
-    /// opencode-support V-UT-2: registry has three entries in canonical order.
+    /// Verifies that the registry has three entries in canonical order.
     #[test]
     fn platforms_registry_has_three_entries_in_canonical_order() {
         assert_eq!(PLATFORMS.len(), 3);
@@ -296,7 +303,7 @@ mod tests {
         assert_eq!(PLATFORMS[2].id, "opencode");
     }
 
-    /// opencode-support V-UT-3: by_id resolves all three; unknown id returns None.
+    /// Verifies `by_id` resolution and miss behavior.
     #[test]
     fn platform_by_id_resolves_known_platforms() {
         assert_eq!(
@@ -308,7 +315,7 @@ mod tests {
         assert!(Platform::by_id("unknown").is_none());
     }
 
-    /// opencode-support V-UT-3: by_cli_flag resolves all three.
+    /// Verifies that `by_cli_flag` resolves all three platforms.
     #[test]
     fn platform_by_cli_flag_resolves() {
         assert_eq!(
@@ -323,11 +330,12 @@ mod tests {
         assert!(Platform::by_cli_flag("nope").is_none());
     }
 
-    /// opencode-support V-UT-1: `OPENCODE_PLATFORM` shape. `dest_dir` is
-    /// the commands subtree (parallel to Codex's `.codex/skills/` so
-    /// `Platform::templates` extracts cleanly under it); `removal_root` is
-    /// the parent `.opencode/` so removal wipes both `commands/` and
-    /// `plugins/`.
+    /// Verifies the [`OPENCODE_PLATFORM`] shape.
+    ///
+    /// `dest_dir` is the commands subtree (parallel to Codex's
+    /// `.codex/skills/` so [`Platform::templates`] extracts cleanly under
+    /// it); `removal_root` is the parent `.opencode/` so removal wipes
+    /// both `commands/` and `plugins/`.
     #[test]
     fn opencode_platform_shape() {
         assert_eq!(OPENCODE_PLATFORM.id, "opencode");
@@ -341,9 +349,7 @@ mod tests {
         assert_eq!(OPENCODE_PLATFORM.extra_files[0].1, OPENCODE_ARK_CONTEXT_TS);
     }
 
-    /// opencode-support V-UT-4: `apply_managed_state` writes the block, the
-    /// plugin file (byte-for-byte equal to `OPENCODE_ARK_CONTEXT_TS`), and
-    /// records the block once.
+    /// Verifies OpenCode managed-state application.
     #[test]
     fn opencode_apply_managed_state_writes_block_and_plugin() {
         let tmp = tempfile::tempdir().unwrap();
@@ -372,8 +378,7 @@ mod tests {
         assert!(OPENCODE_PLATFORM.hook_file.is_none());
     }
 
-    /// opencode-support V-UT-5: applying both Codex and OpenCode platforms
-    /// records the AGENTS.md block exactly once (`(file, marker)` dedupe).
+    /// Verifies shared `AGENTS.md` block dedupe.
     #[test]
     fn shared_agents_block_deduped_when_both_platforms_apply() {
         let tmp = tempfile::tempdir().unwrap();
@@ -404,7 +409,7 @@ mod tests {
         assert_eq!(starts.len(), 1, "AGENTS.md must contain one block");
     }
 
-    /// opencode-support V-UT-6: capture_hook is None for OpenCode.
+    /// Verifies that `capture_hook` returns `None` for OpenCode.
     #[test]
     fn opencode_capture_hook_returns_none() {
         let tmp = tempfile::tempdir().unwrap();
@@ -419,7 +424,7 @@ mod tests {
         assert!(snapshot.hook_bodies.is_empty());
     }
 
-    /// opencode-support V-UT-7: remove_hook returns false for OpenCode (no hook file).
+    /// Verifies that `remove_hook` returns `false` for OpenCode.
     #[test]
     fn opencode_remove_hook_returns_false() {
         let tmp = tempfile::tempdir().unwrap();
@@ -427,7 +432,7 @@ mod tests {
         assert!(!OPENCODE_PLATFORM.remove_hook(&layout).unwrap());
     }
 
-    /// opencode-support V-UT-8: remove_dir round-trip.
+    /// Verifies the `remove_dir` round-trip.
     #[test]
     fn opencode_remove_dir_round_trips() {
         let tmp = tempfile::tempdir().unwrap();
@@ -443,8 +448,7 @@ mod tests {
         assert!(!layout.opencode_dir().exists());
     }
 
-    /// V-UT-7 / V-UT-10: ark_codex_hook_entry carries the canonical command
-    /// AND uses the seconds-unit constant 30 (not 5000).
+    /// Verifies the canonical Codex hook entry.
     #[test]
     fn ark_codex_hook_entry_carries_canonical_command_in_seconds() {
         let entry = ark_codex_hook_entry();
@@ -455,8 +459,7 @@ mod tests {
         assert_eq!(entry["hooks"][0]["timeout"], serde_json::json!(30));
     }
 
-    /// `apply_managed_state` writes the managed block (recording it in the
-    /// manifest), the canonical hook entry, and every `extra_files` entry.
+    /// Verifies Codex managed-state application.
     #[test]
     fn codex_apply_managed_state_writes_block_hook_and_extras() {
         let tmp = tempfile::tempdir().unwrap();
@@ -491,8 +494,7 @@ mod tests {
         assert_eq!(cfg, CODEX_CONFIG_TOML);
     }
 
-    /// `capture_hook` round-trips: read+remove the canonical entry, leaving
-    /// any sibling user entry on disk untouched.
+    /// Verifies Codex hook capture and removal.
     #[test]
     fn codex_capture_hook_captures_then_removes_only_ark_entry() {
         let tmp = tempfile::tempdir().unwrap();
@@ -535,8 +537,7 @@ mod tests {
         assert_eq!(arr[0]["hooks"][0]["command"], "user-sibling");
     }
 
-    /// `capture_hook` returns `None` when the platform has no hook file or
-    /// the file is missing on disk.
+    /// Verifies hook capture miss behavior.
     #[test]
     fn capture_hook_is_none_when_file_absent() {
         let tmp = tempfile::tempdir().unwrap();
@@ -549,8 +550,7 @@ mod tests {
         assert!(snapshot.hook_bodies.is_empty());
     }
 
-    /// `remove_dir` returns false on a non-existent dir, true after a real
-    /// dir is wiped.
+    /// Verifies `remove_dir` return values.
     #[test]
     fn remove_dir_returns_whether_anything_was_removed() {
         let tmp = tempfile::tempdir().unwrap();
@@ -567,8 +567,7 @@ mod tests {
         assert!(!layout.codex_dir().exists());
     }
 
-    /// `remove_hook` returns false when the file is absent and true after
-    /// surgically removing the Ark entry.
+    /// Verifies `remove_hook` return values.
     #[test]
     fn remove_hook_round_trips() {
         let tmp = tempfile::tempdir().unwrap();
@@ -588,7 +587,7 @@ mod tests {
         assert!(CODEX_PLATFORM.remove_hook(&layout).unwrap());
     }
 
-    /// codex-support C-18: source-scan invariant for platforms.rs.
+    /// Enforces the source-scan invariant for `platforms.rs`.
     #[test]
     fn platforms_source_no_bare_std_fs_or_dot_paths() {
         crate::commands::tests_common::assert_source_clean(include_str!("platforms.rs"));

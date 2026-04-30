@@ -2,52 +2,61 @@
 //!
 //! Templates are compiled into the binary via `include_dir!`. Four trees ship:
 //!
-//! - [`ARK_TEMPLATES`] — extracted into the host project's `.ark/` directory
-//! - [`CLAUDE_TEMPLATES`] — extracted into the host project's `.claude/` directory
-//! - [`CODEX_TEMPLATES`] — extracted into the host project's `.codex/skills/`
+//! - [`crate::templates::ARK_TEMPLATES`] — extracted into the host project's `.ark/` directory
+//! - [`crate::templates::CLAUDE_TEMPLATES`] — extracted into the host project's `.claude/` directory
+//! - [`crate::templates::CODEX_TEMPLATES`] — extracted into the host project's `.codex/skills/`
 //!   directory. Only the `skills/` subtree is hash-tracked; `.codex/hooks.json`
 //!   is owned by [`crate::io::update_hook_file`] (driven by
 //!   `CODEX_PLATFORM.hook_file`), and `.codex/config.toml` ships via the
-//!   whole-file [`CODEX_CONFIG_TOML`] constant (re-applied unconditionally on
+//!   whole-file [`crate::templates::CODEX_CONFIG_TOML`] constant (re-applied unconditionally on
 //!   every `init` / `upgrade`; not hash-tracked).
-//! - [`OPENCODE_TEMPLATES`] — extracted into the host project's
+//! - [`crate::templates::OPENCODE_TEMPLATES`] — extracted into the host project's
 //!   `.opencode/commands/` directory. The `.opencode/plugins/ark-context.ts`
-//!   file ships via the whole-file [`OPENCODE_ARK_CONTEXT_TS`] constant
+//!   file ships via the whole-file [`crate::templates::OPENCODE_ARK_CONTEXT_TS`] constant
 //!   (re-applied unconditionally on every `init` / `load` / `upgrade`; not
 //!   hash-tracked, mirroring `CODEX_CONFIG_TOML`).
 
 use include_dir::{Dir, include_dir};
 
+/// Embedded `.ark/` template tree.
 pub static ARK_TEMPLATES: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../templates/ark");
+/// Embedded `.claude/` template tree.
 pub static CLAUDE_TEMPLATES: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../templates/claude");
+/// Embedded Codex skill template tree.
 pub static CODEX_TEMPLATES: Dir<'_> =
     include_dir!("$CARGO_MANIFEST_DIR/../../templates/codex/skills");
+/// Embedded OpenCode command template tree.
 pub static OPENCODE_TEMPLATES: Dir<'_> =
     include_dir!("$CARGO_MANIFEST_DIR/../../templates/opencode/commands");
 
-/// Whole-file body for `.codex/config.toml`. Re-applied unconditionally on
-/// every `init`/`upgrade`. Not hash-tracked. The matching `.codex/hooks.json`
-/// lifecycle is owned by `update_hook_file` (surgical SessionStart entry;
-/// sibling user hooks preserved) — no whole-file rewrite needed.
+/// Whole-file body for `.codex/config.toml`.
+///
+/// Re-applied unconditionally on every `init`/`upgrade`; not hash-tracked.
+/// The matching `.codex/hooks.json` lifecycle is owned by
+/// [`crate::io::update_hook_file`] (surgical `SessionStart` entry;
+/// sibling user hooks preserved) — no whole-file rewrite is needed.
 pub const CODEX_CONFIG_TOML: &str = include_str!("../../../templates/codex/config.toml");
 
-/// Whole-file body for `.opencode/plugins/ark-context.ts`. Re-applied
-/// unconditionally on every `init`/`load`/`upgrade`. Not hash-tracked.
-/// OpenCode has no native JSON `SessionStart` hook surface; this Bun-loaded
-/// TypeScript plugin replaces that role by shelling out to
-/// `ark context --scope session --format json` from `chat.message` and
-/// prepending the unwrapped context to the first user message via
+/// Whole-file body for `.opencode/plugins/ark-context.ts`.
+///
+/// Re-applied unconditionally on every `init`/`load`/`upgrade`; not
+/// hash-tracked. OpenCode has no native JSON `SessionStart` hook surface;
+/// this Bun-loaded TypeScript plugin replaces that role by shelling out
+/// to `ark context --scope session --format json` from `chat.message`
+/// and prepending the unwrapped context to the first user message via
 /// `experimental.chat.messages.transform`.
 pub const OPENCODE_ARK_CONTEXT_TS: &str =
     include_str!("../../../templates/opencode/plugins/ark-context.ts");
 
 /// A file to be extracted from a template tree, with its destination path.
 pub struct Extracted<'a> {
+    /// Path relative to the template tree root.
     pub relative_path: &'a std::path::Path,
+    /// File contents embedded in the template tree.
     pub contents: &'a [u8],
 }
 
-/// Walk every file in `dir`, yielding each as an [`Extracted`] entry.
+/// Walks every file in `dir`, yielding each as an [`Extracted`] entry.
 pub fn walk<'a>(dir: &'a Dir<'a>) -> impl Iterator<Item = Extracted<'a>> + 'a {
     let mut stack = vec![dir];
     let mut files = Vec::new();
@@ -65,11 +74,10 @@ pub fn walk<'a>(dir: &'a Dir<'a>) -> impl Iterator<Item = Extracted<'a>> + 'a {
 mod tests {
     use super::*;
 
-    /// V-IT-9 (codex-support G-12, C-14): every Claude slash command under
-    /// `templates/claude/commands/ark/<name>.md` has a matching Codex skill
-    /// at `templates/codex/skills/ark-<name>/SKILL.md`. Existence-only —
-    /// content parity is not asserted because Codex skills carry different
-    /// frontmatter and rewrite slash-specific tokens.
+    /// Verifies that every Claude slash command has a Codex skill sibling.
+    ///
+    /// Existence-only: content parity is not asserted because Codex skills
+    /// carry different frontmatter and rewrite slash-specific tokens.
     #[test]
     fn every_claude_command_has_a_codex_skill_sibling() {
         let claude_commands = CLAUDE_TEMPLATES
@@ -91,10 +99,10 @@ mod tests {
         }
     }
 
-    /// V-E-2 (codex-support C-7): Codex skill bodies open with their *own*
-    /// YAML frontmatter (`name`, `description`) rather than Claude's
-    /// (`description`, `argument-hint`). A copy-pasted Claude header would
-    /// fail this assertion; the `---\n` delimiter itself is required.
+    /// Verifies that each Codex skill opens with Codex frontmatter.
+    ///
+    /// A copy-pasted Claude header would fail this assertion; the `---\n`
+    /// delimiter itself is required.
     #[test]
     fn codex_skill_bodies_have_codex_frontmatter_not_claude_frontmatter() {
         let skills_root = CODEX_TEMPLATES.dirs();
@@ -118,10 +126,9 @@ mod tests {
         assert!(count >= 3, "expected at least 3 Codex skills");
     }
 
-    /// opencode-support V-IT-1 / G-12 (a): every Claude slash command under
-    /// `templates/claude/commands/ark/<name>.md` has a matching OpenCode
-    /// slash command at `templates/opencode/commands/ark/<name>.md`.
-    /// Existence-only — content parity is policed at code review.
+    /// Verifies that every Claude slash command has an OpenCode sibling.
+    ///
+    /// Existence-only: content parity is policed at code review.
     #[test]
     fn every_claude_command_has_an_opencode_command_sibling() {
         let claude_commands = CLAUDE_TEMPLATES
@@ -143,11 +150,7 @@ mod tests {
         }
     }
 
-    /// opencode-support V-IT-2 / G-12 (b): each OpenCode command body opens
-    /// with a `---\ndescription:` frontmatter block (no `argument-hint:`
-    /// line — that's Claude-specific) and contains the verbatim
-    /// backtick-quoted heading `` # `/ark:<name> $ARGUMENTS` `` matching
-    /// the Claude templates exactly.
+    /// Verifies OpenCode command frontmatter and heading shape.
     #[test]
     fn opencode_command_bodies_have_opencode_frontmatter_and_arguments_token() {
         let opencode_commands = OPENCODE_TEMPLATES
@@ -197,9 +200,10 @@ mod tests {
         assert!(count >= 3, "expected at least 3 OpenCode commands");
     }
 
-    /// opencode-support V-UT-13 (per R-010): `OPENCODE_TEMPLATES` does NOT
-    /// contain a `plugins/` subtree — the plugin file ships separately via
-    /// `extra_files` + `OPENCODE_ARK_CONTEXT_TS`. Locks down C-2.
+    /// Verifies that [`OPENCODE_TEMPLATES`] excludes plugins.
+    ///
+    /// The plugin file ships separately via `extra_files` and
+    /// [`OPENCODE_ARK_CONTEXT_TS`].
     #[test]
     fn opencode_templates_does_not_contain_plugins_subtree() {
         assert!(
@@ -214,26 +218,25 @@ mod tests {
         );
     }
 
-    /// opencode-support V-UT-14 (per R-010, role per R-103): no
-    /// `package.json` is reachable via `OPENCODE_TEMPLATES`. Regression
-    /// guard for future template-tree changes (vacuous against the current
-    /// implementation by design; activates if a future commit adds a
-    /// `package.json` to the templates tree).
+    /// Verifies that no `package.json` is reachable via templates.
+    ///
+    /// Regression guard for future template-tree changes (vacuous against
+    /// the current implementation by design; activates if a future commit
+    /// adds a `package.json` to the templates tree).
     #[test]
     fn opencode_templates_ships_no_package_json() {
         assert!(OPENCODE_TEMPLATES.get_file("package.json").is_none());
         assert!(OPENCODE_TEMPLATES.get_file("ark/package.json").is_none());
     }
 
-    /// opencode-support: the plugin's pure helpers (`buildEnvelopePrefix`,
-    /// `shouldInject`) MUST be defined as plain `function` declarations,
-    /// NOT `export function`. OpenCode's plugin runtime treats every named
-    /// export as a plugin factory and invokes it at load time with no
-    /// arguments — exporting a parameterized helper crashes plugin loading
-    /// (verified empirically: `error=undefined is not an object (evaluating
-    /// 'processed.has')`). The helpers are still testable via this
-    /// string-level guard, which catches refactors that rename or remove
-    /// either helper or accidentally re-add `export`.
+    /// Verifies that plugin helpers remain internal functions.
+    ///
+    /// OpenCode's plugin runtime treats every named export as a plugin
+    /// factory and invokes it at load time with no arguments — exporting
+    /// a parameterized helper crashes plugin loading (verified
+    /// empirically: `error=undefined is not an object (evaluating
+    /// 'processed.has')`). This string-level guard catches refactors that
+    /// rename or remove either helper or accidentally re-add `export`.
     #[test]
     fn opencode_plugin_keeps_helpers_internal() {
         let body = OPENCODE_ARK_CONTEXT_TS;
@@ -257,7 +260,7 @@ mod tests {
             "`shouldInject` must NOT be exported — opencode invokes every named export at load \
              time and the helper takes parameters"
         );
-        // The helpers must have live consumers (otherwise they're dead).
+        // The helpers must have live consumers (otherwise they are dead).
         assert!(
             body.contains("buildEnvelopePrefix(additionalContext)"),
             "plugin must invoke `buildEnvelopePrefix` (live consumer)"

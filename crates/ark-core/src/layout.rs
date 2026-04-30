@@ -22,49 +22,58 @@ pub const CLAUDE_MD: &str = "CLAUDE.md";
 /// Marker name used for the managed block in `CLAUDE.md`.
 pub const MANAGED_MARKER: &str = "ARK";
 
-/// Directories under `.ark/` that must exist after init even though no
-/// template files populate them. Users and the workflow fill these later.
+/// Lists empty directories created during init.
 pub const EMPTY_DIRS: &[&str] = &[".ark/tasks", ".ark/tasks/archive"];
 
 /// Subdirectories and files under `.ark/` that the `agent` namespace manipulates.
 pub const TASKS_DIR: &str = ".ark/tasks";
+/// Directory for archived tasks under `.ark/`.
 pub const TASKS_ARCHIVE_DIR: &str = ".ark/tasks/archive";
+/// File that stores the current active task slug.
 pub const TASKS_CURRENT_FILE: &str = ".ark/tasks/.current";
+/// Directory for promoted feature specs.
 pub const SPECS_FEATURES_DIR: &str = ".ark/specs/features";
+/// Feature-spec index file path.
 pub const SPECS_FEATURES_INDEX_FILE: &str = ".ark/specs/features/INDEX.md";
+/// Directory for project-level specs.
 pub const SPECS_PROJECT_DIR: &str = ".ark/specs/project";
+/// Project-spec index file path.
 pub const SPECS_PROJECT_INDEX_FILE: &str = ".ark/specs/project/INDEX.md";
+/// Directory for task artifact templates.
 pub const ARK_TEMPLATES_DIR: &str = ".ark/templates";
 
-/// `<project>/.ark/worktrees/` — root for git worktrees bound to Ark tasks.
-/// Created lazily on first `task new --worktree`. Excluded from `unload`'s
-/// snapshot capture per worktree-support C-7.
+/// Root for git worktrees bound to Ark tasks (`<project>/.ark/worktrees/`).
+///
+/// Created lazily on first `task new --worktree`. Excluded from
+/// `unload`'s snapshot capture.
 pub const WORKTREES_DIR: &str = ".ark/worktrees";
 
-/// `<project>/.ark/config.toml` — user-editable consolidated config for
-/// every Ark feature that needs settings. Sectioned TOML: `[worktree]`,
-/// `[workspace]`, etc. Created by `init` from the embedded template;
-/// `upgrade` does NOT overwrite (worktree-support C-9, workspace C-10).
+/// User-editable consolidated config (`<project>/.ark/config.toml`).
+///
+/// Sectioned TOML: `[worktree]`, `[workspace]`, etc. Created by `init`
+/// from the embedded template; `upgrade` does NOT overwrite.
 pub const CONFIG_FILE: &str = ".ark/config.toml";
 
-/// `<project>/.ark/.gitignore` — fully Ark-owned. Lists `worktrees/` so the
-/// parent checkout's index does not pick up per-task worktree directories.
-/// Shipped as a regular template under `.ark/`; no managed-block needed
-/// since users don't co-author it (worktree-support C-16).
+/// Fully Ark-owned gitignore at `<project>/.ark/.gitignore`.
+///
+/// Lists `worktrees/` so the parent checkout's index does not pick up
+/// per-task worktree directories. Shipped as a regular template under
+/// `.ark/`; no managed-block is needed since users do not co-author it.
 pub const ARK_GITIGNORE_FILE: &str = ".ark/.gitignore";
 
-/// `<project>/.ark/workspace/` — root for per-developer session journals.
+/// Root for per-developer session journals (`<project>/.ark/workspace/`).
+///
 /// Created lazily by `ark agent workspace init`. Captured normally by
-/// `unload`/`load` (workspace C-7).
+/// `unload`/`load`.
 pub const WORKSPACE_DIR: &str = ".ark/workspace";
 
-/// `<project>/.ark/.developer` — gitignored, per-machine identity file.
+/// Gitignored, per-machine identity file (`<project>/.ark/.developer`).
+///
 /// Written only by `ark agent workspace init`. Excluded from `unload`'s
-/// snapshot capture in BOTH walk sites (workspace C-7).
+/// snapshot capture in both walk sites.
 pub const DEVELOPER_FILE: &str = ".ark/.developer";
 
-/// `.claude/settings.json` — host-side Claude Code settings file (managed
-/// only as far as the Ark `SessionStart` hook entry; user-owned otherwise).
+/// Host-side Claude Code settings file.
 pub const CLAUDE_SETTINGS_FILE: &str = ".claude/settings.json";
 
 /// Root directory for Codex integration (relative to project root).
@@ -73,31 +82,22 @@ pub const CODEX_DIR: &str = ".codex";
 /// `<project>/.codex/skills/` — where Codex skill folders are extracted.
 pub const CODEX_SKILLS_DIR: &str = ".codex/skills";
 
-/// `<project>/.codex/hooks.json` — Codex hook configuration. Ark manages only
-/// its `SessionStart` entry; user-owned otherwise.
+/// Codex hook configuration file.
 pub const CODEX_HOOKS_FILE: &str = ".codex/hooks.json";
 
-/// `<project>/.codex/config.toml` — project-scoped Codex defaults. Wholly
-/// Ark-owned (not hash-tracked; re-applied unconditionally).
+/// Project-scoped Codex defaults file.
 pub const CODEX_CONFIG_FILE: &str = ".codex/config.toml";
 
-/// Project-root file carrying the Codex-side managed block (parallel to
-/// [`CLAUDE_MD`]).
+/// Project-root file carrying the Codex-side managed block.
 pub const AGENTS_MD: &str = "AGENTS.md";
 
 /// Root directory for OpenCode integration (relative to project root).
 pub const OPENCODE_DIR: &str = ".opencode";
 
-/// `<project>/.opencode/commands/` — where OpenCode slash-command markdown
-/// files are extracted. `OPENCODE_TEMPLATES` is rooted parallel to this, so
-/// `Platform::templates` extracts under `dest_dir = OPENCODE_COMMANDS_DIR`
-/// without an extra path component (mirrors `CODEX_SKILLS_DIR` /
-/// `CODEX_TEMPLATES` rooted at `templates/codex/skills/`).
+/// OpenCode slash-command extraction directory.
 pub const OPENCODE_COMMANDS_DIR: &str = ".opencode/commands";
 
-/// `<project>/.opencode/plugins/ark-context.ts` — Bun-loaded plugin that
-/// shells out to `ark context --scope session --format json` and prepends
-/// the `additionalContext` payload to the first user message.
+/// Bun-loaded OpenCode context plugin path.
 pub const OPENCODE_PLUGIN_FILE: &str = ".opencode/plugins/ark-context.ts";
 
 /// Marker used for the feature-spec roster in `specs/features/INDEX.md`.
@@ -114,34 +114,37 @@ See `.ark/workflow.md` for the full workflow.
 /// Rooted view of an Ark-managed project.
 #[derive(Debug, Clone)]
 pub struct Layout {
+    /// Absolute or caller-provided project root.
     pub root: PathBuf,
 }
 
 impl Layout {
+    /// Creates a layout rooted at `root`.
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }
 
+    /// Returns the project root.
     pub fn root(&self) -> &Path {
         &self.root
     }
 
-    /// `<root>/.ark/`
+    /// Returns the root directory for Ark state.
     pub fn ark_dir(&self) -> PathBuf {
         self.root.join(ARK_DIR)
     }
 
-    /// `<root>/.claude/`
+    /// Returns the root directory for Claude Code integration.
     pub fn claude_dir(&self) -> PathBuf {
         self.root.join(CLAUDE_DIR)
     }
 
-    /// `<root>/.claude/commands/ark/`
+    /// Returns the directory containing Ark's Claude Code slash commands.
     pub fn claude_commands_ark_dir(&self) -> PathBuf {
         self.root.join(CLAUDE_COMMANDS_ARK_DIR)
     }
 
-    /// `<root>/CLAUDE.md`
+    /// Returns the project-root `CLAUDE.md` path.
     pub fn claude_md(&self) -> PathBuf {
         self.root.join(CLAUDE_MD)
     }
@@ -151,14 +154,22 @@ impl Layout {
         MANAGED_MARKER
     }
 
-    /// Resolve a project-relative path to an absolute path under `root`.
+    /// Resolves a project-relative path to an absolute path under `root`.
     pub fn resolve(&self, relative: impl AsRef<Path>) -> PathBuf {
         self.root.join(relative)
     }
 
-    /// Resolve a project-relative path, rejecting absolute paths, root/prefix
-    /// components, and any `..` traversal. Use for paths sourced from
-    /// untrusted input (e.g. `.ark.db` snapshots).
+    /// Resolves a project-relative path after validating it is safe.
+    ///
+    /// Rejects absolute paths, root/prefix components, and any `..` traversal.
+    ///
+    /// Use for paths sourced from untrusted input (e.g. `.ark.db`
+    /// snapshots).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UnsafeSnapshotPath`] if `relative` is absolute,
+    /// empty, contains a drive/UNC prefix, or contains a `..` component.
     pub fn resolve_safe(&self, relative: impl AsRef<Path>) -> Result<PathBuf> {
         let relative = relative.as_ref();
         let reason = classify_unsafe(relative);
@@ -171,156 +182,161 @@ impl Layout {
         Ok(self.root.join(relative))
     }
 
-    /// `<root>/.ark/tasks/`
+    /// Returns the root directory for active Ark tasks.
     pub fn tasks_dir(&self) -> PathBuf {
         self.root.join(TASKS_DIR)
     }
 
-    /// `<root>/.ark/tasks/archive/`
+    /// Returns the directory for archived Ark tasks.
     pub fn tasks_archive_dir(&self) -> PathBuf {
         self.root.join(TASKS_ARCHIVE_DIR)
     }
 
-    /// `<root>/.ark/tasks/.current`
+    /// Returns the file that records the current Ark task slug.
     pub fn tasks_current(&self) -> PathBuf {
         self.root.join(TASKS_CURRENT_FILE)
     }
 
-    /// `<root>/.ark/tasks/<slug>/`
+    /// Returns the active task directory for `slug`.
     pub fn task_dir(&self, slug: &str) -> PathBuf {
         self.tasks_dir().join(slug)
     }
 
-    /// `<root>/.ark/specs/features/`
+    /// Returns the root directory for feature specs.
     pub fn specs_features_dir(&self) -> PathBuf {
         self.root.join(SPECS_FEATURES_DIR)
     }
 
-    /// `<root>/.ark/specs/features/<feature>/`
+    /// Returns the feature-spec directory for `feature`.
     pub fn specs_feature_dir(&self, feature: &str) -> PathBuf {
         self.specs_features_dir().join(feature)
     }
 
-    /// `<root>/.ark/specs/features/INDEX.md`
+    /// Returns the feature-spec index path.
     pub fn specs_features_index(&self) -> PathBuf {
         self.root.join(SPECS_FEATURES_INDEX_FILE)
     }
 
-    /// `<root>/.ark/specs/project/`
+    /// Returns the root directory for project specs.
     pub fn specs_project_dir(&self) -> PathBuf {
         self.root.join(SPECS_PROJECT_DIR)
     }
 
-    /// `<root>/.ark/specs/project/INDEX.md`
+    /// Returns the project-spec index path.
     pub fn specs_project_index(&self) -> PathBuf {
         self.root.join(SPECS_PROJECT_INDEX_FILE)
     }
 
-    /// `<root>/.claude/settings.json`
+    /// Returns the Claude Code settings path.
     pub fn claude_settings(&self) -> PathBuf {
         self.root.join(CLAUDE_SETTINGS_FILE)
     }
 
-    /// `<root>/.ark/worktrees/`
+    /// Returns the root directory for Ark task worktrees.
     pub fn worktrees_dir(&self) -> PathBuf {
         self.root.join(WORKTREES_DIR)
     }
 
-    /// `<root>/.ark/worktrees/<branch>/` — joining a branch name (which may
-    /// contain a `/`) onto `worktrees_dir()`.
+    /// Returns the worktree directory for `branch`.
+    ///
+    /// Branch names may contain `/`, so this joins the branch onto
+    /// [`Self::worktrees_dir`].
     pub fn worktree_dir(&self, branch: &str) -> PathBuf {
         self.worktrees_dir().join(branch)
     }
 
-    /// `<root>/.ark/config.toml`
+    /// Returns the project-level Ark config path.
     pub fn config_file(&self) -> PathBuf {
         self.root.join(CONFIG_FILE)
     }
 
-    /// `<root>/.ark/.gitignore`
+    /// Returns the Ark-owned `.ark/.gitignore` path.
     pub fn ark_gitignore(&self) -> PathBuf {
         self.root.join(ARK_GITIGNORE_FILE)
     }
 
-    /// `<root>/.ark/workspace/`
+    /// Returns the root directory for per-developer workspace state.
     pub fn workspace_dir(&self) -> PathBuf {
         self.root.join(WORKSPACE_DIR)
     }
 
-    /// `<root>/.ark/workspace/<dev>/`
+    /// Returns the workspace directory for developer `dev`.
     pub fn workspace_developer_dir(&self, dev: &str) -> PathBuf {
         self.workspace_dir().join(dev)
     }
 
-    /// `<root>/.ark/workspace/<dev>/index.md`
+    /// Returns the workspace index path for developer `dev`.
     pub fn workspace_index(&self, dev: &str) -> PathBuf {
         self.workspace_developer_dir(dev).join("index.md")
     }
 
-    /// `<root>/.ark/workspace/<dev>/journal-<n>.md`
+    /// Returns journal file `n` for developer `dev`.
     pub fn workspace_journal(&self, dev: &str, n: u32) -> PathBuf {
         self.workspace_developer_dir(dev)
             .join(format!("journal-{n}.md"))
     }
 
-    /// `<root>/.ark/.developer`
+    /// Returns the per-machine developer identity path.
     pub fn developer_file(&self) -> PathBuf {
         self.root.join(DEVELOPER_FILE)
     }
 
-    /// `<root>/.codex/`
+    /// Returns the root directory for Codex integration.
     pub fn codex_dir(&self) -> PathBuf {
         self.root.join(CODEX_DIR)
     }
 
-    /// `<root>/.codex/skills/`
+    /// Returns the directory containing extracted Codex skills.
     pub fn codex_skills_dir(&self) -> PathBuf {
         self.root.join(CODEX_SKILLS_DIR)
     }
 
-    /// `<root>/.codex/hooks.json`
+    /// Returns the Codex hook configuration path.
     pub fn codex_hooks_file(&self) -> PathBuf {
         self.root.join(CODEX_HOOKS_FILE)
     }
 
-    /// `<root>/.codex/config.toml`
+    /// Returns the project-scoped Codex defaults path.
     pub fn codex_config_file(&self) -> PathBuf {
         self.root.join(CODEX_CONFIG_FILE)
     }
 
-    /// `<root>/AGENTS.md`
+    /// Returns the project-root `AGENTS.md` path.
     pub fn agents_md(&self) -> PathBuf {
         self.root.join(AGENTS_MD)
     }
 
-    /// `<root>/.opencode/`
+    /// Returns the root directory for OpenCode integration.
     pub fn opencode_dir(&self) -> PathBuf {
         self.root.join(OPENCODE_DIR)
     }
 
-    /// `<root>/.opencode/commands/`
+    /// Returns the OpenCode command extraction directory.
     pub fn opencode_commands_dir(&self) -> PathBuf {
         self.root.join(OPENCODE_COMMANDS_DIR)
     }
 
-    /// `<root>/.opencode/plugins/ark-context.ts`
+    /// Returns the OpenCode context plugin path.
     pub fn opencode_plugin_file(&self) -> PathBuf {
         self.root.join(OPENCODE_PLUGIN_FILE)
     }
 
-    /// `<root>/.ark/templates/`
+    /// Returns the directory containing Ark task templates.
     pub fn ark_templates_dir(&self) -> PathBuf {
         self.root.join(ARK_TEMPLATES_DIR)
     }
 
-    /// Walk `cwd`'s ancestor chain (including `cwd` itself) until a directory
-    /// containing `.ark/` is found. Returns a [`Layout`] rooted at that
-    /// directory, or [`Error::NotLoaded`] if no ancestor is Ark-loaded.
+    /// Discovers the nearest ancestor containing `.ark/`.
     ///
-    /// Used by commands that operate on an *existing* Ark project (`context`,
-    /// `unload`, `remove`, `upgrade`, `load` without `--force`). Commands
-    /// that scaffold a project (`init`, `load --force`) must continue to use
-    /// the explicit-target path.
+    /// Commands that operate on an *existing* Ark project (`context`,
+    /// `unload`, `remove`, `upgrade`, `load` without `--force`) use this.
+    /// Commands that scaffold a project (`init`, `load --force`) must use
+    /// the explicit-target path instead.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotLoaded`] if no ancestor of `cwd` contains an
+    /// `.ark/` directory.
     pub fn discover_from(cwd: impl AsRef<Path>) -> Result<Self> {
         let cwd = cwd.as_ref();
         for ancestor in cwd.ancestors() {
@@ -333,8 +349,7 @@ impl Layout {
         })
     }
 
-    /// Directories whose full contents are captured by `unload` and restored by
-    /// `load`. User edits and additions under these survive a round-trip.
+    /// Returns directories whose full contents round-trip through snapshots.
     ///
     /// `.codex/` and `.opencode/` join the set whether or not those platforms
     /// are installed in this project — `walk_files` on a missing directory
@@ -348,8 +363,7 @@ impl Layout {
         ]
     }
 
-    /// Parent directories we opportunistically prune after removing ark content,
-    /// in deepest-first order.
+    /// Returns empty parent directories to prune after removing Ark content.
     pub fn prunable_empty_parents(&self) -> [PathBuf; 2] {
         [
             self.root.join(".claude/commands"),

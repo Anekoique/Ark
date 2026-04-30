@@ -19,23 +19,33 @@ use crate::{
 /// Relative path to the manifest inside the host project.
 pub const MANIFEST_RELATIVE_PATH: &str = ".ark/.installed.json";
 
+/// Installation manifest persisted at `.ark/.installed.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
+    /// Ark version that wrote the manifest.
     pub version: String,
+    /// Timestamp when the installation was recorded.
     pub installed_at: DateTime<Utc>,
+    /// Project-relative files managed by Ark.
     pub files: Vec<PathBuf>,
+    /// Managed text blocks installed by Ark.
     pub managed_blocks: Vec<ManagedBlock>,
+    /// Content hashes for managed files.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub hashes: BTreeMap<PathBuf, String>,
 }
 
+/// One managed text block recorded in the manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManagedBlock {
+    /// Project-relative file path carrying the block.
     pub file: PathBuf,
+    /// Managed-block marker name.
     pub marker: String,
 }
 
 impl Manifest {
+    /// Creates an empty manifest for the current crate version.
     pub fn new() -> Self {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -46,6 +56,7 @@ impl Manifest {
         }
     }
 
+    /// Records a managed file path if it is not already present.
     pub fn record_file(&mut self, path: impl Into<PathBuf>) {
         let path = path.into();
         if !self.files.contains(&path) {
@@ -53,7 +64,9 @@ impl Manifest {
         }
     }
 
-    /// Record a file AND its content hash. Idempotent on repeat calls.
+    /// Records a file and its content hash.
+    ///
+    /// Idempotent on repeat calls.
     pub fn record_file_with_hash(&mut self, path: impl Into<PathBuf>, contents: &[u8]) {
         let path = path.into();
         if !self.files.contains(&path) {
@@ -62,20 +75,23 @@ impl Manifest {
         self.hashes.insert(path, hash_bytes(contents));
     }
 
+    /// Returns the recorded hash for `path`, if present.
     pub fn hash_for(&self, path: &Path) -> Option<&str> {
         self.hashes.get(path).map(String::as_str)
     }
 
+    /// Removes the recorded hash for `path`.
     pub fn clear_hash(&mut self, path: &Path) {
         self.hashes.remove(path);
     }
 
-    /// Remove a file entry from both `files` and `hashes`.
+    /// Removes a file entry from both `files` and `hashes`.
     pub fn drop_file(&mut self, path: &Path) {
         self.files.retain(|p| p != path);
         self.hashes.remove(path);
     }
 
+    /// Records a managed block if it is not already present.
     pub fn record_block(&mut self, file: impl Into<PathBuf>, marker: impl Into<String>) {
         let block = ManagedBlock {
             file: file.into(),
@@ -90,6 +106,7 @@ impl Manifest {
         }
     }
 
+    /// Reads the installation manifest from `project_root`.
     pub fn read(project_root: &Path) -> Result<Option<Self>> {
         let path = project_root.join(MANIFEST_RELATIVE_PATH);
         let Some(text) = path.read_text_optional()? else {
@@ -100,6 +117,7 @@ impl Manifest {
             .map_err(|source| Error::ManifestCorrupt { path, source })
     }
 
+    /// Writes the installation manifest under `project_root`.
     pub fn write(&self, project_root: &Path) -> Result<()> {
         let path = project_root.join(MANIFEST_RELATIVE_PATH);
         let text = serde_json::to_string_pretty(self).expect("manifest serializes");

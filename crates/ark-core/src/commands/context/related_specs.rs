@@ -1,20 +1,19 @@
 //! Parser for the PRD's `[**Related Specs**]` section.
 //!
-//! Per ark-context C-20:
+//! Locates and parses the PRD related-specs section.
 //!
-//! > Locate the line starting with `[**Related Specs**]`. Scan forward until
-//! > the next line matching `^\[\*\*.*\*\*\]` or EOF. Inside that range,
-//! > extract every token matching `specs/features/[a-z0-9_-]+/SPEC\.md`
-//! > (case-sensitive). Dedupe preserving first-seen order. Empty / missing
-//! > section → empty vec, no error.
+//! The parser scans forward from `[**Related Specs**]` until the next
+//! bracketed section header or EOF. Inside that range, it extracts
+//! `specs/features/[a-z0-9_-]+/SPEC.md` tokens and dedupes them while
+//! preserving first-seen order.
 
 const SECTION_HEADER: &str = "[**Related Specs**]";
 const PATH_PREFIX: &str = "specs/features/";
 const PATH_SUFFIX: &str = "/SPEC.md";
 
-/// Extract the list of `specs/features/<slug>/SPEC.md` paths declared in a
-/// PRD's `[**Related Specs**]` section. Returns an empty vec if the section
-/// is missing, empty, or malformed.
+/// Extracts related feature-spec paths from PRD text.
+///
+/// Returns an empty vec if the section is missing, empty, or malformed.
 pub fn extract(prd_text: &str) -> Vec<String> {
     let Some(section) = locate_section(prd_text) else {
         return Vec::new();
@@ -28,10 +27,11 @@ pub fn extract(prd_text: &str) -> Vec<String> {
     out
 }
 
-/// Slice of `text` from after the `[**Related Specs**]` header line up to
-/// (but not including) the next `[**...**]` header line, or end of text.
-/// The header is matched on a line whose trimmed contents start with
-/// `[**Related Specs**]` — inline mentions inside prose do not anchor.
+/// Returns the body of the `[**Related Specs**]` section.
+///
+/// The slice starts after the header line and ends before the next
+/// `[**...**]` header line, or at EOF. Inline mentions inside prose do not
+/// anchor the section.
 fn locate_section(text: &str) -> Option<&str> {
     let mut header_end: Option<usize> = None;
     let mut idx = 0usize;
@@ -65,8 +65,9 @@ fn is_section_header_line(line: &str) -> bool {
     line.contains("**]")
 }
 
-/// Scan `slice` for substrings of the form `specs/features/<slug>/SPEC.md`
-/// where `<slug>` is `[a-z0-9_-]+` and case-sensitive.
+/// Scans for `specs/features/<slug>/SPEC.md` substrings.
+///
+/// The slug pattern is case-sensitive `[a-z0-9_-]+`.
 fn scan_paths(slice: &str) -> Vec<String> {
     let mut found = Vec::new();
     let bytes = slice.as_bytes();
@@ -106,7 +107,7 @@ mod tests {
 
     #[test]
     fn extracts_two_valid_paths_within_section() {
-        // V-UT-23 fixture: two valid bullets + one stray-outside + one
+        // Fixture: two valid bullets + one stray-outside + one
         // malformed-slug (uppercase) within section.
         let prd = "\
 # foo PRD

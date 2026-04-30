@@ -1,4 +1,6 @@
-//! `ark agent spec extract` — pull the final PLAN's `## Spec` section into
+//! Extracts a feature SPEC from a deep-tier PLAN.
+//!
+//! Pulls the final PLAN's `## Spec` section into
 //! `specs/features/<slug>/SPEC.md`.
 //!
 //! Deep-tier only. Resolves the final PLAN by picking the highest-NN
@@ -20,22 +22,31 @@ use crate::{
     layout::Layout,
 };
 
+/// Options for extracting a feature SPEC from a deep-tier task plan.
 #[derive(Debug, Clone)]
 pub struct SpecExtractOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// Task slug whose plan contains the SPEC section.
     pub slug: String,
     /// Optional explicit plan path; defaults to highest-NN `NN_PLAN.md`.
     pub plan_override: Option<PathBuf>,
-    /// Optional task directory override. Used by `task archive` which operates
-    /// on the archived task path (`tasks/archive/YYYY-MM/<slug>/`) rather than
-    /// the active path (`tasks/<slug>/`). Defaults to the active path.
+    /// Optional task directory override.
+    ///
+    /// Used by `task archive` which operates on the archived task path
+    /// (`tasks/archive/YYYY-MM/<slug>/`) rather than the active path
+    /// (`tasks/<slug>/`). Defaults to the active path.
     pub task_dir_override: Option<PathBuf>,
 }
 
+/// Summary of a feature SPEC extraction.
 #[derive(Debug, Clone)]
 pub struct SpecExtractSummary {
+    /// Task slug used as the feature directory name.
     pub slug: String,
+    /// Path where the SPEC body was written.
     pub target_path: PathBuf,
+    /// Reports whether an existing SPEC was replaced.
     pub was_update: bool,
 }
 
@@ -51,6 +62,7 @@ impl fmt::Display for SpecExtractSummary {
     }
 }
 
+/// Extracts a deep-tier task's `## Spec` section into a feature SPEC file.
 pub fn spec_extract(opts: SpecExtractOptions) -> Result<SpecExtractSummary> {
     validate_slug(&opts.slug)?;
 
@@ -106,7 +118,7 @@ pub fn spec_extract(opts: SpecExtractOptions) -> Result<SpecExtractSummary> {
     })
 }
 
-/// Locate the highest-NN `NN_PLAN.md` in a task directory.
+/// Locates the highest-NN `NN_PLAN.md` in a task directory.
 fn find_final_plan(task_dir: &Path) -> Result<PathBuf> {
     let mut best: Option<(u32, PathBuf)> = None;
     for entry in task_dir.list_dir()? {
@@ -123,7 +135,7 @@ fn find_final_plan(task_dir: &Path) -> Result<PathBuf> {
     })
 }
 
-/// Parse `NN` out of a filename like `"03_PLAN.md"`.
+/// Parses `NN` out of a filename like `"03_PLAN.md"`.
 fn parse_nn_plan(name: &str) -> Option<u32> {
     let stripped = name.strip_suffix("_PLAN.md")?;
     (stripped.len() == 2).then_some(())?;

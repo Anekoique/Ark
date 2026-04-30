@@ -1,5 +1,7 @@
-//! Build a fresh [`Context`] by reading git, `.ark/tasks/`, and
-//! `.ark/specs/`. Pure I/O — no projection, no rendering.
+//! Builds a fresh [`Context`].
+//!
+//! Reads git, `.ark/tasks/`, and `.ark/specs/`. Pure I/O; no projection or
+//! rendering.
 
 use std::path::{Path, PathBuf};
 
@@ -112,7 +114,6 @@ fn gather_tasks(layout: &Layout) -> Result<TasksState> {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        // Skip the archive subdirectory and the `.current` pointer file.
         if name == "archive" || name == ".current" {
             continue;
         }
@@ -120,7 +121,7 @@ fn gather_tasks(layout: &Layout) -> Result<TasksState> {
             continue;
         }
         let Ok(toml) = TaskToml::load(&path) else {
-            // Corrupt/missing task.toml in a sub-directory shouldn't crash the
+            // Corrupt/missing task.toml in a sub-directory should not crash the
             // whole context; skip the offender. (`.current` will catch this
             // separately if it points here.)
             continue;
@@ -195,8 +196,9 @@ fn gather_specs(layout: &Layout) -> Result<SpecsState> {
     Ok(SpecsState { project, features })
 }
 
-/// `.ark/specs/project/INDEX.md` parser per ark-context C-24:
-/// locate `## Index` heading, then the first GFM table.
+/// Parses `.ark/specs/project/INDEX.md`.
+///
+/// Locates the `## Index` heading and returns the rows of the first GFM table.
 fn parse_project_index(layout: &Layout) -> Result<Vec<SpecRow>> {
     let path = layout.specs_project_index();
     let Some(text) = path.read_text_optional()? else {
@@ -218,8 +220,9 @@ fn parse_project_index(layout: &Layout) -> Result<Vec<SpecRow>> {
         .collect())
 }
 
-/// `.ark/specs/features/INDEX.md` parser per ark-context C-24: parse the
-/// `ARK:FEATURES` managed block as a 3-column GFM table.
+/// Parses `.ark/specs/features/INDEX.md`.
+///
+/// Extracts rows from the `ARK:FEATURES` managed block as a 3-column GFM table.
 fn parse_features_index(layout: &Layout) -> Result<Vec<SpecRow>> {
     let Some(body) = read_managed_block(layout.specs_features_index(), FEATURES_MARKER)? else {
         return Ok(Vec::new());
@@ -240,8 +243,9 @@ fn parse_features_index(layout: &Layout) -> Result<Vec<SpecRow>> {
         .collect())
 }
 
-/// Locate the byte offset of the first GFM table line after a `## Index`
-/// heading. Returns `None` if either the heading or a table line is absent.
+/// Locates the byte offset of the first index table line.
+///
+/// Returns `None` if either the `## Index` heading or a table line is absent.
 fn find_index_table(text: &str) -> Option<usize> {
     let mut idx = 0usize;
     let mut found_index_header = false;
@@ -257,11 +261,11 @@ fn find_index_table(text: &str) -> Option<usize> {
     None
 }
 
-/// Iterate data rows of a GFM-style pipe table. Stops at the first non-pipe
-/// line; skips header rows (first cell `Spec`/`Feature` or all-dashes
-/// separators), blank rows, and placeholder rows whose cells are wrapped in
-/// `{...}` (the shipped INDEX templates use `{e.g. rust/SPEC.md}` as a
-/// fill-me-in marker).
+/// Iterates data rows of a GFM-style pipe table.
+///
+/// Stops at the first non-pipe line and skips header rows (first cell
+/// `Spec`/`Feature` or all-dashes separators), blank rows, and placeholder
+/// rows whose cells are wrapped in `{...}`.
 fn gfm_table_rows(text: &str) -> impl Iterator<Item = Vec<String>> + '_ {
     text.lines()
         .map_while(|line| line.trim_start().starts_with('|').then_some(line))
@@ -281,9 +285,9 @@ fn gfm_table_rows(text: &str) -> impl Iterator<Item = Vec<String>> + '_ {
         })
 }
 
-/// `true` if every cell in the row looks like a `{e.g. …}` placeholder, i.e.
-/// the unedited template marker. Backticks and surrounding whitespace are
-/// stripped before the check.
+/// Returns `true` if every cell looks like a placeholder marker.
+///
+/// Backticks and surrounding whitespace are stripped before the check.
 fn is_placeholder_row(cells: &[String]) -> bool {
     cells.iter().all(|c| {
         let stripped = c.trim().trim_matches('`').trim();
@@ -291,8 +295,8 @@ fn is_placeholder_row(cells: &[String]) -> bool {
     })
 }
 
-/// Strip surrounding backticks and trailing `/SPEC.md` from a cell value.
-/// Returns `(name, path)` — the name is the slug-ish display value, path
+/// Strips surrounding backticks and trailing `/SPEC.md` from a cell value.
+/// Returns `(name, path)` — the name is the slug-ish display value and path
 /// is the original cell text suitable for `PathBuf`.
 fn normalize_spec_cell(raw: &str) -> (String, String) {
     let trimmed = raw.trim().trim_matches('`').trim();
@@ -319,7 +323,6 @@ fn gather_current_task(layout: &Layout, tasks: &TasksState) -> Result<Option<Cur
     if !task_dir.is_dir() {
         return Ok(None);
     }
-    // task.toml corruption is propagated as Error::TaskTomlCorrupt.
     let _ = TaskToml::load(&task_dir)?;
     let summary = match tasks.active.iter().find(|t| t.slug == slug) {
         Some(s) => s.clone(),
@@ -390,14 +393,16 @@ fn classify_artifact(filename: &str) -> Option<ArtifactKind> {
     None
 }
 
-/// Parse `^(\d{2})<suffix>$` filenames; e.g. `00_PLAN.md` → `Some(0)`.
+/// Parses `^(\d{2})<suffix>$` filenames; e.g. `00_PLAN.md` → `Some(0)`.
 fn parse_iteration_artifact(filename: &str, suffix: &str) -> Option<u32> {
     let nn = filename.strip_suffix(suffix)?;
     (nn.len() == 2).then(|| nn.parse::<u32>().ok())?
 }
 
-/// Tuple sort key: (kind-bucket, iteration). PRD < Plan < Review < Verify
-/// < TaskToml; within Plan / Review, ascending iteration.
+/// Returns a tuple sort key `(kind-bucket, iteration)` for artifact ordering.
+///
+/// PRD < Plan < Review < Verify < TaskToml; within Plan and Review, ascending
+/// by iteration.
 fn artifact_sort_key(kind: ArtifactKind) -> (u8, u32) {
     match kind {
         ArtifactKind::Prd => (0, 0),
@@ -564,9 +569,7 @@ mod tests {
         assert_eq!(ctx.specs.project[1].scope, "testing conventions");
     }
 
-    /// The shipped `templates/ark/specs/project/INDEX.md` ships with a
-    /// `{e.g. rust/SPEC.md}` placeholder row. Hosts that haven't filled in
-    /// any specs must not see that placeholder leak into context output.
+    /// Verifies that placeholder rows are excluded from context output.
     #[test]
     fn gather_project_index_skips_placeholder_template_row() {
         let tmp = arked_tempdir();

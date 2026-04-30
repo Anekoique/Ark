@@ -1,4 +1,4 @@
-//! `ark` — Phase 0 CLI.
+//! `ark` — CLI entry.
 //!
 //! A thin adapter over [`ark_core`]: parse args, dispatch, print the summary.
 //! All logic lives in the library.
@@ -82,18 +82,22 @@ struct InitArgs {
     /// Skip OpenCode integration.
     #[arg(long = "no-opencode")]
     no_opencode: bool,
-    /// Bootstrap workspace identity at init time (workspace G-18). Mutually
-    /// exclusive with --no-developer. Validated per workspace C-3.
+    /// Bootstraps workspace identity at init time.
+    ///
+    /// Mutually exclusive with `--no-developer`. The name is validated by
+    /// the workspace identity helper.
     #[arg(long, conflicts_with = "no_developer")]
     developer: Option<String>,
-    /// Skip workspace identity. Use the `ark agent workspace init --name <x>`
-    /// command later to bootstrap.
+    /// Skips workspace identity.
+    ///
+    /// Use `ark agent workspace init --name <x>` later to bootstrap.
     #[arg(long = "no-developer", conflicts_with = "developer")]
     no_developer: bool,
 }
 
-/// Per-flag state from `InitArgs`: positive (`--<flag>`) vs negative
-/// (`--no-<flag>`) for one platform. Pure data, easy to construct in tests.
+/// Stores positive and negative CLI flag state for one platform.
+///
+/// Pure data, easy to construct in tests.
 #[derive(Debug, Default, Clone, Copy)]
 struct PlatformFlag {
     on: bool,
@@ -101,7 +105,7 @@ struct PlatformFlag {
 }
 
 impl InitArgs {
-    /// Map each platform's `cli_flag` to the parsed `PlatformFlag` state.
+    /// Maps each platform's `cli_flag` to the parsed `PlatformFlag` state.
     fn flags(&self) -> Vec<(&'static Platform, PlatformFlag)> {
         PLATFORMS
             .iter()
@@ -127,8 +131,7 @@ impl InitArgs {
             .collect()
     }
 
-    /// Resolve `Vec<&'static Platform>` from CLI flags + TTY state. Per
-    /// codex-support G-3.
+    /// Resolves `Vec<&'static Platform>` from CLI flags + TTY state.
     fn resolve_platforms(&self) -> anyhow::Result<Vec<&'static Platform>> {
         let resolved =
             resolve_platforms_pure(&self.flags(), std::io::stdin().is_terminal(), || {
@@ -140,8 +143,7 @@ impl InitArgs {
         Ok(resolved)
     }
 
-    /// Resolve the workspace developer name from CLI flags + TTY state.
-    /// Per workspace G-18.
+    /// Resolves the workspace developer name from CLI flags + TTY state.
     fn resolve_developer(&self) -> anyhow::Result<Option<String>> {
         resolve_developer_pure(
             self.developer.clone(),
@@ -152,9 +154,10 @@ impl InitArgs {
     }
 }
 
-/// Pure resolution logic, factored for testability. The caller supplies
-/// `is_tty` and a closure that runs the interactive prompt; the function
-/// itself does no I/O.
+/// Resolves platform flags without performing I/O.
+///
+/// The caller supplies `is_tty` and a closure that runs the interactive
+/// prompt.
 ///
 /// - Positive flag (`--<flag>`) narrows to that subset.
 /// - Negative flag (`--no-<flag>`) excludes.
@@ -191,8 +194,10 @@ fn resolve_platforms_pure(
     );
 }
 
-/// Tiny stdin-driven multi-select. Each platform is offered with a default
-/// of "yes". User types `y`/`n` (or just enter for default).
+/// Prompts for platform selection on stdin.
+///
+/// Each platform is offered with a default of "yes". User types `y`/`n`
+/// or just enter for default.
 fn interactive_select_platforms() -> anyhow::Result<Vec<&'static Platform>> {
     eprintln!("Select integrations to install:");
     let mut chosen = Vec::with_capacity(PLATFORMS.len());
@@ -207,8 +212,9 @@ fn interactive_select_platforms() -> anyhow::Result<Vec<&'static Platform>> {
     Ok(chosen)
 }
 
-/// Resolve the workspace developer name (workspace G-18). Mirrors
-/// `resolve_platforms_pure` for testability:
+/// Resolves the workspace developer name.
+///
+/// Mirrors `resolve_platforms_pure` for testability:
 /// - `--developer <name>` → `Some(name)`.
 /// - `--no-developer` → `None`.
 /// - Neither, TTY → run the interactive prompt.
@@ -400,9 +406,10 @@ struct TargetArgs {
 }
 
 impl TargetArgs {
-    /// Resolve to the explicit target (cwd, or `--dir`). No walk-up. Used by
-    /// commands whose job is to scaffold or operate on a specific target
-    /// directory (`init`, `load --force`).
+    /// Resolves to the explicit target without ancestor discovery.
+    ///
+    /// Used by commands whose job is to scaffold or operate on a specific
+    /// target directory (`init`, `load --force`).
     fn resolve(self) -> PathBuf {
         let raw = self
             .dir
@@ -410,9 +417,9 @@ impl TargetArgs {
         absolutize(&raw)
     }
 
-    /// Resolve and then walk ancestors looking for an Ark project root, per
-    /// ark-context C-21. If `--dir` was given, it wins (no walk-up). Used by
-    /// commands that require an existing `.ark/`.
+    /// Resolves and walks ancestors looking for an Ark project root.
+    /// If `--dir` was given, it wins (no walk-up). Used by commands that
+    /// require an existing `.ark/`.
     fn resolve_with_discovery(self) -> anyhow::Result<PathBuf> {
         // Explicit --dir always wins.
         if let Some(dir) = self.dir.as_ref() {
@@ -425,8 +432,10 @@ impl TargetArgs {
     }
 }
 
-/// Resolve `path` to absolute, joining against the current working directory
-/// when relative. Falls back to the path as-given if cwd lookup fails.
+/// Resolves `path` to an absolute path.
+///
+/// Relative paths are joined against the current working directory. Falls
+/// back to the path as-given if cwd lookup fails.
 fn absolutize(path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
@@ -456,7 +465,7 @@ impl Command {
     fn dispatch(self) -> anyhow::Result<()> {
         match self {
             Self::Init(a) => {
-                // ark-context C-21 carve-out: init creates `.ark/`; no walk-up.
+                // `init` creates `.ark/`; no walk-up.
                 let platforms = a.resolve_platforms()?;
                 let developer = a.resolve_developer()?;
                 let root = a.target.resolve();
@@ -530,9 +539,10 @@ impl Command {
     }
 }
 
-/// Reads a single line from stdin per conflict. On non-TTY stdin, short-circuits
-/// to Skip. The one-shot "not a terminal" note is emitted by the `Upgrade`
-/// dispatch arm, not here — constructors should not have I/O side effects.
+/// Reads one stdin line per upgrade conflict.
+///
+/// On non-TTY stdin, short-circuits to Skip. The one-shot "not a terminal"
+/// note is emitted by the `Upgrade` dispatch arm, not here.
 struct StdioPrompter;
 
 impl Prompter for StdioPrompter {
@@ -584,8 +594,10 @@ struct TaskArgs {
 
 #[derive(Subcommand)]
 enum TaskCommand {
-    /// Scaffold a new task directory with PRD + task.toml. Pass --worktree
-    /// to bind the task to a git worktree under `.ark/worktrees/<branch>/`.
+    /// Scaffold a new task directory with PRD and task.toml.
+    ///
+    /// Pass `--worktree` to bind the task to a git worktree under
+    /// `.ark/worktrees/<branch>/`.
     New(TaskNewCliArgs),
     /// Transition: -> Plan.
     Plan(TaskSlugArgs),
@@ -648,19 +660,22 @@ struct TaskNewCliArgs {
     /// One-line title.
     #[arg(long)]
     title: String,
-    /// quick | standard | deep
+    /// Task tier (`quick`, `standard`, or `deep`).
     #[arg(long, value_parser = parse_tier)]
     tier: Tier,
-    /// Create a git worktree under `.ark/worktrees/<branch>/` and scaffold
-    /// the task dir inside it (worktree-support G-2).
+    /// Creates a git worktree under `.ark/worktrees/<branch>/`.
+    ///
+    /// The task directory is scaffolded inside that worktree.
     #[arg(long)]
     worktree: bool,
-    /// Branch type prefix when --worktree is set; one of feat, fix, refactor,
-    /// chore, ci, docs. Defaults to `config.toml`'s `[worktree].branch_prefix` (feat).
+    /// Branch type prefix used when `--worktree` is set.
+    ///
+    /// One of `feat`, `fix`, `refactor`, `chore`, `ci`, or `docs`. Defaults
+    /// to `config.toml`'s `[worktree].branch_prefix` (`feat`).
     /// Mutually exclusive with --branch.
     #[arg(long = "branch-type", conflicts_with = "branch", requires = "worktree")]
     branch_type: Option<String>,
-    /// Full branch name override; bypasses --branch-type/<slug> resolution.
+    /// Full branch name override; bypasses `--branch-type/<slug>` resolution.
     /// Validated via `git check-ref-format --branch`.
     #[arg(long, conflicts_with = "branch_type", requires = "worktree")]
     branch: Option<String>,
@@ -694,7 +709,7 @@ struct SpecArgs {
 
 #[derive(Subcommand)]
 enum SpecCommand {
-    /// Extract the final PLAN's `## Spec` section into specs/features/<slug>/SPEC.md.
+    /// Extract the final PLAN's `## Spec` section into `specs/features/<slug>/SPEC.md`.
     Extract(SpecExtractCliArgs),
     /// Upsert a row in specs/features/INDEX.md.
     Register(SpecRegisterCliArgs),
@@ -961,8 +976,9 @@ mod tests {
         a
     }
 
-    /// Resolution helper that drives `resolve_platforms_pure` with an
-    /// explicit `is_tty` and panics if the interactive branch is reached.
+    /// Drives `resolve_platforms_pure` with an explicit `is_tty` value.
+    ///
+    /// Panics if the interactive branch is reached.
     fn resolve(argv: &[&str], is_tty: bool) -> anyhow::Result<Vec<&'static Platform>> {
         let args = parse_init(argv);
         resolve_platforms_pure(&args.flags(), is_tty, || {
@@ -974,8 +990,10 @@ mod tests {
         ps.iter().map(|p| p.id).collect()
     }
 
-    /// `--no-X` narrows by exclusion; combinations exclude correspondingly;
-    /// excluding all yields empty. Updated for opencode-support: three flags.
+    /// Verifies exclusion-only platform flag resolution.
+    ///
+    /// `--no-X` narrows by exclusion; combinations exclude correspondingly.
+    /// Excluding all yields empty.
     #[test]
     fn cli_resolve_platforms_no_x_excludes() {
         assert_eq!(
@@ -1019,8 +1037,7 @@ mod tests {
         );
     }
 
-    /// opencode-support V-F-1: non-TTY without flags errors with a message
-    /// naming all three flag pairs.
+    /// Verifies that non-TTY without flags names all three flag pairs.
     #[test]
     fn cli_resolve_platforms_no_flags_non_tty_errors() {
         let err = resolve(&["init"], false).unwrap_err();
@@ -1030,10 +1047,10 @@ mod tests {
         assert!(msg.contains("--opencode"), "{msg}");
     }
 
-    /// opencode-support V-IT-8: `--<flag> --no-<flag>` for the same platform
-    /// excludes that platform per the existing `f.on && !f.off` rule
-    /// (negative wins on conflict). The new opencode flag pair matches the
-    /// existing claude / codex semantics — no behavior divergence.
+    /// Verifies that `--<flag> --no-<flag>` excludes that platform.
+    ///
+    /// Negative wins on conflict via the `f.on && !f.off` rule. The
+    /// opencode flag pair matches the existing claude / codex semantics.
     #[test]
     fn cli_resolve_platforms_opencode_with_no_opencode_excludes_opencode() {
         // With at least one positive flag, the filter narrows to platforms
@@ -1057,9 +1074,10 @@ mod tests {
         assert!(codex_self.is_empty(), "{codex_self:?}");
     }
 
-    /// opencode-support Phase 3 step 16: `resolve_platforms_pure` calls the
-    /// interactive closure exactly once when no flags are set and `is_tty`
-    /// is true. The closure's return value is propagated unchanged.
+    /// Verifies that `resolve_platforms_pure` invokes the interactive closure.
+    ///
+    /// The closure is called exactly once when no flags are set and `is_tty`
+    /// is true. Its return value is propagated unchanged.
     #[test]
     fn cli_resolve_platforms_pure_invokes_interactive_when_tty_and_no_flags() {
         let args = parse_init(&["init"]);

@@ -1,8 +1,8 @@
 //! `.ark.db` — a portable snapshot of an Ark installation.
 //!
 //! Captures every file Ark owns and every managed block Ark wrote, so
-//! [`unload`](crate::commands::unload) can freeze state and
-//! [`load`](crate::commands::load) can restore it losslessly.
+//! [`unload`](crate::commands::unload()) can freeze state and
+//! [`load`](crate::commands::load()) can restore it losslessly.
 
 use std::path::{Path, PathBuf};
 
@@ -20,28 +20,38 @@ pub const SNAPSHOT_FILENAME: &str = ".ark.db";
 
 const SCHEMA_VERSION: &str = "1";
 
+/// Portable Ark installation snapshot persisted at `.ark.db`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
+    /// Snapshot schema version.
     pub version: String,
+    /// Ark version that wrote the snapshot.
     pub ark_version: String,
+    /// Timestamp when the snapshot was created.
     pub created_at: DateTime<Utc>,
+    /// Files captured into the snapshot.
     pub files: Vec<SnapshotFile>,
+    /// Managed blocks captured into the snapshot.
     pub managed_blocks: Vec<SnapshotBlock>,
-    /// Per-entry hook bodies captured by `unload`, restored by `load` via
-    /// `update_settings_hook`. Older `.ark.db` files lack this key and
-    /// deserialize to `vec![]`. Per ark-context C-27.
+    /// Per-entry hook bodies captured on unload and restored on load.
+    ///
+    /// Older `.ark.db` files lack this key; serde defaults it to an empty
+    /// vector.
     #[serde(default)]
     pub hook_bodies: Vec<SnapshotHookBody>,
 }
 
+/// One file captured in a snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotFile {
+    /// Project-relative file path.
     pub path: PathBuf,
+    /// Base64-encoded file contents.
     pub content_b64: String,
 }
 
 impl SnapshotFile {
-    /// Decode the captured bytes back into their original form.
+    /// Decodes the captured bytes back into their original form.
     pub fn decode(&self) -> Result<Vec<u8>> {
         B64.decode(&self.content_b64)
             .map_err(|e| Error::SnapshotCorrupt {
@@ -50,31 +60,41 @@ impl SnapshotFile {
     }
 }
 
+/// One managed block captured in a snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotBlock {
+    /// Project-relative file path carrying the block.
     pub file: PathBuf,
+    /// Managed-block marker name.
     pub marker: String,
+    /// Managed-block body.
     pub body: String,
 }
 
-/// One entry inside a JSON-array hook region (e.g. `.claude/settings.json`'s
-/// `hooks.SessionStart` array), captured by identity key.
+/// One entry inside a JSON-array hook region, captured by identity key.
 ///
-/// `load`'s restore path uses `path` and `entry` to splice the entry back via
-/// `update_settings_hook`. `json_pointer`, `identity_key`, and `identity_value`
-/// are reserved for snapshot portability — external readers / future restore
-/// strategies can use them to relocate the entry without re-parsing the entry
-/// itself.
+/// For example, an entry in `.claude/settings.json`'s `hooks.SessionStart`
+/// array. The restore path uses `path` and `entry` to splice the entry back
+/// via [`crate::io::update_hook_file`]. `json_pointer`, `identity_key`, and
+/// `identity_value` are reserved for snapshot portability — external readers
+/// and future restore strategies can use them to relocate the entry without
+/// re-parsing it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotHookBody {
+    /// Project-relative hook file path.
     pub path: PathBuf,
+    /// JSON pointer to the hook array.
     pub json_pointer: String,
+    /// Field name used to identify the entry.
     pub identity_key: String,
+    /// Field value used to identify the entry.
     pub identity_value: String,
+    /// Captured hook entry.
     pub entry: serde_json::Value,
 }
 
 impl Snapshot {
+    /// Creates an empty snapshot for the current crate version.
     pub fn new() -> Self {
         Self {
             version: SCHEMA_VERSION.to_string(),
@@ -86,10 +106,12 @@ impl Snapshot {
         }
     }
 
+    /// Adds a captured hook body.
     pub fn add_hook_body(&mut self, body: SnapshotHookBody) {
         self.hook_bodies.push(body);
     }
 
+    /// Adds a captured file to the snapshot.
     pub fn add_file(&mut self, relative: impl Into<PathBuf>, contents: &[u8]) {
         self.files.push(SnapshotFile {
             path: relative.into(),
@@ -97,6 +119,7 @@ impl Snapshot {
         });
     }
 
+    /// Adds a captured managed block to the snapshot.
     pub fn add_block(
         &mut self,
         file: impl Into<PathBuf>,
@@ -110,7 +133,9 @@ impl Snapshot {
         });
     }
 
-    /// Read `.ark.db` if it exists.
+    /// Reads `.ark.db` from `project_root`.
+    ///
+    /// Returns `Ok(None)` if the file does not exist.
     pub fn read(project_root: &Path) -> Result<Option<Self>> {
         let path = project_root.join(SNAPSHOT_FILENAME);
         let Some(text) = path.read_text_optional()? else {
@@ -123,13 +148,16 @@ impl Snapshot {
             })
     }
 
+    /// Writes `.ark.db` under `project_root`.
     pub fn write(&self, project_root: &Path) -> Result<()> {
         let path = project_root.join(SNAPSHOT_FILENAME);
         let text = serde_json::to_string_pretty(self).expect("snapshot serializes");
         path.write_bytes(text.as_bytes())
     }
 
-    /// Delete `.ark.db` if it exists. Returns `true` if removed.
+    /// Deletes `.ark.db` from `project_root` if it exists.
+    ///
+    /// Returns `true` if a file was removed, `false` if it was already absent.
     pub fn remove(project_root: &Path) -> Result<bool> {
         project_root.join(SNAPSHOT_FILENAME).remove_if_exists()
     }
