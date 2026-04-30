@@ -4,9 +4,12 @@ Project-level conventions. User-authored. Layout: `<name>/SPEC.md`.
 
 ## Index
 
-| Spec               | Scope                                                                                                                                                 |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rust/COMMENTS.md` | Rust commenting conventions: `///` / `//!` / `//`, third-person mood, sections (`# Examples`, `# Panics`, `# Errors`, `# Safety`), no task-mark tags. |
+| Spec               | Scope                                              |
+| ------------------ | -------------------------------------------------- |
+| `LAYOUT.md`        | Convention-SPEC layout (Layout A). Read first.     |
+| `rust/COMMENTS.md` | Rust comment and doc-comment conventions (`C-N`).  |
+| `rust/STYLE.md`    | Rust code-shape and naming conventions (`S-N`).    |
+| `rust/ERRORS.md`   | Rust error-handling conventions (`E-N`).           |
 
 ---
 
