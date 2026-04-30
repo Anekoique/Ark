@@ -1,9 +1,7 @@
-//! Journal entry rendering, parsing, rotation discovery, and `git log`
-//! oneline parsing.
+//! Journal entry rendering, parsing, rotation discovery, and log parsing.
 //!
-//! Entry shape per workspace G-5; boundary parser per workspace C-19. The
-//! journal files are the source of truth for the index sessions table; the
-//! parser is the inverse of the renderer.
+//! The journal files are the source of truth for the index sessions
+//! table; the parser is the inverse of the renderer.
 
 use std::path::{Path, PathBuf};
 
@@ -18,47 +16,73 @@ use crate::{
 /// Maximum journal index. `N+1 > 9999` triggers `JournalRotationLimit`.
 pub const MAX_JOURNAL_INDEX: u32 = 9999;
 
+/// Renderable workspace journal entry.
 #[derive(Debug, Clone)]
 pub struct JournalEntry {
+    /// Session number assigned in the developer workspace.
     pub session_number: u32,
+    /// Session title.
     pub title: String,
+    /// Session date.
     pub date: NaiveDate,
+    /// Session kind.
     pub kind: JournalKind,
     /// `None` renders as `unknown`.
     pub branch: Option<String>,
+    /// Markdown summary body.
     pub summary: String,
+    /// Recent commits associated with the session.
     pub commits: Vec<JournalCommit>,
+    /// Next-step lines.
     pub next_steps: Vec<String>,
 }
 
+/// Kind of workspace journal entry.
 #[derive(Debug, Clone)]
 pub enum JournalKind {
-    Task { slug: String },
+    /// Entry recorded from task archival.
+    Task {
+        /// Archived task slug.
+        slug: String,
+    },
+    /// Entry recorded manually.
     Manual,
 }
 
+/// One git commit included in a workspace journal entry.
 #[derive(Debug, Clone)]
 pub struct JournalCommit {
+    /// Short commit hash.
     pub short: String,
+    /// Commit subject.
     pub message: String,
 }
 
 /// One row's worth of metadata extracted from a `## Session N: Title` block.
 #[derive(Debug, Clone)]
 pub struct ParsedEntry {
+    /// Session number parsed from the header.
     pub session_number: u32,
+    /// Session title parsed from the header.
     pub title: String,
+    /// Session date parsed from metadata.
     pub date: NaiveDate,
+    /// Entry kind label parsed from metadata.
     pub kind_label: String,
+    /// Task slug parsed from metadata.
     pub slug: Option<String>,
+    /// Branch label parsed from metadata.
     pub branch: String,
+    /// Number of commits listed in the entry.
     pub commits_count: u32,
 }
 
 // -- Render -----------------------------------------------------------------
 
-/// Render a session entry per G-5. Output begins with a leading blank line
-/// (separator from the previous entry or from the journal preamble).
+/// Renders a session entry.
+///
+/// A leading blank line separates it from the previous entry or journal
+/// preamble.
 pub fn render_entry(entry: &JournalEntry) -> String {
     let kind_label = match &entry.kind {
         JournalKind::Task { .. } => "task",
@@ -117,10 +141,12 @@ pub fn render_entry(entry: &JournalEntry) -> String {
 
 // -- Parse ------------------------------------------------------------------
 
-/// Parse all `## Session N: Title` entries in `text`. Skips malformed
-/// entries silently (writes a single stderr warning per call). Boundary
-/// rules per C-19: respects fenced code blocks (3+ backticks or 3+ tildes,
-/// length-aware close-fence matching).
+/// Parses all `## Session N: Title` entries in `text`.
+///
+/// Malformed entries are skipped silently.
+///
+/// Boundary rule: fenced code blocks (3+ backticks or 3+ tildes,
+/// length-aware close-fence matching) are respected.
 pub fn parse_entries(text: &str) -> Vec<ParsedEntry> {
     let lines: Vec<&str> = text.lines().collect();
     let starts = scan_entry_starts(&lines);
@@ -143,8 +169,9 @@ pub fn parse_entries(text: &str) -> Vec<ParsedEntry> {
     out
 }
 
-/// Scan and return the indices of all valid entry-start lines, skipping
-/// lines inside an active fenced code block.
+/// Returns the indices of all valid entry-start lines.
+///
+/// Lines inside an active fenced code block are skipped.
 fn scan_entry_starts(lines: &[&str]) -> Vec<usize> {
     let mut starts = Vec::new();
     let mut fence: Option<FenceState> = None;
@@ -172,10 +199,11 @@ struct FenceState {
     len: usize,
 }
 
-/// Returns `Some(state)` if `line` opens a fenced code block per C-19:
-/// 3+ identical fence chars (`` ` `` or `~`) at the start, optionally
-/// followed by a language tag. The tag is not validated — anything past the
-/// fence run is accepted.
+/// Returns fence state when `line` opens a fenced code block.
+///
+/// A fence is 3+ identical fence chars (`` ` `` or `~`) at the start,
+/// optionally followed by a language tag. The tag is not validated; anything
+/// past the fence run is accepted.
 fn open_fence(line: &str) -> Option<FenceState> {
     let trimmed = line.trim_end_matches([' ', '\t']);
     let bytes = trimmed.as_bytes();
@@ -193,9 +221,10 @@ fn open_fence(line: &str) -> Option<FenceState> {
     })
 }
 
-/// True if `line` is a closing fence for the given open state: every byte is
-/// `state.char`, and the run is at least as long as the opening fence.
-/// Trailing whitespace is tolerated; nothing else may follow the fence chars.
+/// Returns `true` if `line` is a valid closing fence for `state`.
+///
+/// Every byte must equal `state.char`, the run must be at least as long as
+/// the opening fence, and only trailing whitespace may follow the fence chars.
 fn is_close_fence(line: &str, state: &FenceState) -> bool {
     let trimmed = line.trim_end_matches([' ', '\t']);
     let bytes = trimmed.as_bytes();
@@ -203,7 +232,7 @@ fn is_close_fence(line: &str, state: &FenceState) -> bool {
     bytes.len() >= state.len && bytes.iter().all(|&b| b == target)
 }
 
-/// Match `^## Session (\d+):\s+(.+?)\s*$`. Returns `(session_number, title)`.
+/// Parses a session header into `(session_number, title)`.
 fn matches_session_header(line: &str) -> Option<(u32, String)> {
     let rest = line.strip_prefix("## Session ")?;
     let colon = rest.find(':')?;
@@ -254,7 +283,7 @@ fn parse_one_entry(lines: &[&str], begin: usize, end: usize) -> Option<ParsedEnt
     // Count rows under the `### Commits` table — lines starting with `| ` and
     // containing a backtick (the hash cell is `` `<short>` ``). Stop counting
     // when we hit the next `### ` heading or a blank+heading boundary. The
-    // header and separator rows don't have backticks, so the predicate
+    // header and separator rows do not have backticks, so the predicate
     // naturally skips them. Sentinel rows like `| - | (no commits) |` also
     // skip (no backtick); commits_count = 0 in that case.
     let mut in_commits = false;
@@ -286,9 +315,10 @@ fn parse_one_entry(lines: &[&str], begin: usize, end: usize) -> Option<ParsedEnt
 
 // -- File helpers -----------------------------------------------------------
 
-/// Find the highest-numbered `journal-N.md` in the developer dir. Numeric
-/// sort, not lexical (`journal-10` > `journal-9`). Returns `(journal-1.md, 1)`
-/// when the dev dir is missing or holds no `journal-*.md` files.
+/// Returns the highest-numbered `journal-N.md` path and index in the developer dir.
+///
+/// Sorting is numeric, not lexical (`journal-10` > `journal-9`). Returns
+/// `(journal-1.md, 1)` when the dev dir is missing or holds no `journal-*.md` files.
 pub fn find_active(layout: &Layout, dev: &str) -> Result<(PathBuf, u32)> {
     let dir = layout.workspace_developer_dir(dev);
     if !dir.exists() {
@@ -316,7 +346,7 @@ pub(super) fn parse_journal_index(filename: &str) -> Option<u32> {
     n_str.parse().ok()
 }
 
-/// Count newline-separated lines in the file. Missing file → 0.
+/// Returns the number of newline-separated lines in the file, or `0` if the file is missing.
 pub fn line_count(path: &Path) -> Result<u32> {
     let Some(text) = path.read_text_optional()? else {
         return Ok(0);
@@ -324,9 +354,10 @@ pub fn line_count(path: &Path) -> Result<u32> {
     Ok(text.lines().count() as u32)
 }
 
-/// Highest session number across all `journal-*.md` files in the developer
-/// dir, scanning from the newest journal backward up to C-21's journal cap.
-/// Returns `0` when the dev dir is missing or holds no parseable entries.
+/// Returns the highest session number across all `journal-*.md` files.
+///
+/// Scans from the newest journal backward up to the journal cap, or returns
+/// `0` when the dev dir is missing or holds no parseable entries.
 ///
 /// Scans newest-first so long-lived workspaces (>100 journals) still see
 /// their latest session number — counting from the oldest journals would
@@ -361,7 +392,7 @@ pub fn scan_session_count(layout: &Layout, dev: &str) -> Result<u32> {
     Ok(highest)
 }
 
-/// Seed `journal-N.md` from the embedded template.
+/// Seeds `journal-N.md` with the standard preamble.
 pub fn seed_journal(path: &Path, dev: &str, n: u32, date: NaiveDate) -> Result<()> {
     let body = format!(
         "# Journal — {dev} (Part {n})\n\n> AI development session journal. Started: \
@@ -372,9 +403,10 @@ pub fn seed_journal(path: &Path, dev: &str, n: u32, date: NaiveDate) -> Result<(
 
 // -- `git log --oneline` parser --------------------------------------------
 
-/// Parse `git log --oneline` output. Each non-empty line splits at the first
-/// ASCII space: prefix is `short`, suffix (trimmed) is `message`. Empty
-/// lines are skipped. Caller caps via `-n 20`.
+/// Parses `git log --oneline` output into [`JournalCommit`] entries.
+///
+/// Each non-empty line splits at the first ASCII space: the prefix is `short`
+/// and the trimmed suffix is `message`. Empty lines are skipped.
 pub(crate) fn parse_oneline(stdout: &str) -> Vec<JournalCommit> {
     stdout
         .lines()
@@ -405,7 +437,7 @@ mod tests {
         NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
     }
 
-    /// V-UT-4: golden render.
+    /// Verifies the golden rendered output of a task entry.
     #[test]
     fn render_entry_golden_task() {
         let entry = JournalEntry {
@@ -431,7 +463,7 @@ mod tests {
         assert_eq!(rendered, expected);
     }
 
-    /// V-UT-4: manual render uses `-` slug and "manual" label.
+    /// Verifies that a manual entry renders with `-` slug and `manual` label.
     #[test]
     fn render_entry_manual_uses_dash_slug() {
         let entry = JournalEntry {
@@ -453,7 +485,7 @@ mod tests {
         assert!(r.contains("- (none)"));
     }
 
-    /// V-UT-5: round-trip render → parse.
+    /// Verifies that rendered entries round-trip through the parser.
     #[test]
     fn parse_entries_round_trips() {
         let e1 = JournalEntry {
@@ -495,7 +527,7 @@ mod tests {
         assert_eq!(parsed[1].commits_count, 0);
     }
 
-    /// V-UT-5 / C-19: backtick fences hide trick `## Session` headers.
+    /// Verifies that backtick fences hide trick `## Session` headers from the parser.
     #[test]
     fn parse_entries_respects_backtick_fences() {
         let text = "\n## Session 1: real\n\n**Date**: 2026-04-01\n**Kind**: manual\n**Slug**: \
@@ -507,7 +539,7 @@ mod tests {
         assert_eq!(parsed[0].session_number, 1);
     }
 
-    /// V-E-8 / C-19: tilde fences hide trick headers.
+    /// Verifies that tilde fences hide trick `## Session` headers from the parser.
     #[test]
     fn parse_entries_respects_tilde_fences() {
         let text = "\n## Session 1: real\n\n**Date**: 2026-04-01\n**Kind**: manual\n**Slug**: \
@@ -517,7 +549,7 @@ mod tests {
         assert_eq!(parsed.len(), 1, "tilde fence should hide the trick header");
     }
 
-    /// C-19: 4-backtick block containing a 3-backtick line stays one fence.
+    /// Verifies that a 4-backtick block treats an inner 3-backtick line as content, not a close fence.
     #[test]
     fn parse_entries_length_aware_close_fence() {
         let text = "\n## Session 1: real\n\n**Date**: 2026-04-01\n**Kind**: manual\n**Slug**: \
@@ -528,7 +560,7 @@ mod tests {
         assert_eq!(parsed.len(), 1);
     }
 
-    /// V-UT-6: find_active picks numerically highest.
+    /// Verifies that `find_active` picks the numerically highest journal index.
     #[test]
     fn find_active_picks_highest_n() {
         let tmp = tempfile::tempdir().unwrap();
@@ -543,7 +575,7 @@ mod tests {
         assert_eq!(n, 10, "10 must beat 9 lexically");
     }
 
-    /// V-UT-6: returns (journal-1, 1) when no journal files exist yet.
+    /// Verifies that `find_active` returns `(journal-1, 1)` when no journal files exist.
     #[test]
     fn find_active_returns_one_when_dev_dir_missing() {
         let tmp = tempfile::tempdir().unwrap();
@@ -553,7 +585,7 @@ mod tests {
         assert_eq!(path, layout.workspace_journal("newbie", 1));
     }
 
-    /// V-UT-7: line_count exact.
+    /// Verifies that `line_count` returns the exact number of lines.
     #[test]
     fn line_count_returns_exact() {
         let tmp = tempfile::tempdir().unwrap();
@@ -562,7 +594,7 @@ mod tests {
         assert_eq!(line_count(&p).unwrap(), 3);
     }
 
-    /// V-UT-12 / R-002: parse_oneline strips and skips blanks.
+    /// Verifies that `parse_oneline` trims entries and skips blank lines.
     #[test]
     fn parse_oneline_strips_and_skips_blanks() {
         let input = "abc1234 first\n\nfedcba9 second\n";
@@ -582,7 +614,7 @@ mod tests {
         assert_eq!(got[0].message, "");
     }
 
-    /// Pipe in commit message gets escaped on render.
+    /// Verifies that a pipe character in a commit message is escaped on render.
     #[test]
     fn render_escapes_pipe_in_commit_message() {
         let entry = JournalEntry {

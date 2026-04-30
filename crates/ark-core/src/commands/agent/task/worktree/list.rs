@@ -1,6 +1,6 @@
-//! `ark agent task worktree list` — enumerate active worktree-backed tasks.
-//! Per worktree-support G-5 / C-14: silent on zero rows; sorted by
-//! `task.toml.updated_at` desc.
+//! `ark agent task worktree list` enumerates active worktree-backed tasks.
+//!
+//! Output is silent on zero rows and sorted by `task.toml.updated_at` desc.
 
 use std::{fmt, path::PathBuf};
 
@@ -19,16 +19,23 @@ use crate::{
     layout::Layout,
 };
 
+/// Options for listing task-bound worktrees.
 #[derive(Debug, Clone)]
 pub struct WorktreeListOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
 }
 
+/// One rendered row in `ark agent task worktree list`.
 #[derive(Debug, Clone)]
 pub struct WorktreeRow {
+    /// Task slug bound to the worktree.
     pub slug: String,
+    /// Branch checked out by the worktree.
     pub branch: String,
+    /// Path to the worktree checkout.
     pub worktree_path: PathBuf,
+    /// Task update timestamp used for sorting.
     pub updated_at: DateTime<Utc>,
 }
 
@@ -44,14 +51,16 @@ impl fmt::Display for WorktreeRow {
     }
 }
 
+/// Summary of task-bound worktrees.
 #[derive(Debug, Clone)]
 pub struct WorktreeListSummary {
+    /// Rows sorted by task update time descending.
     pub rows: Vec<WorktreeRow>,
 }
 
 impl fmt::Display for WorktreeListSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // C-14: zero rows → empty stdout. Each row is one line, no header.
+        // Zero rows → empty stdout. Each row is one line, no header.
         for (i, row) in self.rows.iter().enumerate() {
             if i > 0 {
                 writeln!(f)?;
@@ -62,6 +71,7 @@ impl fmt::Display for WorktreeListSummary {
     }
 }
 
+/// Lists task-bound worktrees under the configured worktree root.
 pub fn worktree_list(opts: WorktreeListOptions) -> Result<WorktreeListSummary> {
     let layout = Layout::new(&opts.project_root);
     let cfg = WorktreeConfig::load_or_default(&layout)?;
@@ -72,8 +82,8 @@ pub fn worktree_list(opts: WorktreeListOptions) -> Result<WorktreeListSummary> {
         if !is_under(&entry.path, &worktrees_dir) {
             continue;
         }
-        // C-20 / R-108: silently skip worktrees with missing or unreadable
-        // `.current` / `task.toml` (third-party worktrees in this dir).
+        // Silently skip worktrees with missing or unreadable `.current`
+        // / `task.toml` (third-party worktrees in this dir).
         let Ok(current_text) = entry.path.join(".ark/tasks/.current").read_text() else {
             continue;
         };

@@ -3,12 +3,19 @@
 //! The CLI is a thin shell over this crate. All scaffolding, file writing,
 //! snapshotting, and manifest tracking lives here.
 
+/// Command implementations and summaries.
 pub mod commands;
+/// Error types shared by Ark operations.
 pub mod error;
+/// Filesystem, content, and subprocess I/O helpers.
 pub mod io;
+/// Project layout constants and rooted path helpers.
 pub mod layout;
+/// Platform registry and platform-specific install behavior.
 pub mod platforms;
+/// Persisted manifest and snapshot state.
 pub mod state;
+/// Embedded template trees and walkers.
 pub mod templates;
 
 pub use commands::{

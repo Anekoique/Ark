@@ -16,13 +16,17 @@ use crate::{
     state::Snapshot,
 };
 
+/// Options for loading Ark into a project.
 #[derive(Debug, Clone)]
 pub struct LoadOptions {
+    /// Project root where Ark should be loaded.
     pub project_root: PathBuf,
+    /// Reports whether an existing live Ark footprint should be replaced.
     pub force: bool,
 }
 
 impl LoadOptions {
+    /// Creates load options for `project_root`.
     pub fn new(project_root: impl Into<PathBuf>) -> Self {
         Self {
             project_root: project_root.into(),
@@ -30,6 +34,7 @@ impl LoadOptions {
         }
     }
 
+    /// Sets force mode.
     pub fn with_force(mut self, force: bool) -> Self {
         self.force = force;
         self
@@ -39,13 +44,18 @@ impl LoadOptions {
 /// Outcome of `load`. Each variant carries its own relevant counters.
 ///
 /// `Clone` only — `InitSummary` carries an owned `Option<String>` (the
-/// bootstrapped developer name, workspace G-18) so `Copy` no longer applies.
+/// bootstrapped developer name) so `Copy` no longer applies.
 #[derive(Debug, Clone)]
 pub enum LoadSummary {
     /// Fresh scaffold from embedded templates (no snapshot was present).
     Fresh(InitSummary),
     /// Restored from a pre-existing `.ark.db` snapshot.
-    Restored { files: usize, blocks: usize },
+    Restored {
+        /// Number of files restored from the snapshot.
+        files: usize,
+        /// Number of managed blocks restored from the snapshot.
+        blocks: usize,
+    },
 }
 
 impl fmt::Display for LoadSummary {
@@ -60,7 +70,7 @@ impl fmt::Display for LoadSummary {
     }
 }
 
-/// Load Ark into `opts.project_root`.
+/// Loads Ark into `opts.project_root`.
 pub fn load(opts: LoadOptions) -> Result<LoadSummary> {
     let layout = Layout::new(&opts.project_root);
     let ark_dir = layout.ark_dir();
@@ -96,11 +106,11 @@ fn restore(layout: &Layout, snapshot: Snapshot) -> Result<LoadSummary> {
         update_managed_block(target, &b.marker, &b.body).map(|_| ())
     })?;
 
-    // ark-context C-18 / codex-support C-22: restore Ark-owned hook entries.
-    // Replay each captured entry, then overwrite with the canonical shape so
-    // the on-disk hook is independent of snapshot age. For legacy snapshots
-    // (no `hook_bodies`) we treat Claude as installed-by-default — Claude
-    // shipped first and predates the manifest-prefix invariant.
+    // Restore Ark-owned hook entries. Replay each captured entry, then
+    // overwrite with the canonical shape so the on-disk hook is independent
+    // of snapshot age. For legacy snapshots (no `hook_bodies`) we treat
+    // Claude as installed-by-default — Claude shipped first and predates
+    // the manifest-prefix invariant.
     for hb in &snapshot.hook_bodies {
         hb.apply(layout)?;
     }
@@ -246,8 +256,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&custom).unwrap(), "# user plan\n");
     }
 
-    /// V-IT-12 (positive half): unload → load round-trip preserves the Ark
-    /// hook entry in `.claude/settings.json`. Per ark-context G-11.
+    /// Verifies Ark hook preservation across unload and load.
     #[test]
     fn roundtrip_preserves_ark_session_start_hook() {
         use crate::io::ARK_CONTEXT_HOOK_COMMAND;
@@ -287,15 +296,10 @@ mod tests {
         );
     }
 
-    /// V-IT-15: user-added sibling hooks (e.g. `PreToolUse`) DO survive an
-    /// unload → load round-trip because `unload` only surgically removes the
-    /// Ark `SessionStart` entry; the rest of `.claude/settings.json` is left
-    /// in place on disk. This is better behavior than the original plan
-    /// documented (it expected siblings to be lost) — and falls out naturally
-    /// from `remove_settings_hook` being a precise edit rather than a
-    /// whole-file delete. C-18's "user siblings outside hook_bodies don't
-    /// survive" applies only to *capture into the snapshot*; `unload` itself
-    /// preserves them on disk.
+    /// Verifies user-added sibling hook preservation.
+    ///
+    /// `unload` only surgically removes the Ark `SessionStart` entry; the rest
+    /// of `.claude/settings.json` is left in place on disk.
     #[test]
     fn roundtrip_preserves_user_pretooluse_sibling() {
         let tmp = tempfile::tempdir().unwrap();
@@ -325,10 +329,7 @@ mod tests {
         );
     }
 
-    /// V-UT-30 carve-out: `load --force` from a directory without an Ark
-    /// ancestor scaffolds fresh (no walk-up). The carve-out lives in the CLI
-    /// (TargetArgs::resolve), but at the library level the scaffold path
-    /// always operates on the explicit target.
+    /// Verifies that `load --force` without an Ark ancestor scaffolds fresh.
     #[test]
     fn load_force_scaffolds_fresh_in_non_ark_dir() {
         let tmp = tempfile::tempdir().unwrap();
@@ -337,17 +338,16 @@ mod tests {
         assert!(tmp.path().join(".ark/workflow.md").is_file());
     }
 
-    /// codex-support C-18: source-scan invariant for `load.rs`.
+    /// Enforces the source-scan invariant for `load.rs`.
     #[test]
     fn load_source_no_bare_std_fs_or_dot_path_literals() {
         crate::commands::tests_common::assert_source_clean(include_str!("load.rs"));
     }
 
-    /// V-IT-16 (codex-support G-9, C-22): after `load` replays
-    /// `snapshot.hook_bodies`, the canonical re-apply phase rewrites each
-    /// installed platform's hook entry to the *current* shape. Even when the
-    /// snapshot carries a stale entry (e.g. older `timeout`), post-load disk
-    /// state matches the current `entry_builder` output.
+    /// Verifies canonical hook re-apply after snapshot replay.
+    ///
+    /// Even when the snapshot carries a stale entry, post-load disk state
+    /// matches the current `entry_builder` output.
     #[test]
     fn load_after_replay_re_applies_canonical_entries() {
         use crate::{
@@ -391,10 +391,10 @@ mod tests {
         );
     }
 
-    /// opencode-support V-IT-3: full three-platform round-trip. `init` →
-    /// `unload` → `load` produces all three trees, one shared AGENTS.md
-    /// block, and a byte-identical plugin file (modulo timestamps in the
-    /// snapshot itself).
+    /// Verifies the full three-platform round-trip.
+    ///
+    /// The restored project has all three trees, one shared `AGENTS.md` block,
+    /// and a byte-identical plugin file.
     #[test]
     fn opencode_three_platform_roundtrip() {
         use crate::templates::OPENCODE_ARK_CONTEXT_TS;

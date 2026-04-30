@@ -1,15 +1,17 @@
 //! Filesystem and text-content I/O.
 //!
-//! - [`path_ext::PathExt`] — the low-level trait that wraps `std::fs` calls
+//! - [`crate::io::path_ext::PathExt`] — the low-level trait that wraps `std::fs` calls
 //!   with Ark's error type and idempotent remove helpers.
-//! - [`fs`] — content-aware writes, managed-block editing, settings-hook
+//! - [`crate::io::fs`] — content-aware writes, managed-block editing, settings-hook
 //!   editing, and a directory walker.
-//! - [`git`] — the only sanctioned `Command::new("git")` site (per
-//!   ark-context C-26). Kept crate-private; callers route through
+//! - `git` — the only sanctioned `Command::new("git")` site. Kept
+//!   crate-private; callers route through
 //!   [`crate::commands::context::gather`] rather than the raw helper.
 
+/// Filesystem and text-content helpers.
 pub mod fs;
 pub(crate) mod git;
+/// Extension trait for structured path I/O.
 pub mod path_ext;
 
 pub use fs::{

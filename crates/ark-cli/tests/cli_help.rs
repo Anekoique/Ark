@@ -1,5 +1,7 @@
-//! Integration tests for CLI help output — verify the `ark agent` namespace
-//! contract (hidden from top-level help, still discoverable via `ark agent --help`).
+//! Integration tests for CLI help output.
+//!
+//! Verifies the `ark agent` namespace contract: hidden from top-level help,
+//! still discoverable via `ark agent --help`.
 
 use std::process::Command;
 

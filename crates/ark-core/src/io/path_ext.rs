@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{Error, Result};
 
-/// Hex-lowercase SHA-256 of `contents`.
+/// Returns the hex-lowercase SHA-256 of `contents`.
 pub fn hash_bytes(contents: &[u8]) -> String {
     let digest = Sha256::digest(contents);
     let mut out = String::with_capacity(digest.len() * 2);
@@ -21,55 +21,53 @@ pub fn hash_bytes(contents: &[u8]) -> String {
     out
 }
 
-/// File-system helpers that automatically attach the offending path to I/O
-/// errors, distinguish the "file doesn't exist" case from real failures, and
-/// expose a small vocabulary of idempotent removes.
+/// Adds Ark-specific filesystem helpers to path-like values.
 pub trait PathExt {
-    /// Read file bytes, or `None` if the file doesn't exist.
+    /// Reads file bytes, or returns `None` if the file does not exist.
     fn read_optional(&self) -> Result<Option<Vec<u8>>>;
 
-    /// Read file as UTF-8 text, or `None` if the file doesn't exist.
+    /// Reads the file as UTF-8 text, or returns `None` if the file does not exist.
     fn read_text_optional(&self) -> Result<Option<String>>;
 
-    /// Read file bytes (errors if missing).
+    /// Reads file bytes; errors if the file is missing.
     fn read_bytes(&self) -> Result<Vec<u8>>;
 
-    /// Read file as UTF-8 text (errors if missing or non-UTF-8).
+    /// Reads the file as UTF-8 text; errors if the file is missing or not UTF-8.
     fn read_text(&self) -> Result<String>;
 
-    /// Write bytes to the file. Creates parent directories.
+    /// Writes `contents` to this path, creating parent directories as needed.
     fn write_bytes(&self, contents: &[u8]) -> Result<()>;
 
-    /// `create_dir_all` with proper error wrapping.
+    /// Creates this directory and all required parents.
     fn ensure_dir(&self) -> Result<()>;
 
-    /// Iterate entries in this directory, wrapping `std::io::Error` with path context.
+    /// Iterates the entries in this directory.
     fn list_dir(&self) -> Result<fs::ReadDir>;
 
-    /// Remove this file if it exists. Returns `true` if a file was removed.
+    /// Removes this file if it exists. Returns `true` if a file was removed.
     fn remove_if_exists(&self) -> Result<bool>;
 
-    /// Remove this directory if it exists and is empty. Non-empty directories
-    /// are a no-op (returns `false`).
+    /// Removes this directory if it exists and is empty.
     fn remove_dir_if_empty(&self) -> Result<bool>;
 
-    /// Remove this directory tree unconditionally. Returns `true` if it existed.
+    /// Removes this directory tree unconditionally.
     fn remove_dir_all(&self) -> Result<bool>;
 
-    /// Rename/move this path to `dest`. Fails loud on cross-device moves; no
-    /// copy+delete fallback.
+    /// Renames this path to `dest`.
     fn rename_to(&self, dest: impl AsRef<Path>) -> Result<()>;
 
-    /// Hex-lowercase SHA-256 of the file contents, or `None` if the file is missing.
+    /// Returns the file's hex-lowercase SHA-256 digest.
     fn hash_sha256(&self) -> Result<Option<String>>;
 
-    /// Append UTF-8 text to the file, creating it (and parent dirs) if absent.
-    /// Per workspace G-17: opens with `OpenOptions::new().create(true).append(true)`.
-    /// `O_APPEND` positions each write at the current end-of-file, so concurrent
-    /// appenders won't overwrite each other; the write itself is not atomic
-    /// (regular files lack the PIPE_BUF guarantee — partial writes and
-    /// signal-interrupted writes are still possible). `write_all` retries
-    /// short writes; underlying I/O errors propagate as `Error::Io`.
+    /// Appends UTF-8 text to this file.
+    ///
+    /// Opens with `OpenOptions::new().create(true).append(true)`. `O_APPEND`
+    /// positions each write at the current end-of-file, so concurrent
+    /// appenders do not overwrite each other; the write itself is not
+    /// atomic (regular files lack the `PIPE_BUF` guarantee — partial writes
+    /// and signal-interrupted writes are still possible). `write_all`
+    /// retries short writes; underlying I/O errors propagate as
+    /// [`Error::Io`].
     fn append_text(&self, contents: &str) -> Result<()>;
 }
 
@@ -268,7 +266,7 @@ mod tests {
         );
     }
 
-    /// V-UT-11: append_text creates and appends.
+    /// Verifies that `append_text` creates the file and parent dirs, then appends.
     #[test]
     fn append_text_creates_and_appends() {
         let tmp = tempfile::tempdir().unwrap();

@@ -1,10 +1,12 @@
-//! Parse `git worktree list --porcelain` and find the worktree that owns
-//! a given task slug. Used by `task worktree {cleanup, list}`.
+//! Finds the worktree that owns a given task slug.
 //!
-//! Per worktree-support C-20: discovery walks every git worktree, reads its
-//! `.ark/tasks/.current`, and matches against the requested slug. Worktrees
-//! whose `.current` or `task.toml` is missing/unreadable are silently skipped
-//! (R-108) — that's the documented contract for non-Ark third-party worktrees.
+//! Uses `git worktree list --porcelain`. Used by
+//! `task worktree {cleanup, list}`.
+//!
+//! Discovery walks every git worktree, reads its `.ark/tasks/.current`,
+//! and matches against the requested slug. Worktrees whose `.current` or
+//! `task.toml` is missing/unreadable are silently skipped; that is the
+//! documented contract for non-Ark third-party worktrees.
 
 use std::path::{Path, PathBuf};
 
@@ -15,13 +17,16 @@ use crate::{
 };
 
 /// Information about one git worktree from `git worktree list --porcelain`.
+/// One entry from `git worktree list --porcelain`.
 #[derive(Debug, Clone)]
 pub struct WorktreeEntry {
+    /// Absolute or git-reported path to the worktree checkout.
     pub path: PathBuf,
+    /// Checked-out branch, if the worktree is not detached.
     pub branch: Option<String>,
 }
 
-/// Parse `git worktree list --porcelain` output into [`WorktreeEntry`] rows.
+/// Parses `git worktree list --porcelain` output into [`WorktreeEntry`] rows.
 ///
 /// Format per `git-worktree(1)`: blank-line-separated records, each with
 /// lines `worktree <path>`, `HEAD <sha>`, optional `branch <ref>`, optional
@@ -67,12 +72,12 @@ fn parse_porcelain(text: &str) -> Vec<WorktreeEntry> {
     out
 }
 
-/// For each worktree under `worktrees_dir`, read its `.ark/tasks/.current`
-/// and load the matching `task.toml`. Returns `(slug, worktree_path,
-/// task_toml)` for the first slug match, or `None` if no worktree owns it.
+/// Searches for a worktree whose `.current` matches `slug`.
 ///
-/// Per C-20: silently skips worktrees with missing/unreadable `.current` or
-/// `task.toml`.
+/// Loads the matching `task.toml` and returns `(worktree_path, task_toml)` for
+/// the first slug match, or `None` if no worktree owns it.
+///
+/// Silently skips worktrees with missing or unreadable `.current` or `task.toml`.
 ///
 /// Path comparison canonicalizes both sides because `git worktree list
 /// --porcelain` emits canonical paths (e.g. macOS `/tmp` → `/private/tmp`).
@@ -103,9 +108,10 @@ pub fn find_worktree_for_slug(
     Ok(None)
 }
 
-/// `path.starts_with(prefix)` with both sides canonicalized when possible.
-/// Falls back to lexical match if either side fails to canonicalize (e.g.
-/// the prefix dir doesn't exist yet).
+/// Returns `true` if `path` starts with `prefix`.
+///
+/// Falls back to a lexical match if either side fails to canonicalize (e.g.
+/// the prefix dir does not exist yet).
 pub fn is_under(path: &Path, prefix: &Path) -> bool {
     let path_can = canonicalize_or_pass(path);
     let prefix_can = canonicalize_or_pass(prefix);

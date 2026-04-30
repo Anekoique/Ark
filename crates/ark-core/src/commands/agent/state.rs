@@ -10,65 +10,92 @@ use crate::{
     io::PathExt,
 };
 
+/// Workflow tier selected for an Ark task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Tier {
+    /// Minimal lifecycle: design, execute, archive.
     Quick,
+    /// Standard lifecycle: design, plan, execute, verify, archive.
     Standard,
+    /// Deep lifecycle with review iterations and feature SPEC promotion.
     Deep,
 }
 
+/// Lifecycle phase recorded in a task's `task.toml`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Phase {
+    /// Initial task definition phase.
     Design,
+    /// Planning phase.
     Plan,
+    /// Deep-tier review phase.
     Review,
+    /// Implementation phase.
     Execute,
+    /// Verification phase.
     Verify,
+    /// Terminal archived phase.
     Archived,
 }
 
 /// Derived from [`Phase`]. Not persisted; computed on demand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
+    /// Task has not reached its terminal phase.
     InProgress,
+    /// Task has reached its terminal phase.
     Completed,
 }
 
+/// Serialized model stored in each task's `task.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskToml {
+    /// Task slug.
     pub id: String,
+    /// Human-readable task title.
     pub title: String,
+    /// Workflow tier.
     pub tier: Tier,
+    /// Current lifecycle phase.
     pub phase: Phase,
+    /// Current deep-tier plan/review iteration.
     pub iteration: u32,
+    /// Maximum deep-tier review iterations.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub max_iterations: Option<u32>,
+    /// Timestamp when the task was created.
     pub created_at: DateTime<Utc>,
+    /// Timestamp when the task state last changed.
     pub updated_at: DateTime<Utc>,
+    /// Timestamp when the task was archived.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub archived_at: Option<DateTime<Utc>>,
 
-    /// Worktree branch ref, set by `task new --worktree`. Stored verbatim
-    /// (worktree-support C-12). Persists across the task lifecycle.
+    /// Stores the worktree branch ref set by `task new --worktree`.
+    ///
+    /// Stored verbatim.
+    /// Persists across the task lifecycle.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub branch: Option<String>,
 
-    /// Project-relative worktree path (worktree-support C-21). Resolved
-    /// against `Layout::root()` at read time. Forward-slash separators on
-    /// disk; `PathBuf` deserializes both styles transparently.
+    /// Stores the project-relative worktree path.
+    ///
+    /// Resolved against `Layout::root()` at read time. Forward-slash
+    /// separators on disk; `PathBuf` deserializes both styles transparently.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub worktree_path: Option<std::path::PathBuf>,
 
-    /// Branch ref or SHA captured at worktree-create time. May be a SHA
-    /// when invoked from detached HEAD (worktree-support F-17).
+    /// Stores the branch ref or SHA captured at worktree-create time.
+    ///
+    /// May be a SHA when invoked from detached HEAD.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub base_branch: Option<String>,
 }
 
 impl TaskToml {
-    /// Derived status; not persisted.
+    /// Returns the derived [`Status`], computed from the current [`Phase`].
     pub fn status(&self) -> Status {
         if self.phase == Phase::Archived {
             Status::Completed
@@ -77,14 +104,14 @@ impl TaskToml {
         }
     }
 
-    /// Load `task.toml` from a task directory (expects `<task_dir>/task.toml`).
+    /// Loads `task.toml` from a task directory (expects `<task_dir>/task.toml`).
     pub fn load(task_dir: &Path) -> Result<Self> {
         let path = task_dir.join("task.toml");
         let text = path.read_text()?;
         toml::from_str(&text).map_err(|source| Error::TaskTomlCorrupt { path, source })
     }
 
-    /// Save to `<task_dir>/task.toml`, overwriting.
+    /// Saves to `<task_dir>/task.toml`, overwriting.
     pub fn save(&self, task_dir: &Path) -> Result<()> {
         let path = task_dir.join("task.toml");
         let text = toml::to_string_pretty(self).expect("TaskToml serializes");
@@ -124,7 +151,7 @@ pub fn can_transition(tier: Tier, from: Phase, to: Phase) -> bool {
     }
 }
 
-/// Wrap [`can_transition`] as a `Result`.
+/// Returns an error if the phase transition is illegal for the given tier.
 pub fn check_transition(tier: Tier, from: Phase, to: Phase) -> Result<()> {
     if can_transition(tier, from, to) {
         Ok(())
@@ -133,9 +160,10 @@ pub fn check_transition(tier: Tier, from: Phase, to: Phase) -> Result<()> {
     }
 }
 
-/// Reject slugs that would escape `.ark/tasks/` or be unsafe as a file-system
-/// component. Called at every `ark agent` entry point that joins a user-supplied
-/// slug into a path.
+/// Rejects slugs that would escape `.ark/tasks/`.
+///
+/// Also rejects values that would be unsafe as a file-system component. Called
+/// at every `ark agent` entry point that joins a user-supplied slug into a path.
 ///
 /// Rules: non-empty; no path separators (`/`, `\`); no `..` / `.`; no absolute
 /// root; no leading/trailing whitespace; ASCII printable non-whitespace only.
@@ -165,8 +193,9 @@ pub fn validate_slug(slug: &str) -> Result<()> {
     Ok(())
 }
 
-/// Reject task titles that can't round-trip through `spec_register` as the
-/// feature-scope column (which forbids `|` and newlines). Keeps deep-tier
+/// Rejects task titles that cannot round-trip through `spec_register`.
+///
+/// The feature-scope column forbids `|` and newlines. This keeps deep-tier
 /// archive from failing on titles that were accepted at creation time.
 pub fn validate_title(title: &str) -> Result<()> {
     let invalid = |reason: &'static str| Error::InvalidTaskField {
@@ -346,8 +375,7 @@ mod tests {
         }
     }
 
-    /// worktree-support C-3: pre-existing `task.toml` without the new
-    /// `branch` / `worktree_path` / `base_branch` fields must still load.
+    /// Verifies that a pre-existing `task.toml` without the new worktree fields still loads.
     #[test]
     fn task_toml_loads_without_worktree_fields() {
         let tmp = tempfile::tempdir().unwrap();

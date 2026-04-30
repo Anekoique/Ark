@@ -1,6 +1,7 @@
-//! Shared test helpers for the per-command source-scan invariants
-//! (codex-support C-18). Each command-file test calls
-//! [`assert_source_clean`] with `include_str!("<file>.rs")`.
+//! Shared test helpers for the per-command source-scan invariants.
+//!
+//! Each command-file test calls [`assert_source_clean`] with
+//! `include_str!("<file>.rs")`.
 //!
 //! The scan asserts that command bodies route filesystem and path access
 //! through `Layout` / `PathExt` / `io::fs` rather than hand-joining
@@ -10,14 +11,17 @@
 //! lines only — `#[cfg(test)]` bodies, comments, and string-content lines
 //! that begin with `//` are excluded.
 
-/// Line-by-line scan: assert the production half of `source` contains no
-/// bare `std::fs::*` calls, and no path-composition that hand-joins one of
-/// the canonical Ark/Claude/Codex prefixes (those go through `Layout`).
+/// Asserts that production source avoids unsanctioned filesystem access.
+///
+/// The production half of `source` must contain no bare `std::fs::*` calls and
+/// no path-composition that hand-joins one of the canonical `.ark` / `.claude`
+/// / `.codex` / `.opencode` prefixes; those must go through
+/// [`crate::layout::Layout`].
 ///
 /// User-facing labels like `RemoveSummary`'s `".ark/"` display string are
-/// allowed — only patterns that compose paths trigger the assert. The
-/// composition patterns we look for are `.join("<prefix>"`,
-/// `Path::new("<prefix>"`, and `PathBuf::from("<prefix>"`.
+/// allowed; only path-composition patterns trigger the assert. The
+/// patterns checked are `.join("<prefix>"`, `Path::new("<prefix>"`, and
+/// `PathBuf::from("<prefix>"`.
 pub fn assert_source_clean(source: &str) {
     let path_prefixes = [".ark/", ".claude/", ".codex/", ".opencode/"];
     let composition_patterns = [".join(\"", "Path::new(\"", "PathBuf::from(\""];

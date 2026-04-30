@@ -1,9 +1,18 @@
+//! User-facing command implementations.
+
+/// Hidden `ark agent` workflow command implementations.
 pub mod agent;
+/// `ark context` state snapshot command implementation.
 pub mod context;
+/// `ark init` command implementation.
 pub mod init;
+/// `ark load` command implementation.
 pub mod load;
+/// `ark remove` command implementation.
 pub mod remove;
+/// `ark unload` command implementation.
 pub mod unload;
+/// `ark upgrade` command implementation.
 pub mod upgrade;
 
 #[cfg(test)]

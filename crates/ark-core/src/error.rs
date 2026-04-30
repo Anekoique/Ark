@@ -1,174 +1,350 @@
+//! Error model shared by Ark command implementations.
+
 use std::{io, path::PathBuf};
 
 use thiserror::Error;
 
 use crate::commands::agent::state::{Phase, Tier};
 
+/// Convenient result alias using Ark's [`enum@Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Error cases produced by Ark command and I/O operations.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Filesystem or path-specific I/O failed.
     #[error("io error at {path}: {source}")]
     Io {
+        /// Path associated with the failed operation.
         path: PathBuf,
+        /// Original I/O error.
         #[source]
         source: io::Error,
     },
 
+    /// Installation manifest JSON could not be parsed.
     #[error("manifest corrupt at {path}: {source}")]
     ManifestCorrupt {
+        /// Manifest path.
         path: PathBuf,
+        /// JSON parse error.
         #[source]
         source: serde_json::Error,
     },
 
+    /// Snapshot JSON could not be parsed or decoded.
     #[error("snapshot corrupt: {reason}")]
-    SnapshotCorrupt { reason: String },
+    SnapshotCorrupt {
+        /// Human-readable corruption reason.
+        reason: String,
+    },
 
+    /// Ark is already loaded in the target project.
     #[error("ark is already loaded at {path}; pass --force to replace it")]
-    AlreadyLoaded { path: PathBuf },
+    AlreadyLoaded {
+        /// Existing Ark directory path.
+        path: PathBuf,
+    },
 
+    /// No Ark installation exists at the requested path.
     #[error("no ark installation found at {path}")]
-    NotLoaded { path: PathBuf },
+    NotLoaded {
+        /// Path that failed discovery.
+        path: PathBuf,
+    },
 
+    /// Snapshot path validation rejected an unsafe path.
     #[error("refusing unsafe snapshot path {path:?}: {reason}")]
-    UnsafeSnapshotPath { path: PathBuf, reason: &'static str },
+    UnsafeSnapshotPath {
+        /// Unsafe path from the snapshot.
+        path: PathBuf,
+        /// Validation failure reason.
+        reason: &'static str,
+    },
 
+    /// Requested phase transition is illegal for the task tier.
     #[error("illegal phase transition under tier {tier:?}: {from:?} -> {to:?}")]
-    IllegalPhaseTransition { tier: Tier, from: Phase, to: Phase },
+    IllegalPhaseTransition {
+        /// Workflow tier whose state machine was checked.
+        tier: Tier,
+        /// Current phase.
+        from: Phase,
+        /// Requested phase.
+        to: Phase,
+    },
 
+    /// Command was invoked for the wrong task tier.
     #[error("wrong tier: expected {expected:?}, got {actual:?}")]
-    WrongTier { expected: Tier, actual: Tier },
+    WrongTier {
+        /// Required tier.
+        expected: Tier,
+        /// Actual task tier.
+        actual: Tier,
+    },
 
+    /// Task slug did not resolve to an existing task.
     #[error("task not found: {slug}")]
-    TaskNotFound { slug: String },
+    TaskNotFound {
+        /// Missing task slug.
+        slug: String,
+    },
 
+    /// Task slug already exists at the destination.
     #[error("task already exists: {slug}")]
-    TaskAlreadyExists { slug: String },
+    TaskAlreadyExists {
+        /// Existing task slug or archive slug.
+        slug: String,
+    },
 
+    /// Current-task pointer is absent.
     #[error(
         "no active task set: {path} is missing; pass --slug <s> or run `ark agent task new` first"
     )]
-    NoCurrentTask { path: PathBuf },
+    NoCurrentTask {
+        /// Missing `.current` file path.
+        path: PathBuf,
+    },
 
+    /// Requested embedded template is unknown.
     #[error("unknown template: {name}")]
-    UnknownTemplate { name: String },
+    UnknownTemplate {
+        /// Template name.
+        name: String,
+    },
 
+    /// PLAN file has no extractable SPEC section.
     #[error("PLAN at {plan_path} has no `## Spec` section")]
-    SpecSectionMissing { plan_path: PathBuf },
+    SpecSectionMissing {
+        /// PLAN path that was inspected.
+        plan_path: PathBuf,
+    },
 
+    /// Task directory has no `NN_PLAN.md` files.
     #[error("no `NN_PLAN.md` found in {task_dir}")]
-    NoPlanFound { task_dir: PathBuf },
+    NoPlanFound {
+        /// Task directory that was inspected.
+        task_dir: PathBuf,
+    },
 
+    /// `task.toml` could not be parsed.
     #[error("task.toml corrupt at {path}: {source}")]
     TaskTomlCorrupt {
+        /// Corrupt TOML path.
         path: PathBuf,
+        /// TOML parse error.
         #[source]
         source: toml::de::Error,
     },
 
+    /// Feature SPEC registration field failed validation.
     #[error("invalid spec field `{field}`: {reason}")]
-    InvalidSpecField { field: String, reason: &'static str },
+    InvalidSpecField {
+        /// Field name.
+        field: String,
+        /// Validation failure reason.
+        reason: &'static str,
+    },
 
+    /// Task metadata field failed validation.
     #[error("invalid task field `{field}`: {reason}")]
-    InvalidTaskField { field: String, reason: &'static str },
+    InvalidTaskField {
+        /// Field name.
+        field: String,
+        /// Validation failure reason.
+        reason: &'static str,
+    },
 
+    /// Managed-block delimiters are unbalanced.
     #[error("managed block corrupt in {path}: marker `{marker}` has START without END")]
-    ManagedBlockCorrupt { path: PathBuf, marker: String },
+    ManagedBlockCorrupt {
+        /// File containing the corrupt block.
+        path: PathBuf,
+        /// Marker whose start delimiter has no end delimiter.
+        marker: String,
+    },
 
+    /// CLI version is older than the recorded install version.
     #[error(
         "refusing to downgrade: project is at {project_version}, CLI is {cli_version}; pass \
          --allow-downgrade to proceed"
     )]
     DowngradeRefused {
+        /// Version recorded in the project manifest.
         project_version: String,
+        /// Running CLI version.
         cli_version: String,
     },
 
+    /// Installation manifest contains an unsafe path.
     #[error("unsafe path in installation manifest {path:?}: {reason}")]
-    UnsafeManifestPath { path: PathBuf, reason: &'static str },
+    UnsafeManifestPath {
+        /// Unsafe path from the manifest.
+        path: PathBuf,
+        /// Validation failure reason.
+        reason: &'static str,
+    },
 
+    /// Spawning `git` failed.
     #[error("failed to spawn git: {source}")]
     GitSpawn {
+        /// Original process-spawn error.
         #[source]
         source: io::Error,
     },
 
-    // worktree-support feature errors --------------------------------------
+    // Worktree feature errors.
+    /// Worktree destination already exists.
     #[error("worktree directory already exists at {path:?}")]
-    WorktreeDirExists { path: PathBuf },
+    WorktreeDirExists {
+        /// Existing worktree path.
+        path: PathBuf,
+    },
 
+    /// No worktree is bound to the requested task slug.
     #[error("no worktree found for slug `{slug}`")]
-    WorktreeNotFound { slug: String },
+    WorktreeNotFound {
+        /// Task slug.
+        slug: String,
+    },
 
+    /// Worktree has uncommitted changes.
     #[error("worktree at {path:?} has uncommitted changes; pass --force to override")]
-    WorktreeDirty { path: PathBuf },
+    WorktreeDirty {
+        /// Dirty worktree path.
+        path: PathBuf,
+    },
 
+    /// Branch is already checked out somewhere else.
     #[error("branch `{branch}` is already checked out at {where_at:?}")]
-    BranchInUse { branch: String, where_at: PathBuf },
+    BranchInUse {
+        /// Branch name.
+        branch: String,
+        /// Existing checkout path.
+        where_at: PathBuf,
+    },
 
+    /// Branch name failed validation.
     #[error("invalid branch name `{branch}`: {reason}")]
-    InvalidBranchName { branch: String, reason: String },
+    InvalidBranchName {
+        /// Invalid branch name.
+        branch: String,
+        /// Validation failure reason.
+        reason: String,
+    },
 
+    /// Branch type is not one of Ark's allowed prefixes.
     #[error("invalid branch type `{value}`; expected one of feat, fix, refactor, chore, ci, docs")]
-    InvalidBranchType { value: String },
+    InvalidBranchType {
+        /// Invalid branch type value.
+        value: String,
+    },
 
+    /// Worktree config TOML could not be parsed.
     #[error("config.toml corrupt at {path:?}: {source}")]
     WorktreeConfigCorrupt {
+        /// Config file path.
         path: PathBuf,
+        /// TOML parse error.
         #[source]
         source: toml::de::Error,
     },
 
+    /// Worktree post-create hook exited non-zero.
     #[error("post_create hook `{command}` failed with exit code {exit_code}")]
-    PostCreateHookFailed { command: String, exit_code: i32 },
+    PostCreateHookFailed {
+        /// Hook command string.
+        command: String,
+        /// Process exit code.
+        exit_code: i32,
+    },
 
+    /// Configured worktree copy source is missing.
     #[error("config.toml [worktree] `copy` source missing: {path:?}")]
-    WorktreeCopySourceMissing { path: PathBuf },
+    WorktreeCopySourceMissing {
+        /// Missing source path.
+        path: PathBuf,
+    },
 
+    /// Task slug already exists in the parent checkout.
     #[error(
         "task `{slug}` already exists on the parent at {path:?}; archive it or run without \
          --worktree"
     )]
-    TaskExistsOnParent { slug: String, path: PathBuf },
+    TaskExistsOnParent {
+        /// Existing task slug.
+        slug: String,
+        /// Existing parent task path.
+        path: PathBuf,
+    },
 
+    /// Worktree creation was invoked from inside a worktree.
     #[error(
         "`task new --worktree` cannot be invoked from inside an existing worktree (root is \
          {current_root:?})"
     )]
-    NestedWorktreeForbidden { current_root: PathBuf },
+    NestedWorktreeForbidden {
+        /// Current worktree root.
+        current_root: PathBuf,
+    },
 
+    /// Config field failed validation.
     #[error("invalid config.toml field `{field}`: {reason}")]
     InvalidConfigField {
+        /// Field name.
         field: &'static str,
+        /// Validation failure reason.
         reason: &'static str,
     },
 
-    // workspace feature errors --------------------------------------------
+    // Workspace feature errors.
+    /// Developer identity has not been initialized.
     #[error(
         "developer not initialized: {path:?} is missing; run `ark agent workspace init --name \
          <x>` to create it"
     )]
-    DeveloperNotInitialized { path: PathBuf },
+    DeveloperNotInitialized {
+        /// Missing developer identity path.
+        path: PathBuf,
+    },
 
+    /// Developer identity already exists with a different name.
     #[error("developer already initialized as `{name}`; remove .ark/.developer to re-init")]
-    DeveloperAlreadyInitialized { name: String },
+    DeveloperAlreadyInitialized {
+        /// Existing developer name.
+        name: String,
+    },
 
+    /// Workspace config TOML could not be parsed.
     #[error("config.toml corrupt at {path:?}: {source}")]
     WorkspaceConfigCorrupt {
+        /// Config file path.
         path: PathBuf,
+        /// TOML parse error.
         #[source]
         source: toml::de::Error,
     },
 
+    /// Workspace journal rotation reached its configured cap.
     #[error("journal rotation limit hit for `{dev}`: max {max} journals")]
-    JournalRotationLimit { dev: String, max: u32 },
+    JournalRotationLimit {
+        /// Developer identity.
+        dev: String,
+        /// Maximum allowed journal index.
+        max: u32,
+    },
 
+    /// Developer identity name failed validation.
     #[error("invalid developer name `{name}`: {reason}")]
-    InvalidDeveloperName { name: String, reason: &'static str },
+    InvalidDeveloperName {
+        /// Invalid developer name.
+        name: String,
+        /// Validation failure reason.
+        reason: &'static str,
+    },
 }
 
 impl Error {
+    /// Wraps an I/O error with the path being operated on.
     pub fn io(path: impl Into<PathBuf>, source: io::Error) -> Self {
         Self::Io {
             path: path.into(),

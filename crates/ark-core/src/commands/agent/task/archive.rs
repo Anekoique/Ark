@@ -1,5 +1,6 @@
-//! `ark agent task archive` — move an active task to archive; on deep tier,
-//! extract and register the feature SPEC.
+//! `ark agent task archive` moves an active task to archive.
+//!
+//! On deep tier, it also extracts and registers the feature SPEC.
 
 use std::{fmt, path::PathBuf};
 
@@ -19,21 +20,30 @@ use crate::{
     layout::Layout,
 };
 
+/// Options for archiving an active task.
 #[derive(Debug, Clone)]
 pub struct TaskArchiveOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// Task slug to archive.
     pub slug: String,
 }
 
+/// Summary of a task archive operation.
 #[derive(Debug, Clone)]
 pub struct TaskArchiveSummary {
+    /// Archived task slug.
     pub slug: String,
+    /// Workflow tier of the archived task.
     pub tier: Tier,
+    /// Reports whether a deep-tier SPEC was promoted.
     pub deep_spec_promoted: bool,
+    /// Destination path under the archive directory.
     pub archive_path: PathBuf,
-    /// Outcome of the auto-record into the developer's workspace journal
-    /// (workspace G-7 / C-18). `Recorded` on success, `SkippedNoIdentity`
-    /// when `.ark/.developer` is absent, `SkippedDisabled` when
+    /// Records the auto-record outcome for the developer's workspace journal.
+    ///
+    /// `Recorded` on success, `SkippedNoIdentity` when `.ark/.developer`
+    /// is absent, `SkippedDisabled` when
     /// `[workspace].auto_record_on_archive = false` in `.ark/config.toml`.
     pub workspace_recorded: WorkspaceRecorded,
 }
@@ -60,6 +70,7 @@ impl fmt::Display for TaskArchiveSummary {
     }
 }
 
+/// Archives a task and promotes its SPEC when the task is deep-tier.
 pub fn task_archive(opts: TaskArchiveOptions) -> Result<TaskArchiveSummary> {
     validate_slug(&opts.slug)?;
 
@@ -100,8 +111,8 @@ pub fn task_archive(opts: TaskArchiveOptions) -> Result<TaskArchiveSummary> {
     toml.save(&archive_path)?;
 
     // Deep-tier SPEC promotion runs from the archive path. If extract/register
-    // fail, the task is archived but the promotion didn't happen — the SPEC
-    // file and INDEX row don't reference an unarchived task, which is the
+    // fail, the task is archived but the promotion did not happen — the SPEC
+    // file and INDEX row do not reference an unarchived task, which is the
     // invariant we care about. The user can hand-run `ark agent spec extract`
     // / `register` to complete promotion.
     let mut deep_spec_promoted = false;
@@ -129,12 +140,11 @@ pub fn task_archive(opts: TaskArchiveOptions) -> Result<TaskArchiveSummary> {
         current_path.remove_if_exists()?;
     }
 
-    // Workspace auto-record (workspace C-18): regardless of tier, after
-    // `.current` cleanup and before `Ok(summary)`. `record_task` itself
-    // swallows `DeveloperNotInitialized` (returning `SkippedNoIdentity`)
-    // and respects `auto_record_on_archive = false`. Other errors
-    // propagate; per workspace NG-6 we do NOT roll back the archive on
-    // workspace failure (mirrors spec_extract policy).
+    // Auto-record after `.current` cleanup and before `Ok(summary)`, regardless
+    // of tier. `record_task` itself swallows `DeveloperNotInitialized`
+    // (returning `SkippedNoIdentity`) and respects
+    // `auto_record_on_archive = false`. Other errors propagate; archive is not
+    // rolled back on workspace failure.
     let workspace_recorded = record_task(RecordTaskOptions {
         project_root: opts.project_root.clone(),
         slug: opts.slug.clone(),
@@ -244,8 +254,7 @@ mod tests {
         assert!(matches!(err, Error::IllegalPhaseTransition { .. }));
     }
 
-    /// V-F-1 (workspace): no `.developer` set → archive succeeds with
-    /// `SkippedNoIdentity`, stderr emits the documented diagnostic.
+    /// Verifies that absent identity causes archive to succeed with `SkippedNoIdentity`.
     #[test]
     fn archive_skips_workspace_record_when_no_identity() {
         use crate::commands::agent::workspace::record::WorkspaceRecorded;
@@ -263,7 +272,7 @@ mod tests {
         assert!(!tmp.path().join(".ark/workspace").exists());
     }
 
-    /// V-IT-8 (workspace): standard-tier archive auto-records.
+    /// Standard-tier archive auto-records into the developer's journal.
     #[test]
     fn standard_tier_archive_records_session() {
         use crate::commands::agent::workspace::{
@@ -293,7 +302,7 @@ mod tests {
         assert!(journal.contains("**Kind**: task"));
     }
 
-    /// V-IT-8 (workspace): quick-tier archive auto-records.
+    /// Quick-tier archive auto-records into the developer's journal.
     #[test]
     fn quick_tier_archive_records_session() {
         use crate::commands::agent::{
@@ -338,7 +347,7 @@ mod tests {
         ));
     }
 
-    /// V-F-6 (workspace): auto_record_on_archive = false → SkippedDisabled.
+    /// Verifies that `auto_record_on_archive = false` causes archive to return `SkippedDisabled`.
     #[test]
     fn archive_skips_when_auto_record_disabled() {
         use crate::commands::agent::workspace::{

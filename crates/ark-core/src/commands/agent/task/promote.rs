@@ -15,17 +15,25 @@ use crate::{
     layout::Layout,
 };
 
+/// Options for promoting a task to another tier.
 #[derive(Debug, Clone)]
 pub struct TaskPromoteOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// Task slug to promote.
     pub slug: String,
+    /// Target workflow tier.
     pub to: Tier,
 }
 
+/// Summary of a task tier promotion.
 #[derive(Debug, Clone)]
 pub struct TaskPromoteSummary {
+    /// Task slug that was promoted.
     pub slug: String,
+    /// Previous workflow tier.
     pub from: Tier,
+    /// New workflow tier.
     pub to: Tier,
 }
 
@@ -39,6 +47,7 @@ impl fmt::Display for TaskPromoteSummary {
     }
 }
 
+/// Promotes a task to another workflow tier.
 pub fn task_promote(opts: TaskPromoteOptions) -> Result<TaskPromoteSummary> {
     validate_slug(&opts.slug)?;
 

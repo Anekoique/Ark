@@ -10,12 +10,15 @@ use crate::{
     state::{Manifest, Snapshot},
 };
 
+/// Options for removing Ark from a project.
 #[derive(Debug, Clone)]
 pub struct RemoveOptions {
+    /// Project root where Ark should be removed.
     pub project_root: PathBuf,
 }
 
 impl RemoveOptions {
+    /// Creates remove options for `project_root`.
     pub fn new(project_root: impl Into<PathBuf>) -> Self {
         Self {
             project_root: project_root.into(),
@@ -26,14 +29,20 @@ impl RemoveOptions {
 /// What was actually removed for a single platform during `remove`.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RemovedPlatform {
+    /// Reports whether the platform destination directory was removed.
     pub dest_dir: bool,
+    /// Reports whether the platform hook entry was removed.
     pub hook_entry: bool,
 }
 
+/// Summary of a remove operation.
 #[derive(Debug, Default, Clone)]
 pub struct RemoveSummary {
+    /// Reports whether `.ark/` was removed.
     pub removed_ark_dir: bool,
+    /// Reports whether `.ark.db` was removed.
     pub removed_snapshot: bool,
+    /// Number of managed blocks removed.
     pub blocks_removed: usize,
     /// Per-platform removal outcomes, keyed by `Platform::id`.
     pub per_platform: BTreeMap<&'static str, RemovedPlatform>,
@@ -67,8 +76,9 @@ impl fmt::Display for RemoveSummary {
     }
 }
 
-/// Remove all Ark artifacts from `opts.project_root`. Unconditional: unlike
-/// `unload`, no state is preserved.
+/// Removes all Ark artifacts from `opts.project_root`.
+///
+/// Unconditional: unlike `unload`, no state is preserved.
 pub fn remove(opts: RemoveOptions) -> Result<RemoveSummary> {
     let layout = Layout::new(&opts.project_root);
 
@@ -109,7 +119,7 @@ pub fn remove(opts: RemoveOptions) -> Result<RemoveSummary> {
 fn remove_recorded_blocks(layout: &Layout) -> Result<usize> {
     // Manifest is authoritative when present. With no manifest, fall back to
     // every shipped platform's managed-block target so partially-tracked
-    // installs don't leak `AGENTS.md` (or any future platform's block) on
+    // installs do not leak `AGENTS.md` (or any future platform's block) on
     // remove.
     let blocks: Vec<(PathBuf, String)> = match Manifest::read(layout.root())? {
         Some(m) => m
@@ -181,7 +191,7 @@ mod tests {
         assert!(summary.removed_snapshot);
     }
 
-    /// codex-support C-18: source-scan invariant for `remove.rs`.
+    /// Verifies the source-scan invariant for `remove.rs`.
     #[test]
     fn remove_source_no_bare_std_fs_or_dot_path_literals() {
         crate::commands::tests_common::assert_source_clean(include_str!("remove.rs"));

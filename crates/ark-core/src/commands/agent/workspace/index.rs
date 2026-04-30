@@ -1,10 +1,11 @@
 //! `<dev>/index.md` re-render via managed blocks.
 //!
-//! Two markers per workspace G-13:
+//! The index owns two managed blocks.
+//!
 //! - `ARK:WORKSPACE_STATUS` — active file + total sessions + last-active date.
 //! - `ARK:WORKSPACE_SESSIONS` — GFM table of every session, desc by session number.
 //!
-//! Re-render scope is capped per C-21: 100 journal files × 100 entries each.
+//! Re-render scope is capped: 100 journal files × 100 entries each.
 
 use std::path::Path;
 
@@ -17,10 +18,10 @@ use crate::{
     layout::Layout,
 };
 
-/// Hard ceiling on journal files scanned per `rerender` (workspace C-21).
+/// Hard ceiling on journal files scanned per `rerender`.
 pub(crate) const INDEX_RERENDER_JOURNAL_CAP: usize = 100;
 
-/// Hard ceiling on entries parsed per journal file (workspace C-21).
+/// Hard ceiling on entries parsed per journal file.
 pub(crate) const INDEX_RERENDER_ENTRIES_PER_JOURNAL_CAP: usize = 100;
 
 /// Marker for the workspace status managed block.
@@ -40,8 +41,9 @@ const SEED_SESSIONS_BODY: &str = "\
 | # | Date | Title | Kind | Slug | Branch | Commits |
 |---|------|-------|------|------|--------|---------|";
 
-/// Seed `<dev>/index.md` with managed-block markers and empty bodies.
-/// First record then populates the bodies via `update_managed_block`.
+/// Seeds `<dev>/index.md` with managed-block markers and empty bodies.
+///
+/// The first record call populates the bodies via `update_managed_block`.
 pub fn seed_index(path: &Path, dev: &str) -> Result<()> {
     let body = format!(
         "# Workspace Index — {dev}\n\n> Per-developer session journal. Updated automatically by \
@@ -53,7 +55,7 @@ pub fn seed_index(path: &Path, dev: &str) -> Result<()> {
     path.write_bytes(body.as_bytes())
 }
 
-/// Re-render both managed blocks in `<dev>/index.md` from the journal files.
+/// Re-renders both managed blocks in `<dev>/index.md` from the journal files.
 pub fn rerender(layout: &Layout, dev: &str) -> Result<()> {
     let dir = layout.workspace_developer_dir(dev);
     if !dir.exists() {
@@ -63,8 +65,9 @@ pub fn rerender(layout: &Layout, dev: &str) -> Result<()> {
     }
 
     // Collect journal files with their parsed numeric index, sorted DESCENDING
-    // so the C-21 cap takes the *newest* N journals. Scanning ascending and
-    // capping would silently drop recent sessions on long-lived workspaces.
+    // so the journal cap takes the *newest* N journals. Scanning ascending
+    // and capping would silently drop recent sessions on long-lived
+    // workspaces.
     let mut journals: Vec<(u32, std::path::PathBuf)> = Vec::new();
     for entry in dir.list_dir()? {
         let entry = entry.map_err(|e| Error::io(&dir, e))?;
@@ -74,7 +77,7 @@ pub fn rerender(layout: &Layout, dev: &str) -> Result<()> {
     }
     journals.sort_by_key(|(n, _)| std::cmp::Reverse(*n));
 
-    // Build the entry list (capped per C-21) and track the latest entry date.
+    // Build the entry list (capped) and track the latest entry date.
     let mut all_entries: Vec<ParsedEntry> = Vec::new();
     let mut last_date: Option<NaiveDate> = None;
     for (_, path) in journals.iter().take(INDEX_RERENDER_JOURNAL_CAP) {
@@ -143,7 +146,7 @@ mod tests {
         NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
     }
 
-    /// V-IT-1 (partial): seed produces both markers.
+    /// Verifies that `seed_index` produces both managed-block markers.
     #[test]
     fn seed_index_includes_markers() {
         let tmp = tempfile::tempdir().unwrap();
@@ -157,9 +160,7 @@ mod tests {
         assert!(text.contains("# Workspace Index — alice"));
     }
 
-    /// rerender on a fresh dev dir produces the empty status body and an
-    /// empty-rows sessions block. Idempotent: running twice produces the
-    /// same bytes.
+    /// Verifies that rerender on a fresh dev dir is idempotent.
     #[test]
     fn rerender_idempotent_on_empty_workspace() {
         let tmp = tempfile::tempdir().unwrap();
@@ -176,8 +177,7 @@ mod tests {
         assert_eq!(first, second);
     }
 
-    /// rerender with one entry surfaces the row in the sessions table and
-    /// updates the status block.
+    /// Verifies that rerender surfaces one entry in the sessions table.
     #[test]
     fn rerender_reflects_one_entry() {
         let tmp = tempfile::tempdir().unwrap();

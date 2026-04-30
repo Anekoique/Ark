@@ -1,7 +1,8 @@
-//! Sanctioned subprocess spawns under `ark-core` (per the `ark-context`
-//! feature C-26 and `worktree-support` C-10). The two clients today are
-//! `git` (every `run_git` call) and shell hooks (`run_shell`, used by
-//! `task new --worktree` for `config.toml [worktree].post_create` commands).
+//! Sanctioned subprocess spawns under `ark-core`.
+//!
+//! The two clients today are `git` (every `run_git` call) and shell hooks
+//! (`run_shell`, used by `task new --worktree` for `config.toml
+//! [worktree].post_create` commands).
 //!
 //! Soft-fail on non-zero exit: the caller decides whether the exit code is
 //! a real failure (e.g. `git status` in a non-git directory returns 128) or
@@ -14,7 +15,9 @@ use crate::error::{Error, Result};
 /// Captured output of a `git` invocation.
 #[derive(Debug, Clone)]
 pub struct GitOutput {
+    /// Process exit code, or `-1` when the process terminated without one.
     pub exit_code: i32,
+    /// Captured standard output.
     pub stdout: String,
     /// Captured for diagnostic logging; not currently read by callers.
     #[allow(dead_code)]
@@ -22,14 +25,16 @@ pub struct GitOutput {
 }
 
 impl GitOutput {
+    /// Reports whether the command exited with status code zero.
     pub fn is_success(&self) -> bool {
         self.exit_code == 0
     }
 }
 
-/// Run `git <args...>` with `cwd` as the working directory. Returns
-/// `Ok(GitOutput)` for any completed run including non-zero exits; spawn
-/// failures yield `Error::GitSpawn`.
+/// Runs `git <args...>` with `cwd` as the working directory.
+///
+/// Returns [`Ok`] for any completed run including non-zero exits; spawn
+/// failures yield [`Error::GitSpawn`].
 pub fn run_git(args: &[&str], cwd: &Path) -> Result<GitOutput> {
     let output = Command::new("git")
         .args(args)
@@ -43,12 +48,11 @@ pub fn run_git(args: &[&str], cwd: &Path) -> Result<GitOutput> {
     })
 }
 
-/// Run a shell command (`sh -c <command>`) with `cwd` as the working
-/// directory. Used by `task new --worktree` for `config.toml`'s
-/// `[worktree].post_create` hooks (worktree-support F-3).
+/// Runs a shell command (`sh -c <command>`) with `cwd` as the working directory.
 ///
-/// Returns the exit code on completion. Spawn failure → `Error::GitSpawn`
-/// (the variant covers any sanctioned-subprocess spawn failure).
+/// Returns the exit code on completion. Spawn failure yields
+/// [`Error::GitSpawn`] (the variant covers any sanctioned-subprocess spawn
+/// failure).
 pub fn run_shell(command: &str, cwd: &Path) -> Result<i32> {
     let status = Command::new("sh")
         .arg("-c")

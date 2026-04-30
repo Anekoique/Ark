@@ -23,12 +23,15 @@ use crate::{
     state::{Manifest, Snapshot, SnapshotHookBody},
 };
 
+/// Options for unloading Ark from a project.
 #[derive(Debug, Clone)]
 pub struct UnloadOptions {
+    /// Project root where Ark should be unloaded.
     pub project_root: PathBuf,
 }
 
 impl UnloadOptions {
+    /// Creates unload options for `project_root`.
     pub fn new(project_root: impl Into<PathBuf>) -> Self {
         Self {
             project_root: project_root.into(),
@@ -36,10 +39,14 @@ impl UnloadOptions {
     }
 }
 
+/// Summary of an unload operation.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct UnloadSummary {
+    /// Number of files captured into the snapshot.
     pub files_captured: usize,
+    /// Number of managed blocks captured into the snapshot.
     pub blocks_captured: usize,
+    /// Number of hook entries captured into the snapshot.
     pub hook_bodies_captured: usize,
 }
 
@@ -53,9 +60,11 @@ impl fmt::Display for UnloadSummary {
     }
 }
 
-/// Snapshot and remove Ark from `opts.project_root`.
+/// Snapshots and removes Ark from `opts.project_root`.
 ///
-/// Errors with [`Error::NotLoaded`] if there's no `.ark/` directory to unload.
+/// # Errors
+///
+/// Returns [`Error::NotLoaded`] if there is no `.ark/` directory to unload.
 pub fn unload(opts: UnloadOptions) -> Result<UnloadSummary> {
     let layout = Layout::new(&opts.project_root);
     let ark_dir = layout.ark_dir();
@@ -66,15 +75,14 @@ pub fn unload(opts: UnloadOptions) -> Result<UnloadSummary> {
     let mut snapshot = Snapshot::new();
     let mut summary = UnloadSummary::default();
 
-    // 1. Capture every file under Ark-owned directories. Per worktree-support
-    //    C-7, skip the configured worktrees dir so we don't recurse into
-    //    per-task git checkouts (which would capture `target/`, uncommitted
-    //    edits, etc.). Use `WorktreeConfig` so a non-default `worktree_dir`
+    // 1. Capture every file under Ark-owned directories. Skip the
+    //    configured worktrees dir so we do not recurse into per-task git
+    //    checkouts (which would capture `target/`, uncommitted edits,
+    //    etc.). Use `WorktreeConfig` so a non-default `worktree_dir`
     //    setting is honored.
-    // Stage A skip: worktree dirs (worktree-support C-7) AND the gitignored
-    // per-machine `.ark/.developer` identity file (workspace C-7). Both walk
-    // sites must include the developer file or identity leaks across
-    // unload/load between machines.
+    // Stage A skip: worktree dirs AND the gitignored per-machine
+    // `.ark/.developer` identity file. Both walk sites must include the
+    // developer file or identity leaks across unload/load between machines.
     let cfg = WorktreeConfig::load_or_default(&layout)?;
     let skip = [cfg.resolve_worktrees_dir(&layout), layout.developer_file()];
     for owned in layout.owned_dirs() {
@@ -100,9 +108,9 @@ pub fn unload(opts: UnloadOptions) -> Result<UnloadSummary> {
     }
 
     // 3. Capture Ark-owned hook entries from every platform (Stage A) and
-    //    from any unregistered `*.json` file under owned dirs (Stage B per
-    //    codex-support C-24). Sibling user entries stay on disk; owned dirs
-    //    are about to be wiped, so Stage B is capture-only.
+    //    from any unregistered `*.json` file under owned dirs (Stage B).
+    //    Sibling user entries stay on disk; owned dirs are about to be
+    //    wiped, so Stage B is capture-only.
     //
     //    Stage A surgically removes each platform's known entry from disk
     //    before Stage B reads — so when Stage B scans the same file, only
@@ -129,12 +137,11 @@ pub fn unload(opts: UnloadOptions) -> Result<UnloadSummary> {
     Ok(summary)
 }
 
-/// Managed blocks to capture: recorded in the manifest if present, else
-/// every shipped platform's managed-block target as a fallback so a missing
-/// manifest never leaves orphaned state on either Claude or Codex (or any
-/// future platform with a managed-block target). Deduped on `(file, marker)`
-/// so platforms sharing a target (e.g. Codex and OpenCode both writing to
-/// `AGENTS.md`) yield one capture entry, not one per platform.
+/// Returns the managed blocks to capture.
+///
+/// Uses recorded manifest entries when present. Otherwise every shipped
+/// platform's managed-block target is a fallback so a missing manifest never
+/// leaves orphaned state. Results are deduped on `(file, marker)`.
 fn managed_blocks(layout: &Layout) -> Result<Vec<(PathBuf, String)>> {
     Ok(match Manifest::read(layout.root())? {
         Some(manifest) => manifest
@@ -152,15 +159,14 @@ fn managed_blocks(layout: &Layout) -> Result<Vec<(PathBuf, String)>> {
     })
 }
 
-/// Stage B per codex-support C-24: scan every `*.json` file under owned
-/// dirs for Ark-identity entries that Stage A didn't already capture and
-/// remove from disk. Each match is added to `snapshot.hook_bodies`. No
-/// surgical write — owned dirs are about to be deleted. Parse failures
-/// non-fatal (warn + skip).
+/// Captures orphan Ark hook entries under owned directories.
+///
+/// Scans every `*.json` file for Ark-identity entries that Stage A did not
+/// already capture. Parse failures are non-fatal.
 fn capture_orphan_hook_entries(layout: &Layout, snapshot: &mut Snapshot) -> Result<()> {
-    // worktree-support C-7 + workspace C-7: skip the configured worktrees
-    // dir AND the gitignored `.ark/.developer` identity file. Both walk
-    // sites must agree (Stage A above).
+    // Skip the configured worktrees dir AND the gitignored
+    // `.ark/.developer` identity file. Both walk sites must agree
+    // (Stage A above).
     let cfg = WorktreeConfig::load_or_default(layout)?;
     let skip = [cfg.resolve_worktrees_dir(layout), layout.developer_file()];
     for owned in layout.owned_dirs() {
@@ -337,15 +343,15 @@ mod tests {
         assert_eq!(by("commands/ark/plan.md"), b"# custom plan command\n");
     }
 
-    /// codex-support C-18: source-scan invariant for `unload.rs`.
+    /// Verifies the source-scan invariant for `unload.rs`.
     #[test]
     fn unload_source_no_bare_std_fs_or_dot_path_literals() {
         crate::commands::tests_common::assert_source_clean(include_str!("unload.rs"));
     }
 
-    /// worktree-support V-IT-13 / C-7: `.ark/worktrees/` is skipped during
-    /// snapshot capture. A sentinel file under a fake worktree dir must NOT
-    /// appear in either `snapshot.files` or `snapshot.hook_bodies`.
+    /// Verifies that `.ark/worktrees/` is skipped during snapshot capture.
+    /// A sentinel file under a fake worktree dir must not appear in either
+    /// `snapshot.files` or `snapshot.hook_bodies`.
     #[test]
     fn unload_excludes_worktree_contents() {
         let tmp = tempfile::tempdir().unwrap();
@@ -398,9 +404,7 @@ mod tests {
         );
     }
 
-    /// V-IT-17 (codex-support C-24): Stage B captures Ark-identity hook
-    /// entries living in JSON files under `owned_dirs()` that no registered
-    /// platform points at — e.g. a future-version platform's `extras.json`.
+    /// Verifies that Stage B captures orphan Ark hook entries.
     #[test]
     fn unload_captures_orphan_ark_hook_entries_in_unregistered_files() {
         let tmp = tempfile::tempdir().unwrap();
@@ -444,11 +448,10 @@ mod tests {
         );
     }
 
-    /// Regression for PR#6 #5/#14: Stage B used to skip an entire file if
-    /// Stage A captured anything from it, which dropped extra Ark-identity
-    /// entries living under different event arrays in that same file. Now
-    /// Stage B scans all `.json` files and the `SomeFutureEvent` entry must
-    /// be captured even though Stage A captured the canonical SessionStart.
+    /// Verifies that Stage B scans files already processed by Stage A.
+    ///
+    /// This prevents dropping Ark entries under other event arrays in the same
+    /// JSON file.
     #[test]
     fn unload_captures_extra_orphan_entries_in_stage_a_file() {
         let tmp = tempfile::tempdir().unwrap();

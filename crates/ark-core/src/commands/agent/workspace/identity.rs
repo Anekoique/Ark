@@ -1,8 +1,9 @@
 //! Identity helpers — read/write `.ark/.developer`; name validation.
 //!
-//! Workspace C-3: `^[A-Za-z][A-Za-z0-9_-]{0,39}$`.
-//! Workspace C-4: `name=<x>\ninitialized_at=<RFC3339>\n`. Reader is line-
-//! oriented; tolerates blank lines and unknown keys for forward compat.
+//! Name pattern: `^[A-Za-z][A-Za-z0-9_-]{0,39}$`.
+//! File shape: `name=<x>\ninitialized_at=<RFC3339>\n`. The reader is
+//! line-oriented and tolerates blank lines plus unknown keys for forward
+//! compatibility.
 
 use chrono::{DateTime, Utc};
 
@@ -15,8 +16,11 @@ use crate::{
 /// Maximum length of a developer name.
 const MAX_LEN: usize = 40;
 
-/// Validate per C-3. Empty / leading digit / leading dash / contains `/` or
-/// `\` / contains `.` / > 40 chars / non-ASCII → reject.
+/// Validates the developer name.
+///
+/// Rejects empty strings, names with a leading digit or dash, names
+/// containing `/`, `\`, or `.`, names longer than 40 characters,
+/// and non-ASCII input.
 pub fn validate_developer_name(name: &str) -> Result<()> {
     if name.is_empty() {
         return Err(Error::InvalidDeveloperName {
@@ -49,8 +53,9 @@ pub fn validate_developer_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Read the developer name from `.ark/.developer`, or `None` if the file is
-/// missing or has no `name=` line.
+/// Reads the developer name from `.ark/.developer`.
+///
+/// Returns `None` if the file is missing or has no `name=` line.
 pub fn read_developer_name(layout: &Layout) -> Result<Option<String>> {
     let path = layout.developer_file();
     let Some(text) = path.read_text_optional()? else {
@@ -67,7 +72,7 @@ pub fn read_developer_name(layout: &Layout) -> Result<Option<String>> {
     Ok(None)
 }
 
-/// Read the developer name; error if the file is missing.
+/// Reads the developer name, or errors if the file is missing.
 pub fn require_developer_name(layout: &Layout) -> Result<String> {
     match read_developer_name(layout)? {
         Some(name) => Ok(name),
@@ -77,7 +82,7 @@ pub fn require_developer_name(layout: &Layout) -> Result<String> {
     }
 }
 
-/// Write the canonical two-line `.developer` content.
+/// Writes the canonical two-line `.developer` content.
 pub fn write_developer_file(layout: &Layout, name: &str, now: DateTime<Utc>) -> Result<()> {
     let path = layout.developer_file();
     let body = format!("name={name}\ninitialized_at={}\n", now.to_rfc3339());
@@ -88,7 +93,7 @@ pub fn write_developer_file(layout: &Layout, name: &str, now: DateTime<Utc>) -> 
 mod tests {
     use super::*;
 
-    /// V-UT-1: name validation matrix.
+    /// Verifies that valid developer names are accepted.
     #[test]
     fn validate_accepts_basic_names() {
         for ok in ["A", "kleinhe", "dev_1", "a-b", "Z", "ab_cd-EF_12"] {
@@ -165,7 +170,7 @@ mod tests {
         }
     }
 
-    /// V-UT-2: read returns None for missing file.
+    /// Verifies that reading a missing file returns `None`.
     #[test]
     fn read_returns_none_for_missing() {
         let tmp = tempfile::tempdir().unwrap();
@@ -173,7 +178,7 @@ mod tests {
         assert!(read_developer_name(&layout).unwrap().is_none());
     }
 
-    /// V-UT-2: round-trip write→read.
+    /// Verifies that a written developer name round-trips through a read.
     #[test]
     fn read_developer_name_round_trip() {
         let tmp = tempfile::tempdir().unwrap();
@@ -185,7 +190,7 @@ mod tests {
         );
     }
 
-    /// V-UT-2: tolerates blank lines and unknown keys.
+    /// Verifies that the reader tolerates blank lines and unknown keys.
     #[test]
     fn read_tolerates_blank_and_unknown_keys() {
         let tmp = tempfile::tempdir().unwrap();

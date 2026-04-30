@@ -1,9 +1,8 @@
 //! Render a [`ProjectedContext`] as human-readable text.
 //!
-//! Section names are locked per ark-context G-12: `## GIT STATUS`,
-//! `## CURRENT TASK`, `## ACTIVE TASKS`, `## SPECS`, `## ARCHIVE`. Sections
-//! absent from the projection are omitted entirely. Text mode carries no
-//! schema version (per C-10).
+//! Section names are locked: `## GIT STATUS`, `## CURRENT TASK`,
+//! `## ACTIVE TASKS`, `## SPECS`, `## ARCHIVE`. Sections absent from the
+//! projection are omitted entirely. Text mode carries no schema version.
 
 use std::fmt;
 
@@ -12,6 +11,7 @@ use crate::commands::context::{
     projection::{PhaseFilter, ProjectedContext, ScopeTag},
 };
 
+/// Display wrapper for text-mode context rendering.
 pub struct TextSummary<'a>(pub &'a ProjectedContext);
 
 impl fmt::Display for TextSummary<'_> {
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn text_does_not_contain_schema_version() {
-        // C-10 / R-006: text mode carries no schema version.
+        // Text mode carries no schema version.
         let p = empty_projection(ScopeTag::Session);
         let out = format!("{}", TextSummary(&p));
         assert!(!out.contains("schema=1"));

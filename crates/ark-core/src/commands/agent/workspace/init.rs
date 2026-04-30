@@ -15,15 +15,21 @@ use crate::{
     layout::Layout,
 };
 
+/// Options for initializing workspace identity.
 #[derive(Debug, Clone)]
 pub struct WorkspaceInitOptions {
+    /// Project root containing the Ark installation.
     pub project_root: PathBuf,
+    /// Developer identity name.
     pub name: String,
 }
 
+/// Summary of workspace identity initialization.
 #[derive(Debug, Clone)]
 pub struct WorkspaceInitSummary {
+    /// Developer identity name.
     pub name: String,
+    /// Developer workspace directory.
     pub dev_dir: PathBuf,
     /// `false` when re-init with the same name was a no-op.
     pub created: bool,
@@ -49,13 +55,14 @@ impl fmt::Display for WorkspaceInitSummary {
     }
 }
 
+/// Initializes per-developer workspace state.
 pub fn workspace_init(opts: WorkspaceInitOptions) -> Result<WorkspaceInitSummary> {
     validate_developer_name(&opts.name)?;
 
     let layout = Layout::new(&opts.project_root);
 
     // Idempotent re-init only when the existing identity matches; otherwise
-    // refuse so we don't accidentally rename or overwrite.
+    // refuse so we do not accidentally rename or overwrite.
     let existing = read_developer_name(&layout)?;
     let already = match &existing {
         Some(name) if name == &opts.name => true,
@@ -100,7 +107,7 @@ pub fn workspace_init(opts: WorkspaceInitOptions) -> Result<WorkspaceInitSummary
 mod tests {
     use super::*;
 
-    /// V-IT-1: creates `.developer`, `<dev>/index.md` (with markers), `<dev>/journal-1.md`.
+    /// Verifies that init creates the workspace identity files.
     #[test]
     fn workspace_init_creates_files() {
         let tmp = tempfile::tempdir().unwrap();
@@ -124,7 +131,7 @@ mod tests {
         assert!(journal.contains("# Journal — alice (Part 1)"));
     }
 
-    /// V-IT-2: same-name re-init is idempotent.
+    /// Verifies that re-initializing with the same name is idempotent.
     #[test]
     fn workspace_init_idempotent_same_name() {
         let tmp = tempfile::tempdir().unwrap();
@@ -141,7 +148,7 @@ mod tests {
         assert!(!s2.created, "second invocation must be no-op");
     }
 
-    /// V-IT-2: different name → DeveloperAlreadyInitialized.
+    /// Verifies that initializing with a different name yields `DeveloperAlreadyInitialized`.
     #[test]
     fn workspace_init_rejects_different_name() {
         let tmp = tempfile::tempdir().unwrap();
