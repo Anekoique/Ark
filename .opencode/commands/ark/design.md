@@ -67,7 +67,7 @@ ark agent task new --slug <slug> --title "<title>" --tier standard
 ark agent task new --slug <slug> --title "<title>" --tier deep --worktree
 ```
 
-This scaffolds `.ark/tasks/<slug>/` with `PRD.md` + `task.toml` (`phase = design`, `iteration = 0`), and points `.ark/tasks/.current` at the new slug. Refuses if the slug already exists.
+This scaffolds `.ark/tasks/<slug>/` with `PRD.md` + `task.toml` (`phase = design`, `iteration = 0`), registers the slug in `.ark/.state.toml` as this session's focus, and warns to stderr if other active tasks already exist. Refuses if the slug already exists.
 
 **Deep tier MUST use `--worktree`.** After scaffolding, `cd .ark/worktrees/<branch>/` and run all subsequent phase commands (plan / review / execute / verify / archive) from the worktree.
 

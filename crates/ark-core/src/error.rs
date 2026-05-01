@@ -341,6 +341,32 @@ pub enum Error {
         /// Validation failure reason.
         reason: &'static str,
     },
+
+    /// State file `.state.toml` failed to parse.
+    #[error("state.toml corrupt at {path:?}: {source}")]
+    StateTomlCorrupt {
+        /// State file path.
+        path: PathBuf,
+        /// TOML parse error.
+        #[source]
+        source: toml::de::Error,
+    },
+
+    /// Exclusive state-file lock could not be acquired within the backoff window.
+    #[error("state.toml lock contended at {path:?}; another process is mutating state")]
+    StateLockContended {
+        /// Lock file path.
+        path: PathBuf,
+    },
+
+    /// Task discard refused because a seeded artifact has user content.
+    #[error("task `{slug}` has user content in {file}; pass --force to discard anyway")]
+    TaskStillActive {
+        /// Slug of the task being discarded.
+        slug: String,
+        /// First seeded file whose contents diverged from its template.
+        file: String,
+    },
 }
 
 impl Error {

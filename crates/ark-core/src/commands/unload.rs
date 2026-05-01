@@ -20,7 +20,7 @@ use crate::{
     },
     layout::Layout,
     platforms::PLATFORMS,
-    state::{Manifest, Snapshot, SnapshotHookBody},
+    state::{Manifest, Snapshot, SnapshotHookBody, is_state_tmp},
 };
 
 /// Options for unloading Ark from a project.
@@ -80,13 +80,18 @@ pub fn unload(opts: UnloadOptions) -> Result<UnloadSummary> {
     //    checkouts (which would capture `target/`, uncommitted edits,
     //    etc.). Use `WorktreeConfig` so a non-default `worktree_dir`
     //    setting is honored.
-    // Stage A skip: worktree dirs AND the gitignored per-machine
-    // `.ark/.developer` identity file. Both walk sites must include the
-    // developer file or identity leaks across unload/load between machines.
+    // Stage A skip: worktree dirs, the legacy per-machine identity file
+    // `.ark/.developer`, the new state file `.ark/.state.toml`, and its
+    // co-located lock file. Identity is per-machine and never captured;
+    // active task state is per-checkout and re-derivable on load via
+    // two-way reconcile against captured `.ark/tasks/<*>/`.
     let cfg = WorktreeConfig::load_or_default(&layout)?;
-    let skip = [cfg.resolve_worktrees_dir(&layout), layout.developer_file()];
+    let skip = capture_skip_paths(&layout, &cfg);
     for owned in layout.owned_dirs() {
         for path in walk_files_excluding(&owned, &skip)? {
+            if is_state_tmp(&path) {
+                continue;
+            }
             let relative = path
                 .strip_prefix(layout.root())
                 .expect("file from owned_dirs lies under project root");
@@ -164,19 +169,36 @@ fn managed_blocks(layout: &Layout) -> Result<Vec<(PathBuf, String)>> {
 /// Scans every `*.json` file for Ark-identity entries that Stage A did not
 /// already capture. Parse failures are non-fatal.
 fn capture_orphan_hook_entries(layout: &Layout, snapshot: &mut Snapshot) -> Result<()> {
-    // Skip the configured worktrees dir AND the gitignored
-    // `.ark/.developer` identity file. Both walk sites must agree
-    // (Stage A above).
+    // Skip set must agree with Stage A above: worktrees, legacy `.developer`,
+    // new `.state.toml` and its lock file. The tmp-orphan filter mirrors
+    // Stage A as well.
     let cfg = WorktreeConfig::load_or_default(layout)?;
-    let skip = [cfg.resolve_worktrees_dir(layout), layout.developer_file()];
+    let skip = capture_skip_paths(layout, &cfg);
     for owned in layout.owned_dirs() {
         for path in walk_files_excluding(&owned, &skip)? {
+            if is_state_tmp(&path) {
+                continue;
+            }
             if path.extension().and_then(|e| e.to_str()) == Some("json") {
                 capture_from_orphan_file(&path, layout, snapshot)?;
             }
         }
     }
     Ok(())
+}
+
+/// Returns the prefix-skip set shared by both unload walks.
+///
+/// Both walks must agree on this set; differing skip lists would cause
+/// identity or state to leak through one walk while being filtered out by
+/// the other.
+fn capture_skip_paths(layout: &Layout, cfg: &WorktreeConfig) -> [PathBuf; 4] {
+    [
+        cfg.resolve_worktrees_dir(layout),
+        layout.developer_file(),
+        layout.state_file(),
+        layout.state_lock_file(),
+    ]
 }
 
 fn capture_from_orphan_file(path: &Path, layout: &Layout, snapshot: &mut Snapshot) -> Result<()> {

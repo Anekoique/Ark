@@ -3,17 +3,17 @@
 //! Uses `git worktree list --porcelain`. Used by
 //! `task worktree {cleanup, list}`.
 //!
-//! Discovery walks every git worktree, reads its `.ark/tasks/.current`,
-//! and matches against the requested slug. Worktrees whose `.current` or
-//! `task.toml` is missing/unreadable are silently skipped; that is the
-//! documented contract for non-Ark third-party worktrees.
+//! Discovery walks every git worktree, reads its `.ark/.state.toml`'s
+//! `tasks.active` set (or synthesizes it from legacy `.ark/tasks/.current`
+//! during the migration window), and looks for a slug match. Worktrees whose
+//! state file is unreadable or whose `task.toml` is missing are silently
+//! skipped; that is the documented contract for non-Ark third-party worktrees.
 
 use std::path::{Path, PathBuf};
 
 use crate::{
-    commands::agent::state::TaskToml,
-    error::Result,
-    io::{PathExt, git::run_git},
+    commands::agent::state::TaskToml, error::Result, io::git::run_git, layout::Layout,
+    session::ppid::RealPpid, state::load_state,
 };
 
 /// Information about one git worktree from `git worktree list --porcelain`.
@@ -72,12 +72,13 @@ fn parse_porcelain(text: &str) -> Vec<WorktreeEntry> {
     out
 }
 
-/// Searches for a worktree whose `.current` matches `slug`.
+/// Searches for a worktree whose `.ark/.state.toml` lists `slug` as active.
 ///
 /// Loads the matching `task.toml` and returns `(worktree_path, task_toml)` for
 /// the first slug match, or `None` if no worktree owns it.
 ///
-/// Silently skips worktrees with missing or unreadable `.current` or `task.toml`.
+/// Silently skips worktrees with unreadable `.ark/.state.toml` or `task.toml`
+/// (e.g. third-party worktrees living under `worktrees_dir`).
 ///
 /// Path comparison canonicalizes both sides because `git worktree list
 /// --porcelain` emits canonical paths (e.g. macOS `/tmp` → `/private/tmp`).
@@ -87,19 +88,19 @@ pub fn find_worktree_for_slug(
     slug: &str,
 ) -> Result<Option<(PathBuf, TaskToml)>> {
     let canonical_prefix = canonicalize_or_pass(worktrees_dir);
+    let ppid = RealPpid::new();
     for entry in parse_git_worktree_list(repo_root)? {
         if !is_under(&entry.path, &canonical_prefix) {
             continue;
         }
-        let current_file = entry.path.join(".ark/tasks/.current");
-        let Ok(text) = current_file.read_text() else {
+        let wt_layout = Layout::new(&entry.path);
+        let Ok(state) = load_state(&wt_layout, &ppid) else {
             continue;
         };
-        let candidate_slug = text.trim();
-        if candidate_slug != slug {
+        if !state.tasks.active.iter().any(|s| s == slug) {
             continue;
         }
-        let task_dir = entry.path.join(".ark/tasks").join(candidate_slug);
+        let task_dir = wt_layout.task_dir(slug);
         let Ok(toml) = TaskToml::load(&task_dir) else {
             continue;
         };
@@ -170,5 +171,57 @@ branch refs/heads/feat/foo";
         let text = "worktree /repo\nbranch feat/foo\n";
         let entries = parse_porcelain(text);
         assert_eq!(entries[0].branch.as_deref(), Some("feat/foo"));
+    }
+
+    /// Verifies that `find_worktree_for_slug` returns the matching worktree
+    /// when its `.ark/.state.toml` lists the slug as active.
+    #[test]
+    fn find_worktree_for_slug_matches_active_state_entry() {
+        use crate::commands::agent::{
+            state::Tier,
+            task::new::{TaskNewOptions, TaskNewWorktree, task_new},
+        };
+        let tmp = init_repo_with_commit();
+        task_new(TaskNewOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "foo".into(),
+            title: "foo".into(),
+            tier: Tier::Standard,
+            worktree: Some(TaskNewWorktree::default()),
+        })
+        .unwrap();
+        let worktrees_dir = tmp.path().join(".ark/worktrees");
+        let found = find_worktree_for_slug(tmp.path(), &worktrees_dir, "foo").unwrap();
+        let (wt_path, toml) = found.expect("foo's worktree must be discoverable");
+        assert!(wt_path.ends_with(".ark/worktrees/feat/foo"));
+        assert_eq!(toml.id, "foo");
+    }
+
+    /// Verifies that `find_worktree_for_slug` returns `None` when no worktree
+    /// owns the slug.
+    #[test]
+    fn find_worktree_for_slug_returns_none_when_unknown() {
+        let tmp = init_repo_with_commit();
+        let worktrees_dir = tmp.path().join(".ark/worktrees");
+        let found = find_worktree_for_slug(tmp.path(), &worktrees_dir, "ghost").unwrap();
+        assert!(found.is_none());
+    }
+
+    /// Initializes a temp git repo with one commit so `git worktree add` works.
+    fn init_repo_with_commit() -> tempfile::TempDir {
+        use crate::io::{PathExt, git::run_git};
+        let tmp = tempfile::tempdir().unwrap();
+        run_git(&["init", "--quiet"], tmp.path()).unwrap();
+        run_git(&["config", "user.email", "test@example.com"], tmp.path()).unwrap();
+        run_git(&["config", "user.name", "Test"], tmp.path()).unwrap();
+        run_git(&["config", "commit.gpgsign", "false"], tmp.path()).unwrap();
+        run_git(&["checkout", "-b", "main"], tmp.path()).unwrap();
+        tmp.path()
+            .join("README.md")
+            .write_bytes(b"# repo\n")
+            .unwrap();
+        run_git(&["add", "."], tmp.path()).unwrap();
+        run_git(&["commit", "-m", "init", "--quiet"], tmp.path()).unwrap();
+        tmp
     }
 }

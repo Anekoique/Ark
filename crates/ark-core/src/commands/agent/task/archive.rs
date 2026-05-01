@@ -18,6 +18,8 @@ use crate::{
     error::{Error, Result},
     io::PathExt,
     layout::Layout,
+    session::ppid::{Ppid, RealPpid},
+    state::clear_focus_for_slug,
 };
 
 /// Options for archiving an active task.
@@ -72,18 +74,24 @@ impl fmt::Display for TaskArchiveSummary {
 
 /// Archives a task and promotes its SPEC when the task is deep-tier.
 pub fn task_archive(opts: TaskArchiveOptions) -> Result<TaskArchiveSummary> {
+    task_archive_with_ppid(opts, &RealPpid::new())
+}
+
+/// Test seam for [`task_archive`]: same flow with an injectable parent-id provider.
+pub(crate) fn task_archive_with_ppid(
+    opts: TaskArchiveOptions,
+    ppid: &dyn Ppid,
+) -> Result<TaskArchiveSummary> {
     validate_slug(&opts.slug)?;
 
     let layout = Layout::new(&opts.project_root);
     let task_dir = layout.task_dir(&opts.slug);
-
     if !task_dir.exists() {
         return Err(Error::TaskNotFound { slug: opts.slug });
     }
 
     let mut toml = TaskToml::load(&task_dir)?;
     check_transition(toml.tier, toml.phase, Phase::Archived)?;
-
     let tier = toml.tier;
 
     // Reserve the archive path before any mutation. If the destination already
@@ -100,9 +108,12 @@ pub fn task_archive(opts: TaskArchiveOptions) -> Result<TaskArchiveSummary> {
         });
     }
 
-    // Rename first. Everything after this point operates on `archive_path`; if
-    // a later step fails, the task is at the archive path (still recoverable)
-    // rather than wedged between states with partial side effects.
+    // Clear state-file references *before* rename so the focused-session
+    // probe still sees the live entry. Ordering also gives clean recovery:
+    // if a later step fails, two-way reconcile re-adds the slug from the
+    // surviving `tasks/<slug>/` dir (`phase != Archived` until step below).
+    clear_focus_for_slug(&layout, ppid, &opts.slug)?;
+
     task_dir.rename_to(&archive_path)?;
 
     toml.phase = Phase::Archived;
@@ -112,11 +123,10 @@ pub fn task_archive(opts: TaskArchiveOptions) -> Result<TaskArchiveSummary> {
 
     // Deep-tier SPEC promotion runs from the archive path. If extract/register
     // fail, the task is archived but the promotion did not happen — the SPEC
-    // file and INDEX row do not reference an unarchived task, which is the
-    // invariant we care about. The user can hand-run `ark agent spec extract`
-    // / `register` to complete promotion.
-    let mut deep_spec_promoted = false;
-    if tier == Tier::Deep {
+    // file and INDEX row do not reference an unarchived task. The user can
+    // hand-run `ark agent spec extract` / `register` to complete promotion.
+    let deep_spec_promoted = tier == Tier::Deep;
+    if deep_spec_promoted {
         spec_extract(SpecExtractOptions {
             project_root: opts.project_root.clone(),
             slug: opts.slug.clone(),
@@ -130,21 +140,11 @@ pub fn task_archive(opts: TaskArchiveOptions) -> Result<TaskArchiveSummary> {
             from_task: opts.slug.clone(),
             date: now.date_naive(),
         })?;
-        deep_spec_promoted = true;
     }
 
-    let current_path = layout.tasks_current();
-    if let Some(current_text) = current_path.read_text_optional()?
-        && current_text.trim() == opts.slug
-    {
-        current_path.remove_if_exists()?;
-    }
-
-    // Auto-record after `.current` cleanup and before `Ok(summary)`, regardless
-    // of tier. `record_task` itself swallows `DeveloperNotInitialized`
-    // (returning `SkippedNoIdentity`) and respects
-    // `auto_record_on_archive = false`. Other errors propagate; archive is not
-    // rolled back on workspace failure.
+    // `record_task` swallows `DeveloperNotInitialized` and respects
+    // `auto_record_on_archive = false`. Other errors propagate; archive is
+    // not rolled back on workspace failure.
     let workspace_recorded = record_task(RecordTaskOptions {
         project_root: opts.project_root.clone(),
         slug: opts.slug.clone(),
@@ -215,7 +215,9 @@ mod tests {
         assert!(!tmp.path().join(".ark/tasks/demo").exists());
         assert!(s.archive_path.exists());
         assert!(s.archive_path.join("task.toml").exists());
-        assert!(!tmp.path().join(".ark/tasks/.current").exists());
+        // Active set in `.state.toml` no longer contains the archived slug.
+        let state = crate::state::load_state(&Layout::new(tmp.path()), &RealPpid::new()).unwrap();
+        assert!(!state.tasks.active.iter().any(|s| s == "demo"));
     }
 
     #[test]

@@ -38,7 +38,9 @@ Turn the title into a slug: lowercase, hyphen-separated, ASCII, ≤40 chars.
 ark agent task new --slug <slug> --title "<title>" --tier quick
 ```
 
-This scaffolds `.ark/tasks/<slug>/` with `PRD.md` + `task.toml`, and points `.ark/tasks/.current` at the new slug. Refuses if the slug already exists.
+This scaffolds `.ark/tasks/<slug>/` with `PRD.md` + `task.toml`, registers the slug in `.ark/.state.toml` as this session's focus, and warns to stderr if other active tasks already exist (use `ark agent task resume --slug <other>` to switch focus, or `ark agent task discard --slug <other>` to remove it). Refuses if the slug already exists.
+
+Pass `--worktree` to scaffold inside a git worktree at `.ark/worktrees/<branch>/` instead — useful when the new task would collide with in-flight changes on the active branch. **When `--worktree` is used, `cd .ark/worktrees/<branch>/` before editing the PRD or running any subsequent `ark agent task ...` commands; they operate on the worktree's own `.ark/` and the parent checkout is untouched.**
 
 ### 3. Fill the PRD
 

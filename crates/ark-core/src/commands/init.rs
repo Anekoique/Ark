@@ -587,8 +587,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let summary = init(InitOptions::new(tmp.path()).with_developer("alice")).unwrap();
         assert_eq!(summary.developer.as_deref(), Some("alice"));
-        let dev_file = std::fs::read_to_string(tmp.path().join(".ark/.developer")).unwrap();
-        assert!(dev_file.contains("name=alice"));
+        // Identity now lives in `.ark/.state.toml`'s `[identity]` section.
+        let layout = crate::layout::Layout::new(tmp.path());
+        let state =
+            crate::state::load_state(&layout, &crate::session::ppid::RealPpid::new()).unwrap();
+        assert_eq!(
+            state.identity.as_ref().map(|i| i.name.as_str()),
+            Some("alice")
+        );
         assert!(tmp.path().join(".ark/workspace/alice/index.md").is_file());
         assert!(
             tmp.path()

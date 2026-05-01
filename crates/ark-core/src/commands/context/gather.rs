@@ -22,6 +22,8 @@ use crate::{
     error::Result,
     io::{PathExt, git, read_managed_block},
     layout::{FEATURES_MARKER, Layout},
+    session::{cache::lookup_session_id, ppid::RealPpid},
+    state::load_state,
 };
 
 /// Snapshot the project state into a [`Context`].
@@ -311,32 +313,33 @@ fn normalize_spec_cell(raw: &str) -> (String, String) {
 }
 
 fn gather_current_task(layout: &Layout, tasks: &TasksState) -> Result<Option<CurrentTask>> {
-    let pointer = layout.tasks_current();
-    let Some(text) = pointer.read_text_optional()? else {
+    // Read-only path: never create a session cache file. A session that has
+    // not registered focus via `task new` / `task resume` reports `None`.
+    let ppid = RealPpid::new();
+    let Some(id) = lookup_session_id(layout, &ppid)? else {
         return Ok(None);
     };
-    let slug = text.trim();
-    if slug.is_empty() {
+    let state = load_state(layout, &ppid)?;
+    let Some(slug) = state.sessions.get(id.as_str()).map(|s| s.focus.clone()) else {
         return Ok(None);
-    }
-    let task_dir = layout.task_dir(slug);
+    };
+    let task_dir = layout.task_dir(&slug);
     if !task_dir.is_dir() {
         return Ok(None);
     }
     let _ = TaskToml::load(&task_dir)?;
-    let summary = match tasks.active.iter().find(|t| t.slug == slug) {
-        Some(s) => s.clone(),
-        None => return Ok(None),
+    let Some(summary) = tasks.active.iter().find(|t| t.slug == slug).cloned() else {
+        return Ok(None);
     };
 
-    let artifacts = list_artifacts(layout, slug)?;
+    let artifacts = list_artifacts(layout, &slug)?;
     let related = match task_dir.join("PRD.md").read_text_optional()? {
         Some(prd) => related_specs::extract(&prd),
         None => Vec::new(),
     };
 
     Ok(Some(CurrentTask {
-        slug: slug.to_string(),
+        slug,
         summary,
         artifacts,
         related_specs: related,
@@ -467,6 +470,28 @@ mod tests {
         )
     }
 
+    /// Registers `slug` as this test's session focus by writing a state file
+    /// directly. Mirrors what `task new` would do.
+    fn register_focus(layout: &Layout, slug: &str) {
+        use crate::{
+            session::ppid::{Ppid, RealPpid},
+            state::{Session, state_mutate},
+        };
+        let ppid = RealPpid::new();
+        let id = crate::session::cache::resolve_session_id(layout, &ppid).unwrap();
+        state_mutate(layout, &ppid, |state| {
+            state.sessions.insert(
+                id.as_str().to_string(),
+                Session {
+                    focus: slug.to_string(),
+                    pid: ppid.parent_id(),
+                },
+            );
+            Ok(())
+        })
+        .unwrap();
+    }
+
     #[test]
     fn gather_active_tasks_lists_seeded_task() {
         let tmp = arked_tempdir();
@@ -487,7 +512,7 @@ mod tests {
         let tmp = arked_tempdir();
         let layout = Layout::new(tmp.path());
         write_task(&layout, "feat-x", &deep_task_toml("feat-x", "plan", 0));
-        layout.tasks_current().write_bytes(b"feat-x\n").unwrap();
+        register_focus(&layout, "feat-x");
         // Add NN_PLAN, NN_REVIEW, VERIFY artifacts.
         let task_dir = layout.task_dir("feat-x");
         task_dir
@@ -510,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn gather_current_returns_none_when_pointer_missing() {
+    fn gather_current_returns_none_when_no_session_focus() {
         let tmp = arked_tempdir();
         let layout = Layout::new(tmp.path());
         let ctx = gather_context(&layout).unwrap();
@@ -518,10 +543,12 @@ mod tests {
     }
 
     #[test]
-    fn gather_current_returns_none_when_pointer_dangling() {
+    fn gather_current_returns_none_when_focus_slug_dangling() {
         let tmp = arked_tempdir();
         let layout = Layout::new(tmp.path());
-        layout.tasks_current().write_bytes(b"nope\n").unwrap();
+        // Plant a session whose focus does not match any task dir; reconcile
+        // will drop it on load, yielding `None`.
+        register_focus(&layout, "nope");
         let ctx = gather_context(&layout).unwrap();
         assert!(ctx.current_task.is_none());
     }

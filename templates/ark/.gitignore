@@ -1,2 +1,5 @@
 worktrees/
 .developer
+.state.toml
+.state.toml.lock
+.state.toml.tmp.*

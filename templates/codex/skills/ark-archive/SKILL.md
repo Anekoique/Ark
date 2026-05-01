@@ -22,7 +22,7 @@ If VERIFY was *Rejected*, refuse and tell the user to address findings first.
 
 Parse `<task description>`:
 - If a slug is given, use it.
-- Otherwise, use `.ark/tasks/.current` (the CLI defaults to it automatically).
+- Otherwise, use this session's focused slug from `.ark/.state.toml` (the CLI defaults to it automatically).
 
 ### 2. Pre-archive sanity check
 
@@ -37,7 +37,7 @@ For standard/deep tiers, read `.ark/tasks/<slug>/VERIFY.md` and check the Verdic
 ### 3. Run the archive
 
 ```bash
-ark agent task archive            # uses .ark/tasks/.current
+ark agent task archive            # uses this session's focus from .ark/.state.toml
 # or
 ark agent task archive --slug <slug>
 ```
@@ -46,7 +46,7 @@ This single command:
 - Transitions `task.toml.phase` to `Archived` and sets `archived_at` to now (UTC).
 - **Deep tier only:** extracts the final PLAN's `## Spec` section to `.ark/specs/features/<slug>/SPEC.md` (appends a CHANGELOG entry if the SPEC already existed), then upserts the corresponding row in `.ark/specs/features/INDEX.md`'s `ARK:FEATURES` managed block.
 - Moves `.ark/tasks/<slug>/` → `.ark/tasks/archive/YYYY-MM/<slug>/`.
-- Clears `.ark/tasks/.current` if it pointed at this slug.
+- Removes the slug from `.ark/.state.toml`'s `tasks.active` and clears any session focus pointing at it.
 
 ### 4. Report to user
 

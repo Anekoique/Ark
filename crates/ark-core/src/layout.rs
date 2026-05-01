@@ -69,9 +69,31 @@ pub const WORKSPACE_DIR: &str = ".ark/workspace";
 
 /// Gitignored, per-machine identity file (`<project>/.ark/.developer`).
 ///
-/// Written only by `ark agent workspace init`. Excluded from `unload`'s
-/// snapshot capture in both walk sites.
+/// Legacy layout. New installs carry identity in `.state.toml`'s
+/// `[identity]` section. The constant survives for the migration
+/// reader; remove once all installs have migrated.
 pub const DEVELOPER_FILE: &str = ".ark/.developer";
+
+/// Per-checkout state index (`<project>/.ark/.state.toml`).
+///
+/// Carries developer identity, the active-task slug set, and a per-session
+/// focus map. Treated as an index over `task.toml` truth: reconciled on
+/// every read. Gitignored. Skipped by `unload` in both walk sites.
+pub const STATE_FILE: &str = ".ark/.state.toml";
+
+/// Lock file co-located with the state file (`<project>/.ark/.state.toml.lock`).
+///
+/// A zero-byte sentinel that exclusive `File::try_lock` operates on. Created
+/// on first `state_mutate`. Lock is OS-released on `File` drop, so a crashed
+/// process never holds it past exit.
+pub const STATE_LOCK_FILE: &str = ".ark/.state.toml.lock";
+
+/// Filename prefix for in-flight state-file writes (`<project>/.ark/.state.toml.tmp.*`).
+///
+/// `state_mutate` writes a `.state.toml.tmp.<pid>` next to the canonical file
+/// then atomically renames it into place. Crash-orphans are unlinked on the
+/// next mutation under the lock.
+pub const STATE_TMP_PREFIX: &str = ".state.toml.tmp.";
 
 /// Host-side Claude Code settings file.
 pub const CLAUDE_SETTINGS_FILE: &str = ".claude/settings.json";
@@ -279,6 +301,16 @@ impl Layout {
     /// Returns the per-machine developer identity path.
     pub fn developer_file(&self) -> PathBuf {
         self.root.join(DEVELOPER_FILE)
+    }
+
+    /// Returns the per-checkout state file path.
+    pub fn state_file(&self) -> PathBuf {
+        self.root.join(STATE_FILE)
+    }
+
+    /// Returns the lock file path co-located with the state file.
+    pub fn state_lock_file(&self) -> PathBuf {
+        self.root.join(STATE_LOCK_FILE)
     }
 
     /// Returns the root directory for Codex integration.
