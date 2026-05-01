@@ -9,7 +9,7 @@ use super::{ConflictChoice, ConflictPolicy, Prompter};
 use crate::{
     error::{Error, Result},
     io::{PathExt, hash_bytes},
-    layout::Layout,
+    layout::{CONFIG_FILE, Layout, SPECS_PROJECT_DIR, SPECS_PROJECT_INDEX_FILE},
     state::{Manifest, manifest::MANIFEST_RELATIVE_PATH},
 };
 
@@ -83,7 +83,20 @@ impl PlannedAction {
 }
 
 pub(super) fn is_exempted(relative: &Path) -> bool {
-    relative == Path::new(MANIFEST_RELATIVE_PATH)
+    relative == Path::new(MANIFEST_RELATIVE_PATH) || is_seed_only(relative)
+}
+
+/// Paths seeded by `init` whose content becomes user-owned afterwards.
+///
+/// Upgrade skips them entirely: no classification, no prompt, no removal —
+/// even when the embedded template's bytes change between releases. Adding a
+/// path here is a behavioral contract: once shipped, a user's edits to that
+/// file will never be overwritten by `ark upgrade`.
+fn is_seed_only(relative: &Path) -> bool {
+    if relative == Path::new(CONFIG_FILE) || relative == Path::new(SPECS_PROJECT_INDEX_FILE) {
+        return true;
+    }
+    relative.starts_with(SPECS_PROJECT_DIR)
 }
 
 /// Normalizes every `manifest.files` entry through `Layout::resolve_safe`.
@@ -343,11 +356,15 @@ mod tests {
     }
 
     #[test]
-    fn is_exempted_only_matches_manifest_file() {
+    fn is_exempted_matches_manifest_and_seed_only_paths() {
         assert!(is_exempted(Path::new(MANIFEST_RELATIVE_PATH)));
+        assert!(is_exempted(Path::new(CONFIG_FILE)));
+        assert!(is_exempted(Path::new(SPECS_PROJECT_INDEX_FILE)));
+        assert!(is_exempted(Path::new(".ark/specs/project/rust/STYLE.md")));
         assert!(!is_exempted(Path::new(".ark/workflow.md")));
         assert!(!is_exempted(Path::new(".claude/commands/ark/quick.md")));
         assert!(!is_exempted(Path::new(".ark/specs/INDEX.md")));
+        assert!(!is_exempted(Path::new(".ark/specs/features/INDEX.md")));
     }
 
     #[test]

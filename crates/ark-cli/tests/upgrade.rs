@@ -298,9 +298,20 @@ fn hash_backfill_after_same_content() {
 
     upgrade(UpgradeOptions::new(tmp.path()), &mut PanicPrompter).unwrap();
     let after = read_manifest(tmp.path());
-    let file_count = after["files"].as_array().unwrap().len();
+    let files: Vec<&str> = after["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    // Seed-only paths (config.toml, project specs) are deliberately not
+    // hash-tracked by upgrade; everything else must be.
+    let trackable = files
+        .iter()
+        .filter(|p| **p != ".ark/config.toml" && !p.starts_with(".ark/specs/project/"))
+        .count();
     let hash_count = after["hashes"].as_object().unwrap().len();
-    assert_eq!(file_count, hash_count);
+    assert_eq!(trackable, hash_count);
 }
 
 #[test]

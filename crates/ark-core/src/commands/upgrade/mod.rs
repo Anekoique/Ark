@@ -569,6 +569,7 @@ mod tests {
 
     #[test]
     fn upgrade_backfills_hashes_when_manifest_has_none() {
+        use super::plan::is_exempted;
         let tmp = tempfile::tempdir().unwrap();
         crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
         let mut m = Manifest::read(tmp.path()).unwrap().unwrap();
@@ -577,7 +578,10 @@ mod tests {
         let mut prompter = PanicPrompter;
         upgrade(UpgradeOptions::new(tmp.path()), &mut prompter).unwrap();
         let after = Manifest::read(tmp.path()).unwrap().unwrap();
-        assert_eq!(after.hashes.len(), after.files.len());
+        // Hashes are refreshed for every tracked file *except* seed-only paths
+        // (config.toml, project specs) which upgrade intentionally ignores.
+        let trackable = after.files.iter().filter(|p| !is_exempted(p)).count();
+        assert_eq!(after.hashes.len(), trackable);
     }
 
     #[test]
@@ -610,6 +614,26 @@ mod tests {
         .unwrap();
         assert_eq!(summary.modified_preserved, 1);
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "user edit");
+    }
+
+    /// Default (Interactive) policy must not prompt for user-owned seed-only
+    /// paths even when the embedded template's bytes have drifted from what
+    /// the user has on disk.
+    #[test]
+    fn upgrade_does_not_prompt_for_seed_only_paths_under_interactive_policy() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
+        let project_index = tmp.path().join(".ark/specs/project/INDEX.md");
+        let config_toml = tmp.path().join(".ark/config.toml");
+        let user_index =
+            "# Project Specs\n\n| Spec | Scope |\n| --- | --- |\n| `LAYOUT.md` | mine |\n";
+        let user_config = "[worktree]\nbranch_prefix = \"mine\"\n";
+        std::fs::write(&project_index, user_index).unwrap();
+        std::fs::write(&config_toml, user_config).unwrap();
+        let mut prompter = PanicPrompter;
+        upgrade(UpgradeOptions::new(tmp.path()), &mut prompter).unwrap();
+        assert_eq!(std::fs::read_to_string(&project_index).unwrap(), user_index);
+        assert_eq!(std::fs::read_to_string(&config_toml).unwrap(), user_config);
     }
 
     /// Verifies that `.ark/config.toml` is preserved across upgrade.

@@ -68,3 +68,21 @@ Workspace identity (`.ark/.developer`) was missing on this clone after the works
 ### Next Steps
 - tag and publish 0.1.3
 - consider auto-prompting for `--developer` on first archive when `.ark/.developer` is missing (gap surfaced this session)
+
+## Session 3: exempt project/INDEX.md from upgrade prompt
+
+**Date**: 2026-04-30
+**Kind**: task
+**Slug**: fix-project-index-upgrade
+**Branch**: `main`
+
+### Summary
+Archived `fix-project-index-upgrade` (quick). Folded `.ark/specs/project/INDEX.md`, `.ark/config.toml`, and the rest of `.ark/specs/project/` into `is_exempted` so `ark upgrade` skips classification entirely for user-owned seed-only paths. See `.ark/tasks/archive/2026-04/fix-project-index-upgrade` for the task artifacts.
+
+### Commits
+
+(none — task code changes were uncommitted at archive time)
+
+### Next Steps
+- commit the seed-only-exemption change
+- follow-up quick task: stop `record_task` from logging unrelated commits when `base_branch` is `None`
