@@ -13,7 +13,9 @@ pub mod io;
 pub mod layout;
 /// Platform registry and platform-specific install behavior.
 pub mod platforms;
-/// Persisted manifest and snapshot state.
+/// Per-session identity machinery (UUID cache + parent-id provider).
+pub mod session;
+/// Persisted state Ark writes to disk: manifest, snapshot, and per-checkout state.
 pub mod state;
 /// Embedded template trees and walkers.
 pub mod templates;
@@ -30,12 +32,13 @@ pub use commands::{
             spec_extract, spec_register,
         },
         task::{
-            TaskArchiveOptions, TaskArchiveSummary, TaskNewOptions, TaskNewSummary,
-            TaskNewWorktree, TaskNewWorktreeSummary, TaskPhaseOptions, TaskPhaseSummary,
-            TaskPromoteOptions, TaskPromoteSummary, WorktreeCleanupOptions, WorktreeCleanupSummary,
+            TaskArchiveOptions, TaskArchiveSummary, TaskDiscardOptions, TaskDiscardSummary,
+            TaskNewOptions, TaskNewSummary, TaskNewWorktree, TaskNewWorktreeSummary,
+            TaskPhaseOptions, TaskPhaseSummary, TaskPromoteOptions, TaskPromoteSummary,
+            TaskResumeOptions, TaskResumeSummary, WorktreeCleanupOptions, WorktreeCleanupSummary,
             WorktreeConfig, WorktreeListOptions, WorktreeListSummary, WorktreeRow, task_archive,
-            task_execute, task_new, task_plan, task_promote, task_review, task_verify,
-            worktree_cleanup, worktree_list,
+            task_discard, task_execute, task_new, task_plan, task_promote, task_resume,
+            task_review, task_verify, worktree_cleanup, worktree_list,
         },
         workspace::{
             RecordTaskOptions, WorkspaceConfig, WorkspaceInitOptions, WorkspaceInitSummary,
@@ -49,3 +52,11 @@ pub use error::{Error, Result};
 pub use io::{PathExt, WriteMode, hash_bytes};
 pub use layout::Layout;
 pub use platforms::{CLAUDE_PLATFORM, CODEX_PLATFORM, OPENCODE_PLATFORM, PLATFORMS, Platform};
+pub use session::{
+    Ppid, RealPpid, SessionId, StubPpid, cache_file_path, cache_matches, lookup_session_id,
+    release_session_id, resolve_session_id,
+};
+pub use state::{
+    Identity, Session, StateFile, Tasks, clear_focus_for_slug, load_state, prune_dead_sessions,
+    reconcile_against_disk, state_mutate,
+};

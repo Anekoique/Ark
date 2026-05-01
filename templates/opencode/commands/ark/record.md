@@ -8,7 +8,7 @@ Record a manual session entry. Identity must be initialized first via `ark agent
 
 ## Preconditions
 
-- `.ark/.developer` exists (run `ark agent workspace init --name <x>` once if not).
+- `.ark/.state.toml`'s `[identity]` section is set (run `ark agent workspace init --name <x>` once if not).
 - The conversation has produced enough work to summarize. Fresh sessions with no work yet should ask the user for a title rather than fabricate one.
 
 ## Steps
@@ -46,6 +46,6 @@ One line summarizing the recorded session number and journal path. The CLI's own
 
 ## Failure modes
 
-- `DeveloperNotInitialized` → `.ark/.developer` is missing. Run `ark agent workspace init --name <x>` first.
+- `DeveloperNotInitialized` → no identity in `.ark/.state.toml`. Run `ark agent workspace init --name <x>` first.
 - `JournalRotationLimit` → unreachable in practice (>9999 journals).
 - `ManagedBlockCorrupt` → `<dev>/index.md` is malformed. Repair or delete.

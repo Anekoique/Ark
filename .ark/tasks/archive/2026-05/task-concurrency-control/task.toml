@@ -1,0 +1,12 @@
+id = "task-concurrency-control"
+title = "task concurrency control"
+tier = "deep"
+phase = "archived"
+iteration = 2
+max_iterations = 3
+created_at = "2026-05-01T09:20:30.409411Z"
+updated_at = "2026-05-01T11:07:19.916218Z"
+archived_at = "2026-05-01T11:07:19.916218Z"
+branch = "feat/task-concurrency-control"
+worktree_path = ".ark/worktrees/feat/task-concurrency-control"
+base_branch = "main"

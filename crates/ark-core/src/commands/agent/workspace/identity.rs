@@ -1,16 +1,20 @@
-//! Identity helpers — read/write `.ark/.developer`; name validation.
+//! Identity helpers — name validation plus read/write of identity in
+//! `.ark/.state.toml`.
 //!
-//! Name pattern: `^[A-Za-z][A-Za-z0-9_-]{0,39}$`.
-//! File shape: `name=<x>\ninitialized_at=<RFC3339>\n`. The reader is
-//! line-oriented and tolerates blank lines plus unknown keys for forward
-//! compatibility.
+//! Name pattern: `^[A-Za-z][A-Za-z0-9_-]{0,39}$`. The on-disk format moved
+//! from the legacy `.ark/.developer` (line-oriented `name=<x>`) to the
+//! `[identity]` section of `.state.toml`. Migration is transparent: a pure
+//! [`read_developer_name`] tolerates either layout, and [`write_developer_file`]
+//! always writes the new format and cleans up the legacy file as a side effect
+//! of `state_mutate`.
 
 use chrono::{DateTime, Utc};
 
 use crate::{
     error::{Error, Result},
-    io::PathExt,
     layout::Layout,
+    session::ppid::RealPpid,
+    state::{Identity, load_state, state_mutate},
 };
 
 /// Maximum length of a developer name.
@@ -53,45 +57,58 @@ pub fn validate_developer_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Reads the developer name from `.ark/.developer`.
+/// Reads the developer name from `.ark/.state.toml`'s `[identity]` section.
 ///
-/// Returns `None` if the file is missing or has no `name=` line.
+/// Returns `None` if no identity has been recorded. The state-file load path
+/// transparently synthesizes from the legacy `.ark/.developer` when the
+/// state file is absent (see `state::checkout::migrate`).
 pub fn read_developer_name(layout: &Layout) -> Result<Option<String>> {
-    let path = layout.developer_file();
-    let Some(text) = path.read_text_optional()? else {
-        return Ok(None);
-    };
-    for line in text.lines() {
-        if let Some(rest) = line.strip_prefix("name=") {
-            let name = rest.trim();
-            if !name.is_empty() {
-                return Ok(Some(name.to_string()));
-            }
-        }
-    }
-    Ok(None)
+    Ok(load_state(layout, &RealPpid::new())?
+        .identity
+        .map(|i| i.name))
 }
 
-/// Reads the developer name, or errors if the file is missing.
+/// Reads the developer name, or errors if no identity is set.
 pub fn require_developer_name(layout: &Layout) -> Result<String> {
     match read_developer_name(layout)? {
         Some(name) => Ok(name),
         None => Err(Error::DeveloperNotInitialized {
-            path: layout.developer_file(),
+            path: layout.state_file(),
         }),
     }
 }
 
-/// Writes the canonical two-line `.developer` content.
+/// Writes developer identity into `.ark/.state.toml`'s `[identity]` section.
+///
+/// # Errors
+///
+/// Returns [`Error::DeveloperAlreadyInitialized`] when an identity is already
+/// recorded under a different name. Re-writing the same name is idempotent:
+/// the original `initialized_at` is preserved so "first initialized" semantics
+/// survive repeat calls.
 pub fn write_developer_file(layout: &Layout, name: &str, now: DateTime<Utc>) -> Result<()> {
-    let path = layout.developer_file();
-    let body = format!("name={name}\ninitialized_at={}\n", now.to_rfc3339());
-    path.write_bytes(body.as_bytes())
+    state_mutate(layout, &RealPpid::new(), |state| {
+        match &state.identity {
+            Some(existing) if existing.name != name => {
+                return Err(Error::DeveloperAlreadyInitialized {
+                    name: existing.name.clone(),
+                });
+            }
+            Some(_) => return Ok(()), // idempotent re-write; preserve initialized_at.
+            None => {}
+        }
+        state.identity = Some(Identity {
+            name: name.to_string(),
+            initialized_at: now,
+        });
+        Ok(())
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::PathExt;
 
     /// Verifies that valid developer names are accepted.
     #[test]

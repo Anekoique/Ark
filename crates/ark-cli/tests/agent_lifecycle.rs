@@ -45,7 +45,13 @@ fn standard_tier_round_trip() {
     assert!(s.archive_path.join("00_PLAN.md").exists());
     assert!(s.archive_path.join("VERIFY.md").exists());
     assert!(!tmp.path().join(".ark/tasks/std1").exists());
-    assert!(!tmp.path().join(".ark/tasks/.current").exists());
+    // Active set in `.state.toml` no longer contains the archived slug.
+    let state = ark_core::load_state(
+        &ark_core::Layout::new(tmp.path()),
+        &ark_core::RealPpid::new(),
+    )
+    .unwrap();
+    assert!(!state.tasks.active.iter().any(|s| s == "std1"));
     assert!(!tmp.path().join(".ark/specs/features/std1").exists());
 
     let toml = TaskToml::load(&s.archive_path).unwrap();

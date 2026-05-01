@@ -5,10 +5,11 @@
 use std::path::{Path, PathBuf};
 
 use ark_core::{
-    Layout, PathExt, SpecExtractOptions, SpecRegisterOptions, TaskArchiveOptions, TaskNewOptions,
-    TaskNewWorktree, TaskPhaseOptions, TaskPromoteOptions, Tier, WorkspaceInitOptions,
-    WorkspaceRecordOptions, WorktreeCleanupOptions, WorktreeListOptions, spec_extract,
-    spec_register, task_archive, task_execute, task_new, task_plan, task_promote, task_review,
+    Layout, RealPpid, SpecExtractOptions, SpecRegisterOptions, TaskArchiveOptions,
+    TaskDiscardOptions, TaskNewOptions, TaskNewWorktree, TaskPhaseOptions, TaskPromoteOptions,
+    TaskResumeOptions, Tier, WorkspaceInitOptions, WorkspaceRecordOptions, WorktreeCleanupOptions,
+    WorktreeListOptions, load_state, resolve_session_id, spec_extract, spec_register, task_archive,
+    task_discard, task_execute, task_new, task_plan, task_promote, task_resume, task_review,
     task_verify, workspace_init, workspace_record, worktree_cleanup, worktree_list,
 };
 use chrono::NaiveDate;
@@ -55,10 +56,26 @@ enum TaskCommand {
     Verify(TaskSlugArgs),
     /// Transition: -> Archived; deep tier extracts + registers SPEC.
     Archive(TaskSlugArgs),
+    /// Claim an active task as this session's focus.
+    Resume(TaskResumeCliArgs),
+    /// Discard an unarchived task; refuses without `--force` when seeded files have user content.
+    Discard(TaskDiscardCliArgs),
     /// Change tier mid-flight. Does not rewrite artifacts.
     Promote(TaskPromoteCliArgs),
     /// Worktree lifecycle (cleanup / list). Creation lives in `task new --worktree`.
     Worktree(WorktreeCliArgs),
+}
+
+#[derive(clap::Args)]
+struct TaskDiscardCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug. Defaults to this session's focused task in `.ark/.state.toml`.
+    #[arg(long)]
+    slug: Option<String>,
+    /// Force discard even when seeded files have user content.
+    #[arg(long)]
+    force: bool,
 }
 
 #[derive(clap::Args)]
@@ -131,9 +148,18 @@ struct TaskNewCliArgs {
 struct TaskSlugArgs {
     #[command(flatten)]
     target: TargetArgs,
-    /// Task slug. Defaults to the value in `.ark/tasks/.current`.
+    /// Task slug. Defaults to this session's focused task in `.ark/.state.toml`.
     #[arg(long)]
     slug: Option<String>,
+}
+
+#[derive(clap::Args)]
+struct TaskResumeCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug to resume. Required — `task resume` has no implicit default.
+    #[arg(long)]
+    slug: String,
 }
 
 #[derive(clap::Args)]
@@ -305,6 +331,22 @@ impl TaskCommand {
                     slug,
                 })?);
             }
+            Self::Resume(a) => {
+                let root = a.target.resolve();
+                render(task_resume(TaskResumeOptions {
+                    project_root: root,
+                    slug: a.slug,
+                })?);
+            }
+            Self::Discard(a) => {
+                let root = a.target.resolve();
+                let slug = resolve_slug(&root, a.slug)?;
+                render(task_discard(TaskDiscardOptions {
+                    project_root: root,
+                    slug,
+                    force: a.force,
+                })?);
+            }
             Self::Promote(a) => {
                 let root = a.target.resolve();
                 let slug = resolve_slug(&root, a.slug)?;
@@ -381,14 +423,20 @@ impl SpecCommand {
     }
 }
 
-/// Resolve `--slug` with fallback to `.ark/tasks/.current`.
+/// Resolve `--slug` with fallback to this session's focused slug in `.state.toml`.
 fn resolve_slug(root: &Path, explicit: Option<String>) -> anyhow::Result<String> {
     if let Some(slug) = explicit {
         return Ok(slug);
     }
-    let current = Layout::new(root).tasks_current();
-    match current.read_text_optional()? {
-        Some(text) if !text.trim().is_empty() => Ok(text.trim().to_string()),
-        _ => Err(ark_core::Error::NoCurrentTask { path: current }.into()),
+    let layout = Layout::new(root);
+    let ppid = RealPpid::new();
+    let id = resolve_session_id(&layout, &ppid)?;
+    let state = load_state(&layout, &ppid)?;
+    match state.sessions.get(id.as_str()).map(|s| s.focus.clone()) {
+        Some(slug) if !slug.is_empty() => Ok(slug),
+        _ => Err(ark_core::Error::NoCurrentTask {
+            path: layout.state_file(),
+        }
+        .into()),
     }
 }

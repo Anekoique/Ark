@@ -120,7 +120,13 @@ mod tests {
         assert_eq!(s.name, "alice");
 
         let layout = Layout::new(tmp.path());
-        assert!(layout.developer_file().exists());
+        // Identity now lives in `.state.toml`'s `[identity]` section.
+        let state =
+            crate::state::load_state(&layout, &crate::session::ppid::RealPpid::new()).unwrap();
+        assert_eq!(
+            state.identity.as_ref().map(|i| i.name.as_str()),
+            Some("alice")
+        );
         assert!(layout.workspace_index("alice").exists());
         assert!(layout.workspace_journal("alice", 1).exists());
         let idx = layout.workspace_index("alice").read_text().unwrap();
