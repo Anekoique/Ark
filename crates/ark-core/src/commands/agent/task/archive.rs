@@ -7,15 +7,18 @@
 //! top-level CLI) iterates this helper across every `phase = Committed`
 //! task.
 
-use std::{fmt, path::PathBuf};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+};
 
 use chrono::Utc;
 
 use crate::{
     commands::agent::state::{Phase, TaskToml, Tier, check_transition, validate_slug},
     error::{Error, Result},
-    io::PathExt,
-    layout::Layout,
+    io::{PathExt, git::run_git, read_managed_block, update_managed_block, write_atomic},
+    layout::{Layout, SESSIONS_MARKER},
     session::ppid::{Ppid, RealPpid},
     state::clear_focus_for_slug,
 };
@@ -97,6 +100,15 @@ pub(crate) fn task_archive_move_with_ppid(
         });
     }
 
+    // Patch the workspace journal's `<PENDING:<slug>>` sentinel with the
+    // resolved closing-commit short SHA before any further state changes.
+    // Idempotent: re-running on an already-patched journal is a no-op
+    // (the sentinel won't match anymore). Quietly skips when the task has
+    // no `journal_path` (legacy, --no-commit, identity-missing).
+    if let Some(journal_rel) = toml.journal_path.as_deref() {
+        patch_workspace_slot(&layout, journal_rel, &opts.slug)?;
+    }
+
     // Clear state-file references *before* rename so the focused-session
     // probe still sees the live entry. If a later step fails, two-way
     // reconcile re-adds the slug from the surviving `tasks/<slug>/` dir
@@ -116,6 +128,93 @@ pub(crate) fn task_archive_move_with_ppid(
         tier,
         archive_path,
     })
+}
+
+/// Patches the journal's `<PENDING:<slug>>` sentinel with the resolved
+/// closing-commit short SHA, and patches the matching personal-index row
+/// in lockstep.
+///
+/// Idempotent: returns `Ok(())` when the sentinel is already absent
+/// (re-archived task, or manual entry that never had a sentinel). Errors
+/// with `SlotResolveNoMatch`, `SlotResolveAmbiguous`, or `JournalMissing`.
+fn patch_workspace_slot(layout: &Layout, journal_rel: &str, slug: &str) -> Result<()> {
+    let journal_path = layout.root().join(journal_rel);
+    if !journal_path.exists() {
+        return Err(Error::JournalMissing { path: journal_path });
+    }
+
+    let sentinel = format!("<PENDING:{slug}>");
+    let journal_text = journal_path.read_text()?;
+    if !journal_text.contains(&sentinel) {
+        return Ok(());
+    }
+
+    let short_sha = resolve_closing_sha(layout.root(), &journal_path, slug)?;
+    write_atomic(
+        &journal_path,
+        journal_text.replace(&sentinel, &short_sha).as_bytes(),
+    )?;
+
+    if let Some(dev_dir) = journal_path.parent() {
+        let personal_index = dev_dir.join("index.md");
+        if personal_index.exists()
+            && let Some(body) = read_managed_block(&personal_index, SESSIONS_MARKER)?
+            && body.contains(&sentinel)
+        {
+            update_managed_block(
+                &personal_index,
+                SESSIONS_MARKER,
+                &body.replace(&sentinel, &short_sha),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Resolves the closing commit SHA via slug-anchored pickaxe.
+///
+/// Runs `git log -S '**Slug**: <slug>' --format=%H -- <journal>` (no `-n`
+/// cap) and classifies the match count: 0 → `SlotResolveNoMatch`, >1 →
+/// `SlotResolveAmbiguous`, exactly 1 → `git rev-parse --short=12`.
+fn resolve_closing_sha(project_root: &Path, journal_path: &Path, slug: &str) -> Result<String> {
+    let pickaxe = format!("-S**Slug**: {slug}");
+    let journal_str = journal_path.to_string_lossy();
+    let out = run_git(
+        &["log", &pickaxe, "--format=%H", "--", &journal_str],
+        project_root,
+    )?;
+    let no_match = || Error::SlotResolveNoMatch {
+        slug: slug.to_string(),
+        journal: journal_path.to_path_buf(),
+    };
+    if !out.is_success() {
+        return Err(no_match());
+    }
+    let candidates: Vec<String> = out
+        .stdout
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(String::from)
+        .collect();
+    match candidates.as_slice() {
+        [] => Err(no_match()),
+        [full] => Ok(short_sha(project_root, full)),
+        _ => Err(Error::SlotResolveAmbiguous {
+            slug: slug.to_string(),
+            candidates,
+        }),
+    }
+}
+
+/// Returns the 12-char short SHA for `full`, falling back to a hard truncate
+/// when `git rev-parse` fails.
+fn short_sha(project_root: &Path, full: &str) -> String {
+    run_git(&["rev-parse", "--short=12", full], project_root)
+        .ok()
+        .filter(|out| out.is_success())
+        .map(|out| out.stdout.trim().to_string())
+        .unwrap_or_else(|| full.chars().take(12).collect())
 }
 
 #[cfg(test)]
@@ -307,5 +406,83 @@ mod tests {
             !layout.specs_feature_dir("qd").exists(),
             "archive must not create a SPEC dir for the slug"
         );
+    }
+}
+
+#[cfg(test)]
+mod slot_patch_tests {
+    use super::*;
+    use crate::io::{PathExt, git::run_git};
+
+    /// Bootstraps a git repo with one commit that contains a workspace
+    /// journal with a `<PENDING:<slug>>` sentinel and a `**Slug**: <slug>`
+    /// anchor line. Returns the tempdir + journal relative path.
+    fn repo_with_pending_journal(slug: &str) -> (tempfile::TempDir, String) {
+        let tmp = tempfile::tempdir().unwrap();
+        run_git(&["init", "--quiet"], tmp.path()).unwrap();
+        run_git(&["config", "user.email", "test@example.com"], tmp.path()).unwrap();
+        run_git(&["config", "user.name", "Test"], tmp.path()).unwrap();
+        run_git(&["config", "commit.gpgsign", "false"], tmp.path()).unwrap();
+        run_git(&["checkout", "-b", "main"], tmp.path()).unwrap();
+
+        let rel = "ark/workspace/alice/journal-1.md".to_string();
+        let abs = tmp.path().join(&rel);
+        abs.parent().unwrap().ensure_dir().unwrap();
+        let body =
+            format!("## Session 1: t\n\n**Slug**: {slug}\n**Closing Commit**: <PENDING:{slug}>\n");
+        abs.write_bytes(body.as_bytes()).unwrap();
+
+        run_git(&["add", "."], tmp.path()).unwrap();
+        run_git(&["commit", "-m", "feat(t): add", "--quiet"], tmp.path()).unwrap();
+        (tmp, rel)
+    }
+
+    #[test]
+    fn resolve_closing_sha_returns_short_sha_for_unique_match() {
+        let (tmp, rel) = repo_with_pending_journal("workspace");
+        let layout = Layout::new(tmp.path());
+        let journal = layout.root().join(&rel);
+        let sha = resolve_closing_sha(layout.root(), &journal, "workspace").unwrap();
+        assert_eq!(sha.len(), 12);
+        // Hex characters only.
+        assert!(sha.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn resolve_closing_sha_errors_on_missing_slug() {
+        let (tmp, rel) = repo_with_pending_journal("workspace");
+        let layout = Layout::new(tmp.path());
+        let journal = layout.root().join(&rel);
+        let err = resolve_closing_sha(layout.root(), &journal, "nonexistent").unwrap_err();
+        assert!(matches!(err, Error::SlotResolveNoMatch { .. }));
+    }
+
+    #[test]
+    fn patch_workspace_slot_replaces_sentinel_in_journal() {
+        let (tmp, rel) = repo_with_pending_journal("workspace");
+        let layout = Layout::new(tmp.path());
+        patch_workspace_slot(&layout, &rel, "workspace").unwrap();
+
+        let patched = std::fs::read_to_string(layout.root().join(&rel)).unwrap();
+        assert!(!patched.contains("<PENDING:workspace>"));
+        assert!(patched.contains("**Closing Commit**: "));
+    }
+
+    #[test]
+    fn patch_workspace_slot_is_idempotent() {
+        let (tmp, rel) = repo_with_pending_journal("workspace");
+        let layout = Layout::new(tmp.path());
+        patch_workspace_slot(&layout, &rel, "workspace").unwrap();
+        // Second call: sentinel is gone — no-op, no error.
+        patch_workspace_slot(&layout, &rel, "workspace").unwrap();
+    }
+
+    #[test]
+    fn patch_workspace_slot_errors_when_journal_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        run_git(&["init", "--quiet"], tmp.path()).unwrap();
+        let layout = Layout::new(tmp.path());
+        let err = patch_workspace_slot(&layout, ".ark/workspace/x/journal-1.md", "x").unwrap_err();
+        assert!(matches!(err, Error::JournalMissing { .. }));
     }
 }

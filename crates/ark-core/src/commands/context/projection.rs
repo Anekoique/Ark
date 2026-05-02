@@ -19,6 +19,12 @@ pub enum Scope {
     Session,
     /// Phase-specific context.
     Phase(PhaseFilter),
+    /// Workspace record context (developer identity + active journal).
+    ///
+    /// Used by the `/ark:record` slash command's draft-render step to seed
+    /// the agent's empty `### Summary` / `### Main Changes` placeholders
+    /// with the right header information.
+    Record,
 }
 
 /// Phase selector for scoped context projections.
@@ -52,6 +58,29 @@ pub enum ScopeTag {
         /// Selected phase.
         phase: PhaseFilter,
     },
+    /// Workspace record projection.
+    Record,
+}
+
+/// Workspace record projection payload (additive on `ProjectedContext`).
+///
+/// Populated when `Scope::Record` is selected. Empty `Option`s communicate
+/// "not set yet" without erroring; the slash command surface decides how to
+/// behave (e.g., prompt for identity, default to a fresh journal).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct RecordProjection {
+    /// Resolved developer name (None when `.ark/.developer` is absent and no
+    /// `[workspace] developer` override is set).
+    pub identity: Option<String>,
+    /// Project-relative path of the active `journal-N.md` (None on a fresh
+    /// install with no entries yet).
+    pub active_journal_path: Option<String>,
+    /// Configured rotation threshold (lines).
+    pub journal_max_lines: usize,
+    /// Total existing sessions across the developer's journals.
+    pub session_count: u32,
+    /// Current git branch (best-effort; None when git is unavailable).
+    pub branch: Option<String>,
 }
 
 /// Context view after applying a scope projection.
@@ -80,6 +109,9 @@ pub struct ProjectedContext {
     /// Archive rows, when included by the projection.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archive: Option<ArchiveState>,
+    /// Workspace record context, when `Scope::Record` is selected.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub record: Option<RecordProjection>,
 }
 
 /// Projects `ctx` per `scope`.
@@ -106,6 +138,7 @@ pub fn project(ctx: Context, scope: Scope) -> ProjectedContext {
             current_task,
             specs: Some(specs),
             archive: Some(archive),
+            record: None,
         },
         Scope::Phase(phase) => {
             let mut projected = ProjectedContext {
@@ -118,10 +151,26 @@ pub fn project(ctx: Context, scope: Scope) -> ProjectedContext {
                 current_task,
                 specs: None,
                 archive: None,
+                record: None,
             };
             apply_phase_filter(&mut projected, phase, specs, archive);
             projected
         }
+        Scope::Record => ProjectedContext {
+            schema,
+            scope: ScopeTag::Record,
+            generated_at,
+            project_root,
+            git,
+            tasks: None,
+            current_task: None,
+            specs: None,
+            archive: None,
+            // Filled in by the `context()` entry point after projection;
+            // the projector is pure (no I/O) and `Record` requires reading
+            // the workspace tree.
+            record: Some(RecordProjection::default()),
+        },
     }
 }
 

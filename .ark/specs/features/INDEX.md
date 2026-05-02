@@ -18,6 +18,7 @@ The table below is managed by `ark agent spec register` — new rows appear when
 | `project-spec`             | add project-spec                          | 2026-04-30 from task `project-spec`             |
 | `task-concurrency-control` | task concurrency control                  | 2026-05-01 from task `task-concurrency-control` |
 | `ark-workflow-refactor`    | refactor ark-workflow                     | 2026-05-02 from task `ark-workflow-refactor`    |
+| `workspace` | add workspace support | 2026-05-02 from task `workspace` |
 
 <!-- ARK:FEATURES:END -->
 

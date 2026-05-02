@@ -193,12 +193,23 @@ pub fn task_commit(opts: TaskCommitOptions) -> Result<TaskCommitSummary> {
         })?;
     }
 
+    // Workspace journal write. Skipped under `--no-commit` and when no
+    // identity is set (the agent should have appended its session block to
+    // the active journal already; `workspace_record` finds it there and
+    // stamps the auto-fields).
+    let workspace_journal_path: Option<String> = if !opts.no_commit {
+        record_workspace_journal(&opts, &prev_toml, &task_cwd, &mut guard)?
+    } else {
+        None
+    };
+
     let now = Utc::now();
     guard.snapshot_toml(prev_toml.clone());
     let mut next_toml = prev_toml.clone();
     next_toml.phase = Phase::Committed;
     next_toml.committed_at = Some(now);
     next_toml.updated_at = now;
+    next_toml.journal_path = workspace_journal_path;
     next_toml.save(&task_dir)?;
 
     if opts.no_commit {
@@ -218,8 +229,15 @@ pub fn task_commit(opts: TaskCommitOptions) -> Result<TaskCommitSummary> {
     })?;
 
     // Stage Ark-managed files: task.toml, plus (deep tier) the promoted
-    // SPEC and the features INDEX. The user's work is already staged.
-    let ark_files = ark_files_for_first_commit(&task_dir, deep, &spec_path, &features_index_path);
+    // SPEC and the features INDEX, plus any workspace paths that
+    // `record_workspace_journal` populated. The user's work is already staged.
+    let ark_files = ark_files_for_first_commit(
+        &task_dir,
+        deep,
+        &spec_path,
+        &features_index_path,
+        &guard.workspace_paths.clone(),
+    );
     guard.record_staged(ark_files.clone());
     if !stage_files(&task_cwd, &ark_files)? {
         return Err(Error::GitCommitFailed {
@@ -341,13 +359,15 @@ fn ark_files_for_first_commit(
     deep: bool,
     spec_path: &Path,
     features_index_path: &Path,
+    workspace_files: &[PathBuf],
 ) -> Vec<PathBuf> {
-    let mut files = Vec::with_capacity(3);
+    let mut files = Vec::with_capacity(3 + workspace_files.len());
     files.push(task_dir.join("task.toml"));
     if deep {
         files.push(spec_path.to_path_buf());
         files.push(features_index_path.to_path_buf());
     }
+    files.extend(workspace_files.iter().cloned());
     files
 }
 
@@ -397,6 +417,114 @@ fn is_pending_finding_resolution(line: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Calls `workspace_record` to stamp auto-fields on the agent's
+/// pre-written journal entry, then tracks the touched files in the guard.
+///
+/// Returns `Ok(None)` when identity is unset (silent skip — fresh installs
+/// and CI environments without a `.ark/.developer`). Returns `Err` when
+/// the agent failed to append a session heading to the journal.
+fn record_workspace_journal(
+    opts: &TaskCommitOptions,
+    prev_toml: &TaskToml,
+    task_cwd: &Path,
+    guard: &mut RollbackGuard,
+) -> Result<Option<String>> {
+    use crate::commands::agent::workspace::{
+        RecordMode, RecordOptions, identity::ResolveOptions, identity_resolve, workspace_record,
+    };
+
+    if identity_resolve(ResolveOptions::new(&opts.project_root)).is_err() {
+        return Ok(None);
+    }
+
+    // Non-worktree tasks have `branch = None`; fall back to the current
+    // checkout's branch so the journal renders the real name, not `HEAD`.
+    let branch_owned = prev_toml
+        .branch
+        .clone()
+        .or_else(|| current_branch(task_cwd));
+    let branch = branch_owned.as_deref().unwrap_or("HEAD");
+    let base_branch = prev_toml.base_branch.as_deref().unwrap_or("main");
+    let start_head_short = prev_toml
+        .start_head
+        .as_deref()
+        .map(|s| s.chars().take(12).collect::<String>())
+        .unwrap_or_else(|| "<unknown>".into());
+    let commits_in_range = collect_commits_in_range(task_cwd, prev_toml.start_head.as_deref());
+
+    let mode = RecordMode::Task {
+        slug: &opts.slug,
+        branch,
+        base_branch,
+        start_head_short: &start_head_short,
+        commits_in_range: &commits_in_range,
+    };
+    let summary = workspace_record(RecordOptions::new(&opts.project_root, mode))?;
+
+    let journal_relative = summary.journal_path_relative().to_string();
+    let journal_path = summary.journal_path().to_path_buf();
+    let dev_dir_index = journal_path.parent().map(|p| p.join("index.md"));
+    let workspace_index = Layout::new(&opts.project_root).workspace_index();
+
+    guard.adopt_record_snapshot(summary.into_snapshot());
+    if let Some(idx) = dev_dir_index {
+        guard.add_workspace_path(idx);
+    }
+    guard.add_workspace_path(workspace_index);
+    guard.add_workspace_path(journal_path);
+
+    Ok(Some(journal_relative))
+}
+
+/// Collects `git log <start_head>..HEAD --oneline` as `(short_sha, subject)`
+/// pairs.
+///
+/// Falls back to `git log -n 20` for pre-refactor tasks (no `start_head`).
+fn collect_commits_in_range(task_cwd: &Path, start_head: Option<&str>) -> Vec<(String, String)> {
+    let args = match start_head {
+        Some(sh) => vec![
+            "log".to_string(),
+            format!("{sh}..HEAD"),
+            "--format=%h %s".to_string(),
+        ],
+        None => vec![
+            "log".to_string(),
+            "-n".to_string(),
+            "20".to_string(),
+            "--format=%h %s".to_string(),
+        ],
+    };
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let out = match run_git(&arg_refs, task_cwd) {
+        Ok(o) if o.is_success() => o,
+        _ => return Vec::new(),
+    };
+    out.stdout
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(2, ' ');
+            let sha = parts.next()?.to_string();
+            let subject = parts.next().unwrap_or("").to_string();
+            Some((sha, subject))
+        })
+        .collect()
+}
+
+/// Returns the current branch name in `cwd`, or `None` on detached HEAD or
+/// non-git directories.
+fn current_branch(cwd: &Path) -> Option<String> {
+    let out = run_git(&["rev-parse", "--abbrev-ref", "HEAD"], cwd).ok()?;
+    if !out.is_success() {
+        return None;
+    }
+    let name = out.stdout.trim().to_string();
+    if name.is_empty() || name == "HEAD" {
+        None
+    } else {
+        Some(name)
+    }
+}
+
 // -- RollbackGuard --------------------------------------------------------
 
 /// Scoped rollback helper for [`task_commit`].
@@ -416,6 +544,12 @@ struct RollbackGuard {
     prev_toml: Option<TaskToml>,
     spec_file: Option<SpecFileSnapshot>,
     features_index: Option<FeaturesIndexSnapshot>,
+    /// Adopted workspace snapshots, replayed in reverse adoption order on
+    /// rollback. Each one's `rollback` does suffix-check truncate +
+    /// `write_atomic` restore of the personal and top-level indices.
+    record_snapshots: Vec<crate::commands::agent::workspace::RecordSnapshot>,
+    /// Workspace paths to stage alongside `ark_files`.
+    workspace_paths: Vec<PathBuf>,
     ark_files: Vec<PathBuf>,
     commits_landed: u32,
 }
@@ -439,9 +573,28 @@ impl RollbackGuard {
             prev_toml: None,
             spec_file: None,
             features_index: None,
+            record_snapshots: Vec::new(),
+            workspace_paths: Vec::new(),
             ark_files: Vec::new(),
             commits_landed: 0,
         }
+    }
+
+    /// Adopts a successful `workspace_record`'s snapshot. Snapshots are
+    /// drained in reverse order on rollback, restoring journals and
+    /// indices in the inverse order they were written.
+    fn adopt_record_snapshot(
+        &mut self,
+        snapshot: crate::commands::agent::workspace::RecordSnapshot,
+    ) {
+        self.record_snapshots.push(snapshot);
+    }
+
+    /// Tracks a workspace path that should be staged alongside the
+    /// task.toml + (deep) SPEC + features-INDEX in the closing commit, and
+    /// unstaged on rollback.
+    fn add_workspace_path(&mut self, path: PathBuf) {
+        self.workspace_paths.push(path);
     }
 
     /// Records that the closing commit landed. Used by `Drop` to decide
@@ -488,14 +641,16 @@ impl RollbackGuard {
         self.armed = false;
     }
 
-    fn restore(&self) {
+    fn restore(&mut self) {
         // Order:
         //   1. soft-reset any landed commit so HEAD points at the parent.
         //   2. targeted unstage of Ark-managed files only — preserves the
         //      user's pre-existing index entries.
-        //   3. SPEC file restore (deep tier).
-        //   4. features INDEX restore (deep tier).
-        //   5. task.toml restore.
+        //   3. workspace snapshot restore (suffix-check truncate journal,
+        //      restore indices in reverse adoption order).
+        //   4. SPEC file restore (deep tier).
+        //   5. features INDEX restore (deep tier).
+        //   6. task.toml restore.
         for _ in 0..self.commits_landed {
             if let Ok(o) = run_git(&["reset", "--soft", "HEAD~1"], &self.task_cwd)
                 && !o.is_success()
@@ -518,6 +673,14 @@ impl RollbackGuard {
                 args.push(s.as_str());
             }
             let _ = run_git(&args, &self.task_cwd);
+        }
+
+        // Workspace rollback runs in reverse adoption order. Drain the Vec;
+        // each snapshot's rollback consumes the snapshot.
+        for snapshot in std::mem::take(&mut self.record_snapshots).into_iter().rev() {
+            if let Err(e) = snapshot.rollback() {
+                eprintln!("rollback: workspace snapshot restore failed: {e}");
+            }
         }
 
         if let Some(snap) = &self.spec_file {
@@ -643,8 +806,7 @@ mod tests {
     /// The list must be exactly the Ark-managed files: never the working
     /// tree's `src/foo.rs` etc. Quick/standard tier returns just `task.toml`;
     /// deep tier additionally includes the promoted SPEC and the features
-    /// INDEX. The journal file and workspace index are deliberately absent
-    /// — they are staged for the amend step inline by `task_commit`.
+    /// INDEX. Workspace paths (when present) append after the deep-tier set.
     #[test]
     fn ark_files_for_first_commit_excludes_user_work() {
         let tmp = tempfile::tempdir().unwrap();
@@ -652,14 +814,26 @@ mod tests {
         let task_dir = layout.task_dir("foo");
         let spec_path = layout.specs_feature_dir("foo").join("SPEC.md");
         let features_index = layout.specs_features_index();
+        let no_workspace: &[PathBuf] = &[];
 
-        let standard = ark_files_for_first_commit(&task_dir, false, &spec_path, &features_index);
+        let standard =
+            ark_files_for_first_commit(&task_dir, false, &spec_path, &features_index, no_workspace);
         assert_eq!(standard.len(), 1);
         assert!(standard[0].ends_with("task.toml"));
 
-        let deep = ark_files_for_first_commit(&task_dir, true, &spec_path, &features_index);
+        let deep =
+            ark_files_for_first_commit(&task_dir, true, &spec_path, &features_index, no_workspace);
         assert_eq!(deep.len(), 3);
         assert!(deep.iter().all(|p| p.to_string_lossy().contains(".ark/")));
+
+        let with_ws = ark_files_for_first_commit(
+            &task_dir,
+            true,
+            &spec_path,
+            &features_index,
+            &[PathBuf::from(".ark/workspace/alice/journal-1.md")],
+        );
+        assert_eq!(with_ws.len(), 4);
     }
 }
 

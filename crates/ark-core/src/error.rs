@@ -296,6 +296,96 @@ pub enum Error {
         reason: &'static str,
     },
 
+    /// No developer identity available for a workspace operation.
+    #[error(
+        "no developer identity set; run `ark init --developer <name>` or set [workspace] \
+         developer in .ark/config.toml"
+    )]
+    MissingIdentity,
+
+    /// Writing the `.ark/.developer` file failed.
+    #[error("failed to write developer file at {path:?}: {source}")]
+    DeveloperWriteFailed {
+        /// Identity file path.
+        path: PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Workspace config TOML could not be parsed.
+    #[error("workspace config invalid at {path:?}: {source}")]
+    WorkspaceConfigInvalid {
+        /// Config file path.
+        path: PathBuf,
+        /// TOML parse error.
+        #[source]
+        source: toml::de::Error,
+    },
+
+    /// Agent-edited entry file lacks one of the required sections.
+    #[error("entry file malformed: {reason}")]
+    EntryFileMalformed {
+        /// Specific structural failure.
+        reason: &'static str,
+    },
+
+    /// `ark archive` refuses to run when the git staging area is dirty.
+    #[error(
+        "ark archive requires a clean staging area; run `git stash` or `git commit` first ({} staged path(s))",
+        .staged_paths.len()
+    )]
+    ArchiveIndexNotEmpty {
+        /// Paths currently staged in the index.
+        staged_paths: Vec<String>,
+    },
+
+    /// Pickaxe lookup found zero commits matching `**Slug**: <slug>`.
+    #[error(
+        "could not resolve closing commit for slug `{slug}` in {journal:?} (pickaxe match count: \
+         0)"
+    )]
+    SlotResolveNoMatch {
+        /// Slug whose sentinel we tried to resolve.
+        slug: String,
+        /// Journal file path.
+        journal: PathBuf,
+    },
+
+    /// Pickaxe lookup found more than one matching commit.
+    #[error(
+        "ambiguous closing commit for slug `{slug}`; pickaxe matched {} commits: {candidates:?}",
+        .candidates.len()
+    )]
+    SlotResolveAmbiguous {
+        /// Slug whose sentinel we tried to resolve.
+        slug: String,
+        /// All candidate full SHAs.
+        candidates: Vec<String>,
+    },
+
+    /// Journal file recorded in `task.toml.journal_path` is missing on disk.
+    #[error("workspace journal missing at {path:?}")]
+    JournalMissing {
+        /// Recorded (and missing) journal path.
+        path: PathBuf,
+    },
+
+    /// Journal file's tail no longer matches the bytes we appended; rollback
+    /// would delete a concurrent appender's data, so we left the file intact.
+    #[error(
+        "journal at {path:?} drifted (expected suffix {expected_suffix_len} bytes, current length \
+         {actual_len}); leaving file untouched"
+    )]
+    JournalDriftDetected {
+        /// Journal file path.
+        path: PathBuf,
+        /// Bytes this transaction appended.
+        expected_suffix_len: u64,
+        /// Current file length on disk.
+        actual_len: u64,
+    },
+
     /// State file `.state.toml` failed to parse.
     #[error("state.toml corrupt at {path:?}: {source}")]
     StateTomlCorrupt {

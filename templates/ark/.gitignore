@@ -2,3 +2,4 @@ worktrees/
 .state.toml
 .state.toml.lock
 .state.toml.tmp.*
+.developer

@@ -12,9 +12,9 @@ use std::{
 
 use ark_core::{
     ArchiveOptions, ConflictChoice, ConflictPolicy, ContextFormat, ContextOptions, ContextScope,
-    InitOptions, Layout, LoadOptions, PLATFORMS, PhaseFilter, Platform, Prompter, RemoveOptions,
-    UnloadOptions, UpgradeOptions, WriteMode, ark_archive, context, init, load, remove, unload,
-    upgrade,
+    Identity, InitOptions, Layout, LoadOptions, PLATFORMS, PhaseFilter, Platform, Prompter,
+    RemoveOptions, UnloadOptions, UpgradeOptions, WriteMode, ark_archive, context, identity_write,
+    init, load, remove, unload, upgrade,
 };
 use clap::{Parser, Subcommand};
 
@@ -97,6 +97,21 @@ struct InitArgs {
     /// Skip OpenCode integration.
     #[arg(long = "no-opencode")]
     no_opencode: bool,
+
+    /// Set the developer name for workspace journals.
+    ///
+    /// Writes `.ark/.developer` (gitignored). Mutually exclusive with
+    /// `--no-developer`.
+    #[arg(long, conflicts_with = "no_developer")]
+    developer: Option<String>,
+
+    /// Skip developer identity setup; bypasses the interactive prompt.
+    ///
+    /// Workspace operations will fail with `MissingIdentity` until the user
+    /// runs `ark init --developer <name>` later or sets `[workspace]
+    /// developer` in `.ark/config.toml`.
+    #[arg(long = "no-developer")]
+    no_developer: bool,
 }
 
 /// Stores positive and negative CLI flag state for one platform.
@@ -273,6 +288,7 @@ struct ContextArgs {
 enum ScopeArg {
     Session,
     Phase,
+    Record,
 }
 
 #[derive(Copy, Clone, clap::ValueEnum)]
@@ -324,6 +340,10 @@ impl ContextArgs {
                 Err("`--for <PHASE>` is required when `--scope=phase`".to_string())
             }
             (ScopeArg::Phase, Some(p)) => Ok(ContextScope::Phase(p.into())),
+            (ScopeArg::Record, None) => Ok(ContextScope::Record),
+            (ScopeArg::Record, Some(_)) => {
+                Err("`--for <PHASE>` is only valid with `--scope=phase`".to_string())
+            }
         }
     }
 }
@@ -367,6 +387,50 @@ impl TargetArgs {
 ///
 /// Relative paths are joined against the current working directory. Falls
 /// back to the path as-given if cwd lookup fails.
+/// Resolves the developer identity and writes `.ark/.developer` if set.
+///
+/// Precedence:
+/// 1. `--developer <name>` flag → write the file.
+/// 2. `--no-developer` → skip entirely (no prompt, no file write).
+/// 3. Existing `.ark/.developer` (e.g. re-running `ark init`) → leave as-is.
+/// 4. Interactive prompt on a TTY → write what the user enters.
+/// 5. Non-TTY without flags → skip silently (workspace ops fail later with
+///    a clear `MissingIdentity` until the user sets one).
+fn resolve_and_persist_identity(
+    project_root: &Path,
+    explicit: Option<&str>,
+    no_developer: bool,
+) -> anyhow::Result<()> {
+    if no_developer {
+        return Ok(());
+    }
+    if let Some(name) = explicit {
+        let identity = Identity::new(name)?;
+        identity_write(project_root, &identity)?;
+        return Ok(());
+    }
+    // Existing identity wins; re-running `ark init` should not re-prompt.
+    if Layout::new(project_root).developer_file().exists() {
+        return Ok(());
+    }
+    if !std::io::stdin().is_terminal() {
+        return Ok(());
+    }
+    let stdin = std::io::stdin();
+    let mut reader = stdin.lock();
+    let mut writer = std::io::stderr();
+    match ark_core::identity_prompt(&mut reader, &mut writer, 3) {
+        Ok(identity) => {
+            identity_write(project_root, &identity)?;
+            Ok(())
+        }
+        Err(_) => {
+            // Don't fail init for an aborted prompt; user can run again.
+            Ok(())
+        }
+    }
+}
+
 fn absolutize(path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
@@ -405,10 +469,13 @@ impl Command {
                     WriteMode::Skip
                 };
                 announce("initializing ark in", &root);
-                let opts = InitOptions::new(root)
+                let opts = InitOptions::new(root.clone())
                     .with_mode(mode)
                     .with_platforms(platforms);
                 render(init(opts)?);
+
+                // Developer identity bootstrap (Phase 1 of workspace).
+                resolve_and_persist_identity(&root, a.developer.as_deref(), a.no_developer)?;
             }
             Self::Load(a) => {
                 // `ark load` works on the explicit target: it either restores

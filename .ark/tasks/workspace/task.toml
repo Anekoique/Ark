@@ -1,0 +1,14 @@
+id = "workspace"
+title = "add workspace support"
+tier = "deep"
+phase = "committed"
+iteration = 2
+max_iterations = 3
+created_at = "2026-05-02T08:57:16.448975Z"
+updated_at = "2026-05-02T12:14:38.262657Z"
+committed_at = "2026-05-02T12:14:38.262657Z"
+branch = "feat/workspace"
+worktree_path = ".ark/worktrees/feat/workspace"
+base_branch = "main"
+start_head = "73d46ba10f39b0727515a52bace88aa4d4d12e7c"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

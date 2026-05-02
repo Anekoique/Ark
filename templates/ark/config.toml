@@ -17,3 +17,11 @@ copy = []
 # Shell commands run in the worktree directory after creation, in order,
 # aborting on first non-zero exit.
 post_create = []
+
+[workspace]
+# Lines per journal file before rotation (`journal-N.md` -> `journal-{N+1}.md`).
+# Must be greater than 0. Default 2000.
+journal_max_lines = 2000
+
+# Identity lives exclusively in `.ark/.developer` (gitignored). Bootstrap
+# via `ark init --developer <name>` or write the file manually.

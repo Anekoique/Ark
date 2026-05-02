@@ -1,6 +1,6 @@
 {
   "version": "0.1.3",
-  "installed_at": "2026-05-02T08:18:51.303244Z",
+  "installed_at": "2026-05-02T12:12:22.939760Z",
   "files": [
     ".claude/commands/ark/design.md",
     ".claude/commands/ark/quick.md",
@@ -27,7 +27,10 @@
     ".opencode/commands/ark/resume.md",
     ".claude/commands/ark/commit.md",
     ".codex/skills/ark-commit/SKILL.md",
-    ".opencode/commands/ark/commit.md"
+    ".opencode/commands/ark/commit.md",
+    ".claude/commands/ark/record.md",
+    ".codex/skills/ark-record/SKILL.md",
+    ".opencode/commands/ark/record.md"
   ],
   "managed_blocks": [
     {
@@ -40,7 +43,7 @@
     }
   ],
   "hashes": {
-    ".ark/.gitignore": "1adc5532b622fa64040da1d813c10fc7e8d808277074afb747c723f3f3ed85b6",
+    ".ark/.gitignore": "be619e7da0436ad2054164edae1960361e431d8e69a6e4e00c54c7545d1b9afb",
     ".ark/config.toml": "19cdc2ada8d80d2f51eb6fac26894482051fcb254d0f2bf523c1f5e8a847c208",
     ".ark/specs/INDEX.md": "0e404d5c47fd687afe97aa94f55ade016ecb729b671a7a97f1ccd9f55e67c246",
     ".ark/specs/features/INDEX.md": "7b6f4688a45b1ee51d5b77ceb413bdb6c65b535be215bc1cd679a2e38b7aacef",
@@ -51,20 +54,23 @@
     ".ark/templates/SPEC.md": "fa8c1e8511cc73a31ea69d42576d9831f7384e969571535d00e73bfb382ee547",
     ".ark/templates/VERIFY.md": "b516630d1ad9d2e4a7b6a2d69afb670baa330a881f0bd189ffd069b811785550",
     ".ark/workflow.md": "6fcc43d1b3150929403f56722efb5578c94d4fe2e648a35f5abddd01e6af5abd",
-    ".claude/commands/ark/commit.md": "64e92a66ca4fcde4925c383ac31777546d28b688d2e409e3695b688a5f734268",
+    ".claude/commands/ark/commit.md": "f4018a1b6ded2adb96336f5c25f0cb0c5e953561c197348cd9038c5e5178b4eb",
     ".claude/commands/ark/design.md": "9283ff2b5d50a84d5da1db94d509db66e27aec1317b180bf3ba0ccbb4018a8c2",
     ".claude/commands/ark/discard.md": "0fca71bdcbb3ef7f4a67c855bcebfb5c9b23800b67393dd1314f58c3875b30c7",
     ".claude/commands/ark/quick.md": "7ae85ccf71b8d966ed029ea3f3bd263f2f4387b6f1dfe886d32055e29fa7903c",
+    ".claude/commands/ark/record.md": "17f60461a6ff0552ebe1aae36fc603d65ab8f34c990d7a9833a9b35c5356af9d",
     ".claude/commands/ark/resume.md": "8dbb14fdd331ab85d3c7503d476efdc34ed72aa99eea3014b3bf0b03c0a57b73",
-    ".codex/skills/ark-commit/SKILL.md": "384688aad526e0a4ec01a357b7222edfd2d4c4ae6ec7411f792805c568c03795",
+    ".codex/skills/ark-commit/SKILL.md": "8d36889f5d18b05643a302a53d318f300348cc759933a66083dd5de7e4bd2cf7",
     ".codex/skills/ark-design/SKILL.md": "c28b6b7f791e3797cac42154170b94bcb16f14e009c39adf699165ae22577f76",
     ".codex/skills/ark-discard/SKILL.md": "1fb1d112ffb895fd57335c509a227d87d7488c8d3a7cbf281afd557ce413d4b1",
     ".codex/skills/ark-quick/SKILL.md": "69ff7d2884a308a3027893f43014146dc9ad5dc2d517edeb80698035cc7db152",
+    ".codex/skills/ark-record/SKILL.md": "f4b043b1562a517b584bc471dd004a326ec922ae0573988d7b5e0d2afea60482",
     ".codex/skills/ark-resume/SKILL.md": "5f850b53558f63c9b315cba73c9a0b6bd434a3f0bfb1639fbf90a33a883d49a3",
-    ".opencode/commands/ark/commit.md": "6c09649674039d8696e4afff1ea8bf33471805dc021f7ac5b0adbb8b3eb6e47a",
+    ".opencode/commands/ark/commit.md": "e0397cc5089ba9d9a39aa9ebe1a7011ab390e63539e11a50dfd08f90630f24ed",
     ".opencode/commands/ark/design.md": "cbd053a651b76d371de5960419f60b634e235086837f66e3aa66257ce8b5b39c",
     ".opencode/commands/ark/discard.md": "ead2033a6db37addb8a0ce0beccafb28091cfff76d857313f8b80a0d600ac84f",
     ".opencode/commands/ark/quick.md": "5b7f4045abb428c3bd98761652254fadb4c2b8a48fcbf80fe35e84eb8beac5f4",
+    ".opencode/commands/ark/record.md": "0bfd0f99e196ed8cb745e7372ec534c26946d14de349e0fcec05b52583cafce9",
     ".opencode/commands/ark/resume.md": "8d3c51475369a357f9278ad034959b673b72f2753437c7fffb8def8c80b6ead7"
   }
 }

@@ -54,7 +54,16 @@ If the user supplied `-m "<msg>"`, use it verbatim. Otherwise:
 4. Show the generated message to the user and ask for confirmation/edit
    before invoking the CLI. **Do not invent a message without asking.**
 
-### 4. Run the commit
+### 4. Append the journal entry (workspace)
+
+If `.ark/.developer` exists, append a session block **directly to the
+active journal file** (path from `ark context --scope record`). The block
+contains exactly three agent-authored sections: `## Session N: <title>`,
+`### Summary`, and `### Main Changes` table. Do not write `**Date**`,
+`**Slug**`, `**Branch**`, etc. — `task commit` inserts those auto-fields.
+Skip this step when identity is absent.
+
+### 5. Run the commit
 
 ```bash
 ark agent task commit -m "<message>"

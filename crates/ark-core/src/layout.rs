@@ -61,6 +61,26 @@ pub const CONFIG_FILE: &str = ".ark/config.toml";
 /// `.ark/`; no managed-block is needed since users do not co-author it.
 pub const ARK_GITIGNORE_FILE: &str = ".ark/.gitignore";
 
+/// Root directory for per-developer workspace journals (`<project>/.ark/workspace/`).
+///
+/// Holds the top-level Active Developers index and one subdirectory per
+/// developer (`<dev>/index.md`, `<dev>/journal-N.md`). Created lazily on
+/// first `workspace_record` write.
+pub const WORKSPACE_DIR: &str = ".ark/workspace";
+
+/// Top-level Active Developers index file (`<project>/.ark/workspace/index.md`).
+///
+/// Auto-maintained by `developer_register` / `developer_touch` between
+/// `<!-- ARK:DEVELOPERS:START -->` / `<!-- ARK:DEVELOPERS:END -->` markers.
+pub const WORKSPACE_INDEX_FILE: &str = ".ark/workspace/index.md";
+
+/// Identity file (`<project>/.ark/.developer`).
+///
+/// Single-line plain text containing the active developer's name. Gitignored.
+/// Read by `identity_resolve` at every `workspace_record` invocation; written
+/// by `ark init --developer <name>` (or the interactive prompt).
+pub const DEVELOPER_FILE: &str = ".ark/.developer";
+
 /// Per-checkout state index (`<project>/.ark/.state.toml`).
 ///
 /// Carries the active-task slug set and a per-session focus map. Treated
@@ -111,6 +131,12 @@ pub const OPENCODE_PLUGIN_FILE: &str = ".opencode/plugins/ark-context.ts";
 
 /// Marker used for the feature-spec roster in `specs/features/INDEX.md`.
 pub const FEATURES_MARKER: &str = "ARK:FEATURES";
+
+/// Marker used for the Active Developers table in `.ark/workspace/index.md`.
+pub const DEVELOPERS_MARKER: &str = "ARK:DEVELOPERS";
+
+/// Marker used for the Session History table in `.ark/workspace/<dev>/index.md`.
+pub const SESSIONS_MARKER: &str = "ARK:SESSIONS";
 
 /// Body written into the managed `CLAUDE.md` block.
 pub const MANAGED_BLOCK_BODY: &str = "\
@@ -257,6 +283,31 @@ impl Layout {
     /// Returns the project-level Ark config path.
     pub fn config_file(&self) -> PathBuf {
         self.root.join(CONFIG_FILE)
+    }
+
+    /// Returns the root directory for per-developer workspace journals.
+    pub fn workspace_dir(&self) -> PathBuf {
+        self.root.join(WORKSPACE_DIR)
+    }
+
+    /// Returns the top-level Active Developers index path.
+    pub fn workspace_index(&self) -> PathBuf {
+        self.root.join(WORKSPACE_INDEX_FILE)
+    }
+
+    /// Returns the per-developer workspace directory for `name`.
+    pub fn workspace_developer_dir(&self, name: &str) -> PathBuf {
+        self.workspace_dir().join(name)
+    }
+
+    /// Returns the per-developer personal index path.
+    pub fn workspace_developer_index(&self, name: &str) -> PathBuf {
+        self.workspace_developer_dir(name).join("index.md")
+    }
+
+    /// Returns the developer identity file path (`.ark/.developer`).
+    pub fn developer_file(&self) -> PathBuf {
+        self.root.join(DEVELOPER_FILE)
     }
 
     /// Returns the Ark-owned `.ark/.gitignore` path.
