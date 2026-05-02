@@ -291,14 +291,15 @@ mod tests {
             ".ark/specs/features/INDEX.md",
             ".claude/commands/ark/quick.md",
             ".claude/commands/ark/design.md",
+            ".claude/commands/ark/commit.md",
             ".codex/skills/ark-quick/SKILL.md",
             ".codex/skills/ark-design/SKILL.md",
-            ".codex/skills/ark-archive/SKILL.md",
+            ".codex/skills/ark-commit/SKILL.md",
             ".codex/config.toml",
             ".codex/hooks.json",
             ".opencode/commands/ark/quick.md",
             ".opencode/commands/ark/design.md",
-            ".opencode/commands/ark/archive.md",
+            ".opencode/commands/ark/commit.md",
             ".opencode/plugins/ark-context.ts",
         ] {
             assert!(tmp.path().join(expected).is_file(), "missing: {expected}");

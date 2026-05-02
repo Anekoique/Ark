@@ -27,8 +27,10 @@ use crate::{
 };
 
 mod plan;
+mod verify_migration;
 
 use plan::{PlannedAction, WriteKind, plan_actions, validate_manifest_paths};
+use verify_migration::migrate_in_flight_verify_files;
 
 /// Selects conflict behavior for user-modified templates.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -116,6 +118,9 @@ pub struct UpgradeSummary {
     pub deleted: usize,
     /// Number of removed template files left in place.
     pub orphaned: usize,
+    /// Number of in-flight `VERIFY.md` files migrated from the legacy
+    /// verdict-driven shape to the new living-checklist shape.
+    pub verify_migrated: usize,
     /// Version recorded before upgrade.
     pub version_from: String,
     /// CLI version applied by upgrade.
@@ -123,7 +128,7 @@ pub struct UpgradeSummary {
 }
 
 impl UpgradeSummary {
-    fn segments(&self) -> [(&'static str, usize); 8] {
+    fn segments(&self) -> [(&'static str, usize); 9] {
         [
             ("added", self.added),
             ("updated", self.updated),
@@ -133,6 +138,7 @@ impl UpgradeSummary {
             (".new-copied", self.created_new),
             ("deleted", self.deleted),
             ("orphaned", self.orphaned),
+            ("verify-migrated", self.verify_migrated),
         ]
     }
 
@@ -345,6 +351,12 @@ pub fn upgrade(opts: UpgradeOptions, prompter: &mut dyn Prompter) -> Result<Upgr
     if manifest_mutated {
         manifest.write(layout.root())?;
     }
+
+    // In-flight task migration: any `phase ∈ {Verify, Committed}` task whose
+    // `VERIFY.md` still carries the legacy `## Verdict` heading is rewritten
+    // with the new living-checklist shape. Errors per-task are logged but do
+    // not abort the upgrade — the template refresh above is more important.
+    summary.verify_migrated = migrate_in_flight_verify_files(&layout);
 
     Ok(summary)
 }

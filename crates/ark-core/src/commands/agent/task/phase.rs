@@ -11,9 +11,14 @@ use chrono::Utc;
 use crate::{
     commands::agent::{
         state::{Phase, TaskToml, check_transition, validate_slug},
+        task::verify_seed::{
+            SeedInputs, read_plan_goals, read_prd_constraints, read_project_specs,
+            read_related_specs, render_seeded_verify,
+        },
         template::copy_template,
     },
     error::{Error, Result},
+    io::PathExt,
     layout::Layout,
 };
 
@@ -85,6 +90,12 @@ fn transition(opts: TaskPhaseOptions, to: Phase) -> Result<TaskPhaseSummary> {
         let path = task_dir.join(filename);
         if !path.exists() {
             copy_template(template, &path)?;
+            // VERIFY's checklist sections are dynamically seeded from the live
+            // project + PRD + plan state. The template's static body carries
+            // four substitution markers; we overlay them now.
+            if to == Phase::Verify {
+                seed_verify_dynamic_sections(&layout, &task_dir, &path)?;
+            }
         }
     }
 
@@ -106,6 +117,55 @@ fn artifact_for(phase: Phase, iteration: u32) -> Option<(&'static str, String)> 
         Phase::Review => Some(("REVIEW", format!("{iteration:02}_REVIEW.md"))),
         Phase::Verify => Some(("VERIFY", "VERIFY.md".into())),
         _ => None,
+    }
+}
+
+/// Renders the four dynamic VERIFY sections by overlaying marker tokens.
+///
+/// Reads `.ark/specs/project/INDEX.md`, the task's `PRD.md`, and the latest
+/// `NN_PLAN.md`; substitutes the four markers in the just-copied VERIFY
+/// template; writes the result back to disk. Errors propagate (a missing
+/// marker is a corrupt template; the caller's transition is rolled back by
+/// the surrounding logic).
+fn seed_verify_dynamic_sections(
+    layout: &Layout,
+    task_dir: &std::path::Path,
+    verify_path: &std::path::Path,
+) -> Result<()> {
+    let template = verify_path.read_text()?;
+    let inputs = SeedInputs {
+        project_specs: read_project_specs(&layout.specs_project_index())?,
+        related_specs: read_related_specs(&task_dir.join("PRD.md"))?,
+        prd_constraints: read_prd_constraints(&task_dir.join("PRD.md"))?,
+        plan_goals: latest_plan_goals(task_dir)?,
+    };
+    let rendered = render_seeded_verify(&template, &inputs, verify_path)?;
+    verify_path.write_bytes(rendered.as_bytes())
+}
+
+/// Returns the latest `NN_PLAN.md`'s Goals as bullet labels.
+///
+/// The latest is the highest-numbered `NN_PLAN.md` in the task dir; absence
+/// (e.g. quick tier) yields an empty list.
+fn latest_plan_goals(task_dir: &std::path::Path) -> Result<Vec<String>> {
+    let mut highest: Option<(u32, std::path::PathBuf)> = None;
+    let Ok(entries) = std::fs::read_dir(task_dir) else {
+        return Ok(Vec::new());
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Some(stem) = name.strip_suffix("_PLAN.md") else {
+            continue;
+        };
+        let Ok(n) = stem.parse::<u32>() else { continue };
+        if highest.as_ref().is_none_or(|(prev, _)| n > *prev) {
+            highest = Some((n, entry.path()));
+        }
+    }
+    match highest {
+        Some((_, path)) => read_plan_goals(&path),
+        None => Ok(Vec::new()),
     }
 }
 

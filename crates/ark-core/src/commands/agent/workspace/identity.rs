@@ -62,10 +62,27 @@ pub fn validate_developer_name(name: &str) -> Result<()> {
 /// Returns `None` if no identity has been recorded. The state-file load path
 /// transparently synthesizes from the legacy `.ark/.developer` when the
 /// state file is absent (see `state::checkout::migrate`).
+///
+/// **Worktree fallback:** when this layout points at a worktree under
+/// `.ark/worktrees/<branch>/...` and no identity is recorded locally, the
+/// reader consults the parent checkout's state. `.ark/.developer` is per-
+/// machine and gitignored, so a freshly-created worktree carries no
+/// identity until a journal write triggers the first `state_mutate` —
+/// without this fallback, the very first task closure on a worktree would
+/// silently drop its journal entry.
 pub fn read_developer_name(layout: &Layout) -> Result<Option<String>> {
-    Ok(load_state(layout, &RealPpid::new())?
+    let local = load_state(layout, &RealPpid::new())?
         .identity
-        .map(|i| i.name))
+        .map(|i| i.name);
+    if local.is_some() {
+        return Ok(local);
+    }
+    if let Some(parent) = layout.parent_for_worktree() {
+        return Ok(load_state(&parent, &RealPpid::new())?
+            .identity
+            .map(|i| i.name));
+    }
+    Ok(None)
 }
 
 /// Reads the developer name, or errors if no identity is set.

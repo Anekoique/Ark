@@ -127,9 +127,11 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,
+            committed_at: None,
             branch: None,
             worktree_path: None,
             base_branch: None,
+            start_head: None,
         };
         toml.save(&dir).unwrap();
     }
@@ -245,9 +247,11 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: Some(Utc::now()),
+            committed_at: None,
             branch: None,
             worktree_path: None,
             base_branch: None,
+            start_head: None,
         };
         toml.save(&arch).unwrap();
 

@@ -340,10 +340,26 @@ fn build_task_toml(opts: &TaskNewOptions) -> TaskToml {
         created_at: now,
         updated_at: now,
         archived_at: None,
+        committed_at: None,
         branch: None,
         worktree_path: None,
         base_branch: None,
+        start_head: capture_start_head(&opts.project_root),
     }
+}
+
+/// Captures the parent checkout's HEAD SHA for the journal commit-range start.
+///
+/// Returns `None` when `git rev-parse HEAD` fails — typically on an unborn
+/// HEAD in a freshly-initialized repository. Tasks created in this state
+/// degrade gracefully: their later `task_commit` falls back to `git log -n
+/// 20` for the journal commits-in-range table.
+fn capture_start_head(project_root: &Path) -> Option<String> {
+    run_git(&["rev-parse", "HEAD"], project_root)
+        .ok()
+        .filter(|out| out.is_success())
+        .map(|out| out.stdout.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// Returns `true` if `root` resolves under any `.ark/worktrees/` path.

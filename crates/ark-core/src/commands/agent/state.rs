@@ -36,6 +36,8 @@ pub enum Phase {
     Execute,
     /// Verification phase.
     Verify,
+    /// Closure phase: work + journal + task.toml + (deep) SPEC committed atomically.
+    Committed,
     /// Terminal archived phase.
     Archived,
 }
@@ -73,6 +75,13 @@ pub struct TaskToml {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub archived_at: Option<DateTime<Utc>>,
 
+    /// Timestamp when `task_commit` flipped the task to `Committed`.
+    ///
+    /// Drives the YYYY-MM bucket selected by `ark archive`. `None` until the
+    /// task has been committed; `None` for pre-refactor tasks.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub committed_at: Option<DateTime<Utc>>,
+
     /// Stores the worktree branch ref set by `task new --worktree`.
     ///
     /// Stored verbatim.
@@ -92,6 +101,13 @@ pub struct TaskToml {
     /// May be a SHA when invoked from detached HEAD.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub base_branch: Option<String>,
+
+    /// HEAD SHA captured at `task new` time, used as the start of the journal
+    /// entry's commit-range table.
+    ///
+    /// `None` on unborn HEAD or for pre-refactor tasks.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub start_head: Option<String>,
 }
 
 impl TaskToml {
@@ -123,30 +139,36 @@ impl TaskToml {
 ///
 /// The table encodes the state machines documented in `.ark/workflow.md` §4:
 ///
-/// - Quick:    Design → Execute → Archived
-/// - Standard: Design → Plan → Execute → Verify → Archived
-/// - Deep:     Design → Plan ⇄ Review → Execute → Verify → Archived
+/// - Quick:    Design → Execute → Committed → Archived
+/// - Standard: Design → Plan → Execute → Verify → Committed → Archived
+/// - Deep:     Design → Plan ⇄ Review → Execute → Verify → Committed → Archived
 ///
-/// `Review → Plan` is the "iterate" transition (deep tier only).
+/// `Review → Plan` is the "iterate" transition (deep tier only). `Archived`
+/// is reachable only from `Committed`; the legacy direct
+/// `Verify → Archived` / `Execute → Archived` transitions were removed by
+/// the workflow refactor.
 pub fn can_transition(tier: Tier, from: Phase, to: Phase) -> bool {
     use Phase::*;
     use Tier::*;
     match (tier, from, to) {
         // Quick
         (Quick, Design, Execute) => true,
-        (Quick, Execute, Archived) => true,
+        (Quick, Execute, Committed) => true,
+        (Quick, Committed, Archived) => true,
         // Standard
         (Standard, Design, Plan) => true,
         (Standard, Plan, Execute) => true,
         (Standard, Execute, Verify) => true,
-        (Standard, Verify, Archived) => true,
+        (Standard, Verify, Committed) => true,
+        (Standard, Committed, Archived) => true,
         // Deep
         (Deep, Design, Plan) => true,
         (Deep, Plan, Review) => true,
         (Deep, Review, Plan) => true, // iterate
         (Deep, Review, Execute) => true,
         (Deep, Execute, Verify) => true,
-        (Deep, Verify, Archived) => true,
+        (Deep, Verify, Committed) => true,
+        (Deep, Committed, Archived) => true,
         _ => false,
     }
 }
@@ -229,9 +251,11 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,
+            committed_at: None,
             branch: None,
             worktree_path: None,
             base_branch: None,
+            start_head: None,
         }
     }
 
@@ -268,7 +292,21 @@ mod tests {
     #[test]
     fn can_transition_quick() {
         assert!(can_transition(Tier::Quick, Phase::Design, Phase::Execute));
-        assert!(can_transition(Tier::Quick, Phase::Execute, Phase::Archived));
+        assert!(can_transition(
+            Tier::Quick,
+            Phase::Execute,
+            Phase::Committed
+        ));
+        assert!(can_transition(
+            Tier::Quick,
+            Phase::Committed,
+            Phase::Archived
+        ));
+        assert!(!can_transition(
+            Tier::Quick,
+            Phase::Execute,
+            Phase::Archived
+        ));
         assert!(!can_transition(Tier::Quick, Phase::Design, Phase::Plan));
         assert!(!can_transition(Tier::Quick, Phase::Execute, Phase::Verify));
     }
@@ -283,6 +321,16 @@ mod tests {
             Phase::Verify
         ));
         assert!(can_transition(
+            Tier::Standard,
+            Phase::Verify,
+            Phase::Committed
+        ));
+        assert!(can_transition(
+            Tier::Standard,
+            Phase::Committed,
+            Phase::Archived
+        ));
+        assert!(!can_transition(
             Tier::Standard,
             Phase::Verify,
             Phase::Archived
@@ -302,9 +350,38 @@ mod tests {
         assert!(can_transition(Tier::Deep, Phase::Review, Phase::Plan));
         assert!(can_transition(Tier::Deep, Phase::Review, Phase::Execute));
         assert!(can_transition(Tier::Deep, Phase::Execute, Phase::Verify));
-        assert!(can_transition(Tier::Deep, Phase::Verify, Phase::Archived));
+        assert!(can_transition(Tier::Deep, Phase::Verify, Phase::Committed));
+        assert!(can_transition(
+            Tier::Deep,
+            Phase::Committed,
+            Phase::Archived
+        ));
+        assert!(!can_transition(Tier::Deep, Phase::Verify, Phase::Archived));
         assert!(!can_transition(Tier::Deep, Phase::Plan, Phase::Execute));
         assert!(!can_transition(Tier::Deep, Phase::Design, Phase::Review));
+    }
+
+    /// Verifies that `Archived` is reachable only from `Committed`, across every tier.
+    #[test]
+    fn archived_only_reachable_from_committed() {
+        for tier in [Tier::Quick, Tier::Standard, Tier::Deep] {
+            for from in [
+                Phase::Design,
+                Phase::Plan,
+                Phase::Review,
+                Phase::Execute,
+                Phase::Verify,
+            ] {
+                assert!(
+                    !can_transition(tier, from, Phase::Archived),
+                    "{tier:?} {from:?} → Archived should be illegal"
+                );
+            }
+            assert!(
+                can_transition(tier, Phase::Committed, Phase::Archived),
+                "{tier:?} Committed → Archived should be legal"
+            );
+        }
     }
 
     #[test]
@@ -316,6 +393,7 @@ mod tests {
                 Phase::Review,
                 Phase::Execute,
                 Phase::Verify,
+                Phase::Committed,
                 Phase::Archived,
             ] {
                 assert!(
@@ -375,9 +453,9 @@ mod tests {
         }
     }
 
-    /// Verifies that a pre-existing `task.toml` without the new worktree fields still loads.
+    /// Verifies that a pre-existing `task.toml` without the optional fields still loads.
     #[test]
-    fn task_toml_loads_without_worktree_fields() {
+    fn task_toml_loads_without_optional_fields() {
         let tmp = tempfile::tempdir().unwrap();
         let legacy = r#"
 id = "legacy"
@@ -396,15 +474,19 @@ updated_at = "2026-01-01T00:00:00Z"
         assert!(loaded.branch.is_none());
         assert!(loaded.worktree_path.is_none());
         assert!(loaded.base_branch.is_none());
+        assert!(loaded.start_head.is_none());
+        assert!(loaded.committed_at.is_none());
     }
 
     #[test]
-    fn task_toml_round_trips_with_worktree_fields() {
+    fn task_toml_round_trips_with_optional_fields() {
         let tmp = tempfile::tempdir().unwrap();
         let mut t = sample();
         t.branch = Some("feat/foo".into());
         t.worktree_path = Some(".ark/worktrees/feat/foo".into());
         t.base_branch = Some("main".into());
+        t.start_head = Some("abc123".into());
+        t.committed_at = Some(Utc::now());
         t.save(tmp.path()).unwrap();
         let loaded = TaskToml::load(tmp.path()).unwrap();
         assert_eq!(loaded.branch.as_deref(), Some("feat/foo"));
@@ -413,6 +495,8 @@ updated_at = "2026-01-01T00:00:00Z"
             Some(std::path::Path::new(".ark/worktrees/feat/foo"))
         );
         assert_eq!(loaded.base_branch.as_deref(), Some("main"));
+        assert_eq!(loaded.start_head.as_deref(), Some("abc123"));
+        assert!(loaded.committed_at.is_some());
     }
 
     #[test]

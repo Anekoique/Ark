@@ -367,6 +367,66 @@ pub enum Error {
         /// First seeded file whose contents diverged from its template.
         file: String,
     },
+
+    // Commit closure errors.
+    /// `task_commit` invoked with no staged work.
+    #[error("task `{slug}` cannot be committed without staged work; run `git add <files>` first")]
+    NothingStaged {
+        /// Slug of the task being committed.
+        slug: String,
+    },
+
+    /// VERIFY.md has unresolved checklist items or findings.
+    #[error(
+        "VERIFY.md at {path:?} has {items} pending item(s) and {findings} pending finding(s); \
+         resolve before commit"
+    )]
+    VerifyIncomplete {
+        /// Path to the VERIFY.md being parsed.
+        path: PathBuf,
+        /// Count of `- [ ] ...: PENDING` checklist items.
+        items: u32,
+        /// Count of findings with `Resolution: PENDING`.
+        findings: u32,
+    },
+
+    /// `git commit` exited non-zero during `task_commit`.
+    #[error("git commit failed at {path:?}: {stderr}")]
+    GitCommitFailed {
+        /// Working directory where `git commit` ran.
+        path: PathBuf,
+        /// Trimmed stderr from the failed invocation.
+        stderr: String,
+    },
+
+    /// `task_commit` invoked without `-m` and without `--no-commit`.
+    #[error(
+        "commit message is required for task `{slug}`: pass `-m` or generate one before invoking \
+         `task commit`"
+    )]
+    CommitMessageRequired {
+        /// Slug of the task being committed.
+        slug: String,
+    },
+
+    /// `ark archive` saw a `phase = Committed` task with no `committed_at`.
+    #[error(
+        "task `{slug}` has phase Committed but committed_at is missing; cannot derive archive \
+         month"
+    )]
+    CommittedAtMissing {
+        /// Slug of the inconsistent task.
+        slug: String,
+    },
+
+    /// VERIFY template is missing a required substitution marker.
+    #[error("template marker `{marker}` is missing in {path:?}")]
+    TemplateMarkerMissing {
+        /// Marker name that was not found.
+        marker: &'static str,
+        /// Template file path.
+        path: PathBuf,
+    },
 }
 
 impl Error {

@@ -341,12 +341,19 @@ mod tests {
     /// Verifies that archive leaves worktree state intact.
     ///
     /// `worktree cleanup` frees the worktree dir and branch; `archive` never
-    /// does.
+    /// does. The post-refactor archive precondition is `Phase::Committed`,
+    /// so this test hand-flips the phase rather than driving `task_commit`
+    /// (which would need a real git commit on the worktree branch).
     #[test]
     fn archive_leaves_worktree_intact() {
-        use crate::commands::agent::task::{
-            archive::{TaskArchiveOptions, task_archive},
-            phase::{TaskPhaseOptions, task_execute, task_plan, task_verify},
+        use chrono::Utc;
+
+        use crate::commands::agent::{
+            state::{Phase, TaskToml},
+            task::{
+                archive::{TaskArchiveMoveOptions, task_archive_move},
+                phase::{TaskPhaseOptions, task_execute, task_plan, task_verify},
+            },
         };
 
         let tmp = init_repo();
@@ -368,9 +375,19 @@ mod tests {
             slug: "foo".into(),
         })
         .unwrap();
-        task_archive(TaskArchiveOptions {
+        // Hand-flip Verify -> Committed (the test does not exercise commit).
+        let layout = Layout::new(&wt);
+        let mut toml = TaskToml::load(&layout.task_dir("foo")).unwrap();
+        toml.phase = Phase::Committed;
+        let now = Utc::now();
+        toml.committed_at = Some(now);
+        toml.updated_at = now;
+        toml.save(&layout.task_dir("foo")).unwrap();
+
+        task_archive_move(TaskArchiveMoveOptions {
             project_root: wt.clone(),
             slug: "foo".into(),
+            archive_month: "2026-05".into(),
         })
         .unwrap();
 

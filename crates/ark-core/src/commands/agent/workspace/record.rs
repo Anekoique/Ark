@@ -100,27 +100,38 @@ impl fmt::Display for WorkspaceRecorded {
     }
 }
 
-/// Options for recording an archived task into a workspace journal.
+/// Options for recording a committed task into a workspace journal.
+///
+/// The function is invoked by `task_commit` (post-refactor) when a task closes
+/// — the journal entry rides along in the same git commit as the work, the
+/// updated `task.toml`, and (deep tier) the promoted SPEC. The previous
+/// archive-time invocation is gone; bulk archive (`ark archive`) does not
+/// touch the journal.
 #[derive(Debug, Clone)]
 pub struct RecordTaskOptions {
     /// Project root containing the Ark installation.
     pub project_root: PathBuf,
-    /// Archived task slug.
+    /// Task slug being recorded.
     pub slug: String,
-    /// Archived task title.
+    /// Task title.
     pub title: String,
-    /// Archived task workflow tier.
+    /// Task workflow tier.
     pub tier: Tier,
-    /// Branch associated with the archived task.
+    /// Branch associated with the task.
     pub branch: Option<String>,
     /// Base branch captured when the task worktree was created.
     pub base_branch: Option<String>,
     /// Task worktree path, when the task used a worktree.
     pub worktree_path: Option<PathBuf>,
-    /// Path where the task was archived.
-    pub archive_path: PathBuf,
-    /// Timestamp when the task was archived.
-    pub archived_at: DateTime<Utc>,
+    /// HEAD SHA captured at `task new` time. Drives the journal commits-in-range
+    /// table (`git log <start_head>..HEAD --oneline -n 20`). `None` for
+    /// pre-refactor tasks; falls back to `base_branch..HEAD` then `-n 20`.
+    pub start_head: Option<String>,
+    /// Active task directory at record time (still under `.ark/tasks/<slug>/`,
+    /// not yet archived).
+    pub task_dir: PathBuf,
+    /// Timestamp when `task_commit` invoked this recorder.
+    pub recorded_at: DateTime<Utc>,
 }
 
 // -- Manual record ---------------------------------------------------------
@@ -147,6 +158,8 @@ pub fn workspace_record(opts: WorkspaceRecordOptions) -> Result<WorkspaceRecordS
         Utc::now(),
         JournalKind::Manual,
         branch,
+        None, // start_head — manual entries omit
+        None, // base_branch — manual entries omit
         summary,
         commits,
         next_steps,
@@ -179,7 +192,12 @@ fn strip_bullet(line: &str) -> &str {
 
 // -- task → workspace bridge ----------------------------------------------
 
-/// Records an archived task into the developer workspace journal.
+/// Records a committed task into the developer workspace journal.
+///
+/// Invoked by `task_commit` after the VERIFY gate passes and (deep tier) SPEC
+/// extraction completes. The journal entry, the updated `task.toml`, the
+/// workspace index, and (deep) the promoted SPEC + features INDEX are then
+/// staged and committed together.
 pub fn record_task(opts: RecordTaskOptions) -> Result<WorkspaceRecorded> {
     let layout = Layout::new(&opts.project_root);
     let cfg = WorkspaceConfig::load_or_default(&layout)?;
@@ -197,7 +215,14 @@ pub fn record_task(opts: RecordTaskOptions) -> Result<WorkspaceRecorded> {
     };
 
     let task_cwd = resolve_task_cwd(&opts, &layout);
-    let commits = collect_commits_for_task(&task_cwd, opts.base_branch.as_deref());
+    // The closing commit is already in HEAD by the time `task_commit`
+    // invokes `record_task`, so `git log <start_head>..HEAD` naturally
+    // includes the closing commit row at the top of the table.
+    let commits = collect_commits_for_task(
+        &task_cwd,
+        opts.start_head.as_deref(),
+        opts.base_branch.as_deref(),
+    );
 
     let WorkspaceRecordSummary {
         journal_path,
@@ -208,17 +233,14 @@ pub fn record_task(opts: RecordTaskOptions) -> Result<WorkspaceRecorded> {
         &dev,
         &cfg,
         opts.title.clone(),
-        opts.archived_at,
+        opts.recorded_at,
         JournalKind::Task {
             slug: opts.slug.clone(),
         },
         opts.branch.clone(),
-        format!(
-            "Archived `{}` ({}). See {} for the task artifacts.",
-            opts.slug,
-            tier_label(opts.tier),
-            opts.archive_path.display()
-        ),
+        opts.start_head.clone(),
+        opts.base_branch.clone(),
+        render_task_summary(&opts, &layout),
         commits,
         Vec::new(),
     )?;
@@ -227,6 +249,24 @@ pub fn record_task(opts: RecordTaskOptions) -> Result<WorkspaceRecorded> {
         journal_path,
         session_number,
     })
+}
+
+/// Builds the journal entry's `### Summary` body for a task closure.
+///
+/// Uses a project-relative task path so no absolute paths leak into the
+/// committed journal.
+fn render_task_summary(opts: &RecordTaskOptions, layout: &Layout) -> String {
+    let task_path = opts
+        .task_dir
+        .strip_prefix(layout.root())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|_| opts.task_dir.clone());
+    format!(
+        "Closed `{}` ({}). See `{}` for the task artifacts.",
+        opts.slug,
+        tier_label(opts.tier),
+        task_path.display(),
+    )
 }
 
 /// Returns the lowercase tier label matching the serde representation.
@@ -240,7 +280,7 @@ fn tier_label(tier: Tier) -> &'static str {
 
 /// Returns the working directory for git lookups.
 ///
-/// The fallback chain is the live worktree path if it exists, then the archived
+/// The fallback chain is the live worktree path if it exists, then the active
 /// task dir, then the project root.
 fn resolve_task_cwd(opts: &RecordTaskOptions, layout: &Layout) -> PathBuf {
     if let Some(wt) = &opts.worktree_path
@@ -248,8 +288,8 @@ fn resolve_task_cwd(opts: &RecordTaskOptions, layout: &Layout) -> PathBuf {
     {
         return wt.clone();
     }
-    if opts.archive_path.is_dir() {
-        return opts.archive_path.clone();
+    if opts.task_dir.is_dir() {
+        return opts.task_dir.clone();
     }
     layout.root().to_path_buf()
 }
@@ -274,11 +314,20 @@ fn collect_commits(cwd: &std::path::Path, range: Option<&str>) -> Vec<JournalCom
         .unwrap_or_default()
 }
 
+/// Picks the strongest commit-range source available for a task entry.
+///
+/// Order of preference: `start_head..HEAD` (set by the post-refactor
+/// `task new` flow), `base_branch..HEAD` (a weaker signal preserved for
+/// pre-refactor tasks that have a worktree base branch), or `git log -n 20`
+/// from the cwd as a last-resort fallback.
 fn collect_commits_for_task(
     cwd: &std::path::Path,
+    start_head: Option<&str>,
     base_branch: Option<&str>,
 ) -> Vec<JournalCommit> {
-    let range = base_branch.map(|b| format!("{b}..HEAD"));
+    let range = start_head
+        .map(|s| format!("{s}..HEAD"))
+        .or_else(|| base_branch.map(|b| format!("{b}..HEAD")));
     collect_commits(cwd, range.as_deref())
 }
 
@@ -305,6 +354,8 @@ fn write_journal_and_index(
     when: DateTime<Utc>,
     kind: JournalKind,
     branch: Option<String>,
+    start_head: Option<String>,
+    base_branch: Option<String>,
     summary: String,
     commits: Vec<JournalCommit>,
     next_steps: Vec<String>,
@@ -341,6 +392,8 @@ fn write_journal_and_index(
         date: when.date_naive(),
         kind,
         branch,
+        start_head,
+        base_branch,
         summary,
         commits,
         next_steps,
@@ -467,8 +520,9 @@ mod tests {
             branch: None,
             base_branch: None,
             worktree_path: None,
-            archive_path: archive,
-            archived_at: Utc::now(),
+            start_head: None,
+            task_dir: archive,
+            recorded_at: Utc::now(),
         })
         .unwrap();
         assert!(matches!(outcome, WorkspaceRecorded::SkippedNoIdentity));
@@ -495,8 +549,9 @@ mod tests {
             branch: None,
             base_branch: None,
             worktree_path: None,
-            archive_path: archive,
-            archived_at: Utc::now(),
+            start_head: None,
+            task_dir: archive,
+            recorded_at: Utc::now(),
         })
         .unwrap();
         assert!(matches!(outcome, WorkspaceRecorded::SkippedDisabled));
@@ -517,8 +572,9 @@ mod tests {
             branch: Some("feat/demo".into()),
             base_branch: None,
             worktree_path: None,
-            archive_path: archive,
-            archived_at: Utc::now(),
+            start_head: None,
+            task_dir: archive,
+            recorded_at: Utc::now(),
         })
         .unwrap();
         assert!(matches!(outcome, WorkspaceRecorded::Recorded { .. }));
@@ -534,7 +590,7 @@ mod tests {
         assert!(idx.contains(" | task | demo | "));
     }
 
-    /// Verifies that a missing `worktree_path` falls back to `archive_path`.
+    /// Verifies that a missing `worktree_path` falls back to `task_dir`.
     #[test]
     fn record_task_falls_back_when_worktree_dir_missing() {
         let tmp = tempfile::tempdir().unwrap();
@@ -549,8 +605,9 @@ mod tests {
             branch: None,
             base_branch: None,
             worktree_path: Some(tmp.path().join("nonexistent_wt")),
-            archive_path: archive,
-            archived_at: Utc::now(),
+            start_head: None,
+            task_dir: archive,
+            recorded_at: Utc::now(),
         })
         .unwrap();
         assert!(matches!(outcome, WorkspaceRecorded::Recorded { .. }));

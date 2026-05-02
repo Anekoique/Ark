@@ -11,9 +11,10 @@ use std::{
 };
 
 use ark_core::{
-    ConflictChoice, ConflictPolicy, ContextFormat, ContextOptions, ContextScope, InitOptions,
-    Layout, LoadOptions, PLATFORMS, PhaseFilter, Platform, Prompter, RemoveOptions, UnloadOptions,
-    UpgradeOptions, WriteMode, context, init, load, remove, unload, upgrade,
+    ArchiveOptions, ConflictChoice, ConflictPolicy, ContextFormat, ContextOptions, ContextScope,
+    InitOptions, Layout, LoadOptions, PLATFORMS, PhaseFilter, Platform, Prompter, RemoveOptions,
+    UnloadOptions, UpgradeOptions, WriteMode, ark_archive, context, init, load, remove, unload,
+    upgrade,
 };
 use clap::{Parser, Subcommand};
 
@@ -46,10 +47,27 @@ enum Command {
     Upgrade(UpgradeArgs),
     /// Print a structured snapshot of git + .ark/ workflow state.
     Context(ContextArgs),
+    /// Bulk-archive every committed task into its `committed_at` month bucket.
+    ///
+    /// Manager-only operation. Run after a release cut or whenever you want
+    /// to consolidate completed work into the YYYY-MM archive directories.
+    Archive(ArchiveCliArgs),
     /// Internal commands invoked by the Ark workflow and slash commands.
     /// Not covered by semver — prefer the slash commands over calling these directly.
     #[command(hide = true)]
     Agent(AgentArgs),
+}
+
+#[derive(clap::Args)]
+struct ArchiveCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Restrict to tasks whose `committed_at` falls in the given `YYYY-MM`.
+    #[arg(long)]
+    month: Option<String>,
+    /// List candidates without performing any move.
+    #[arg(long, default_value_t = false)]
+    dry_run: bool,
 }
 
 #[derive(clap::Args)]
@@ -350,6 +368,7 @@ enum PhaseArg {
     Review,
     Execute,
     Verify,
+    Commit,
 }
 
 #[derive(Copy, Clone, clap::ValueEnum)]
@@ -366,6 +385,7 @@ impl From<PhaseArg> for PhaseFilter {
             PhaseArg::Review => PhaseFilter::Review,
             PhaseArg::Execute => PhaseFilter::Execute,
             PhaseArg::Verify => PhaseFilter::Verify,
+            PhaseArg::Commit => PhaseFilter::Commit,
         }
     }
 }
@@ -529,6 +549,18 @@ impl Command {
                     .with_scope(scope)
                     .with_format(format);
                 render(context(opts)?);
+            }
+            Self::Archive(a) => {
+                let summary = ark_archive(ArchiveOptions {
+                    project_root: a.target.resolve(),
+                    month: a.month,
+                    dry_run: a.dry_run,
+                })?;
+                let any_fail = !summary.failures.is_empty();
+                render(summary);
+                if any_fail {
+                    std::process::exit(1);
+                }
             }
             Self::Agent(a) => a.dispatch()?,
         }

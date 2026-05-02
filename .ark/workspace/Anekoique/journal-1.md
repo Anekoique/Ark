@@ -86,3 +86,24 @@ Archived `fix-project-index-upgrade` (quick). Folded `.ark/specs/project/INDEX.m
 ### Next Steps
 - commit the seed-only-exemption change
 - follow-up quick task: stop `record_task` from logging unrelated commits when `base_branch` is `None`
+
+## Session 4: refactor ark-workflow
+
+**Date**: 2026-05-02
+**Kind**: task
+**Slug**: ark-workflow-refactor
+**Branch**: `refactor/workflow`
+**Start Head**: `(unknown — pre-refactor task)`
+**Base Branch**: `main`
+
+### Summary
+Closed `ark-workflow-refactor` (deep). See `.ark/tasks/ark-workflow-refactor` for the task artifacts.
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `9fb3d68` | feat(workflow): refactor task lifecycle around atomic /ark:commit and bulk ark archive |
+
+### Next Steps
+- (none)

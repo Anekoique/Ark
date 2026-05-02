@@ -35,6 +35,10 @@ pub enum PhaseFilter {
     Execute,
     /// Verify-phase projection.
     Verify,
+    /// Commit-phase projection (slash command reads VERIFY.md + latest plan
+    /// from disk via the returned paths; payload itself stays body-free per
+    /// the `ark-context` SPEC's additive-only schema).
+    Commit,
 }
 
 /// Serializable tag identifying the projection scope.
@@ -145,9 +149,12 @@ fn apply_phase_filter(
                 features: filtered,
             });
         }
-        // Execute / Verify both want project specs only (no features).
-        // Diverge by adding a separate arm if behavior ever needs to split.
-        PhaseFilter::Execute | PhaseFilter::Verify => {
+        // Execute / Verify / Commit all want project specs only (no
+        // features). Diverge by adding a separate arm if behavior ever needs
+        // to split. Commit is body-free: the slash command reads VERIFY.md
+        // and the latest plan from the path fields the projection already
+        // carries on `current_task`.
+        PhaseFilter::Execute | PhaseFilter::Verify | PhaseFilter::Commit => {
             out.specs = Some(SpecsState {
                 project,
                 features: Vec::new(),
@@ -317,6 +324,39 @@ mod tests {
         let pj = project(ctx, Scope::Phase(PhaseFilter::Verify));
         let s = pj.specs.unwrap();
         assert!(s.features.is_empty());
+    }
+
+    /// V-IT-9 / R-204: the commit projection is body-free per the
+    /// `ark-context` SPEC's additive-only schema. Slash commands must read
+    /// VERIFY.md and the latest plan from the artifact paths the projection
+    /// already carries on `current_task`, not from any payload field.
+    #[test]
+    fn commit_phase_yields_paths_only_no_bodies() {
+        let ctx = ctx_with(
+            SpecsState {
+                project: vec![row("p1")],
+                features: vec![row("f1")],
+            },
+            None,
+        );
+        let pj = project(ctx, Scope::Phase(PhaseFilter::Commit));
+        let s = pj.specs.as_ref().unwrap();
+        // No feature bodies (empty list); project SPECs are paths-only by the
+        // `SpecRow` shape itself.
+        assert!(s.features.is_empty());
+        assert_eq!(s.project.len(), 1);
+        // Sanity: the projected JSON shape has no "verify_md_body" or
+        // similar body-carrying field. Serializing and rescanning is the
+        // robust check.
+        let serialized = serde_json::to_string(&pj).unwrap();
+        assert!(
+            !serialized.contains("verify_md_body"),
+            "commit projection must not carry verify body: {serialized}"
+        );
+        assert!(
+            !serialized.contains("plan_body"),
+            "commit projection must not carry plan body: {serialized}"
+        );
     }
 
     #[test]
