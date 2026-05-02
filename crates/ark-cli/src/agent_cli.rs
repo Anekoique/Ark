@@ -29,6 +29,64 @@ enum AgentCommand {
     Task(TaskArgs),
     /// Feature-SPEC operations.
     Spec(SpecArgs),
+    /// Workspace operations (developer journals, manual records).
+    Workspace(WorkspaceArgs),
+}
+
+#[derive(clap::Args)]
+struct WorkspaceArgs {
+    #[command(subcommand)]
+    command: WorkspaceCommand,
+}
+
+#[derive(Subcommand)]
+enum WorkspaceCommand {
+    /// Append a journal entry (manual or task-driven).
+    Record(WorkspaceRecordArgs),
+    /// Developer registrar (top-level Active Developers index).
+    Developer(WorkspaceDeveloperArgs),
+}
+
+#[derive(clap::Args)]
+struct WorkspaceRecordArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug for task-driven entries. Mutually exclusive with `--manual`.
+    #[arg(long, conflicts_with = "manual")]
+    task: Option<String>,
+    /// Manual mode (no slug, no Closing Commit sentinel, no Git Commits table).
+    #[arg(long, default_value_t = false)]
+    manual: bool,
+}
+
+#[derive(clap::Args)]
+struct WorkspaceDeveloperArgs {
+    #[command(subcommand)]
+    command: WorkspaceDeveloperCommand,
+}
+
+#[derive(Subcommand)]
+enum WorkspaceDeveloperCommand {
+    /// Register a developer in the top-level Active Developers index.
+    Register(WorkspaceDeveloperRegisterArgs),
+    /// Refresh an existing developer row (Last Active / Sessions / Active
+    /// Journal). Falls through to `register` if no row exists yet.
+    Touch(WorkspaceDeveloperRegisterArgs),
+}
+
+#[derive(clap::Args)]
+struct WorkspaceDeveloperRegisterArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Developer name.
+    #[arg(long)]
+    name: String,
+    /// Active journal filename (defaults to `journal-1.md`).
+    #[arg(long = "active-journal", default_value = "journal-1.md")]
+    active_journal: String,
+    /// Session count (defaults to 1).
+    #[arg(long = "session-count", default_value_t = 1)]
+    session_count: u32,
 }
 
 #[derive(clap::Args)]
@@ -262,7 +320,70 @@ impl AgentArgs {
         match self.command {
             AgentCommand::Task(a) => a.command.dispatch(),
             AgentCommand::Spec(a) => a.command.dispatch(),
+            AgentCommand::Workspace(a) => a.command.dispatch(),
         }
+    }
+}
+
+impl WorkspaceCommand {
+    fn dispatch(self) -> anyhow::Result<()> {
+        match self {
+            Self::Record(a) => {
+                let root = a.target.resolve();
+                let summary = if a.manual {
+                    ark_core::workspace_record(ark_core::RecordOptions::new(
+                        &root,
+                        ark_core::RecordMode::Manual,
+                    ))?
+                } else {
+                    let slug = a
+                        .task
+                        .ok_or_else(|| anyhow::anyhow!("--task <slug> or --manual is required"))?;
+                    let toml = TaskToml::load(&Layout::new(&root).task_dir(&slug))?;
+                    let branch = toml.branch.clone().unwrap_or_else(|| "HEAD".into());
+                    let base_branch = toml.base_branch.clone().unwrap_or_else(|| "main".into());
+                    let start_head_short = toml
+                        .start_head
+                        .as_deref()
+                        .map(|s| s.chars().take(12).collect::<String>())
+                        .unwrap_or_else(|| "<unknown>".into());
+                    let mode = ark_core::RecordMode::Task {
+                        slug: &slug,
+                        branch: &branch,
+                        base_branch: &base_branch,
+                        start_head_short: &start_head_short,
+                        commits_in_range: &[],
+                    };
+                    ark_core::workspace_record(ark_core::RecordOptions::new(&root, mode))?
+                };
+                println!(
+                    "recorded session {} in {}",
+                    summary.session_number(),
+                    summary.journal_path_relative(),
+                );
+                Ok(())
+            }
+            Self::Developer(a) => a.command.dispatch(),
+        }
+    }
+}
+
+impl WorkspaceDeveloperCommand {
+    fn dispatch(self) -> anyhow::Result<()> {
+        // `Register` and `Touch` share an implementation today; the verb
+        // distinction lives in the slash-command surface for SPEC clarity.
+        let args = match self {
+            Self::Register(a) | Self::Touch(a) => a,
+        };
+        let summary = ark_core::developer_register(ark_core::DeveloperRegisterOptions {
+            project_root: args.target.resolve(),
+            name: args.name,
+            active_journal: args.active_journal,
+            date: chrono::Local::now().date_naive(),
+            session_count: args.session_count,
+        })?;
+        render(summary);
+        Ok(())
     }
 }
 

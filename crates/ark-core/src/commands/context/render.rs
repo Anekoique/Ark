@@ -24,6 +24,7 @@ impl fmt::Display for TextSummary<'_> {
             ScopeTag::Phase { phase } => {
                 writeln!(f, "ark context (scope=phase, for={})", phase_label(phase))?
             }
+            ScopeTag::Record => writeln!(f, "ark context (scope=record)")?,
         }
         writeln!(f, "project: {}", p.project_root.display())?;
         writeln!(f)?;
@@ -46,8 +47,34 @@ impl fmt::Display for TextSummary<'_> {
             write_archive(f, archive)?;
         }
 
+        if let Some(record) = &p.record {
+            write_record(f, record)?;
+        }
+
         Ok(())
     }
+}
+
+fn write_record(
+    f: &mut fmt::Formatter<'_>,
+    r: &crate::commands::context::projection::RecordProjection,
+) -> fmt::Result {
+    writeln!(f)?;
+    writeln!(f, "## RECORD")?;
+    writeln!(
+        f,
+        "identity: {}",
+        r.identity.as_deref().unwrap_or("<unset>")
+    )?;
+    writeln!(
+        f,
+        "active journal: {}",
+        r.active_journal_path.as_deref().unwrap_or("<none>")
+    )?;
+    writeln!(f, "sessions: {}", r.session_count)?;
+    writeln!(f, "journal_max_lines: {}", r.journal_max_lines)?;
+    writeln!(f, "branch: {}", r.branch.as_deref().unwrap_or("<unknown>"))?;
+    Ok(())
 }
 
 fn phase_label(p: PhaseFilter) -> &'static str {
@@ -203,6 +230,7 @@ mod tests {
             current_task: None,
             specs: Some(SpecsState::default()),
             archive: Some(ArchiveState::default()),
+            record: None,
         }
     }
 

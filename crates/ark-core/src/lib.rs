@@ -41,6 +41,13 @@ pub use commands::{
             task_discard, task_execute, task_new, task_plan, task_promote, task_resume,
             task_review, task_verify, worktree_cleanup, worktree_list,
         },
+        workspace::{
+            DeveloperRegisterOptions, DeveloperRegisterSummary, DeveloperTouchOptions, Identity,
+            RecordMode, RecordOptions, RecordSnapshot, RecordSummary, RecordTransaction,
+            ResolveOptions as IdentityResolveOptions, WorkspaceConfig, developer_register,
+            developer_touch, identity::identity_prompt, identity_resolve, identity_write,
+            workspace_record,
+        },
     },
     ark_archive, context, init, load, remove, unload, upgrade,
 };

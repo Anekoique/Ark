@@ -108,6 +108,16 @@ pub struct TaskToml {
     /// `None` on unborn HEAD or for pre-refactor tasks.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub start_head: Option<String>,
+
+    /// Project-relative path of the journal file the closing entry was
+    /// written to (e.g. `.ark/workspace/alice/journal-1.md`).
+    ///
+    /// Set at `task_commit` time when workspace recording succeeds. Read by
+    /// `ark archive` to locate the file for slot-patching. `None` when the
+    /// task committed under `--no-commit`, when no developer identity was
+    /// available, or for pre-workspace tasks.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub journal_path: Option<String>,
 }
 
 impl TaskToml {
@@ -256,6 +266,7 @@ mod tests {
             worktree_path: None,
             base_branch: None,
             start_head: None,
+            journal_path: None,
         }
     }
 

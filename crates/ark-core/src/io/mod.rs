@@ -18,7 +18,8 @@ pub use fs::{
     ARK_CONTEXT_HOOK_COMMAND, HookFileSpec, WriteMode, WriteOutcome, ark_codex_hook_entry,
     ark_session_start_hook_entry, merge_managed_blocks, read_hook_file, read_managed_block,
     remove_hook_file, remove_managed_block, scan_managed_markers, splice_managed_block,
-    update_hook_file, update_managed_block, walk_files, walk_files_excluding, write_file,
+    update_hook_file, update_managed_block, walk_files, walk_files_excluding, write_atomic,
+    write_file,
 };
 #[allow(deprecated)]
 pub use fs::{read_settings_hook, remove_settings_hook, update_settings_hook};

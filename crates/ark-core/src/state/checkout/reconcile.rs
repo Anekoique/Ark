@@ -132,6 +132,7 @@ mod tests {
             worktree_path: None,
             base_branch: None,
             start_head: None,
+            journal_path: None,
         };
         toml.save(&dir).unwrap();
     }
@@ -252,6 +253,7 @@ mod tests {
             worktree_path: None,
             base_branch: None,
             start_head: None,
+            journal_path: None,
         };
         toml.save(&arch).unwrap();
 

@@ -345,6 +345,7 @@ fn build_task_toml(opts: &TaskNewOptions) -> TaskToml {
         worktree_path: None,
         base_branch: None,
         start_head: capture_start_head(&opts.project_root),
+        journal_path: None,
     }
 }
 

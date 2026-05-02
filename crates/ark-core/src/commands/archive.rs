@@ -74,8 +74,18 @@ impl fmt::Display for ArchiveSummary {
 ///
 /// Errors during enumeration propagate; per-slug move errors are collected
 /// in `summary.failures` so a single bad task does not block the rest.
+///
+/// Unless `--dry-run`, archive refuses to run when the git staging area is
+/// dirty. The slot-patch step writes to the journal via `write_atomic` and
+/// the personal index via the managed-block helper, both of which would
+/// surface in the next `git commit`; bundling user-staged work with the
+/// archive's bookkeeping is more confusing than helpful, and a clean
+/// staging area also keeps the rollback story simple.
 pub fn ark_archive(opts: ArchiveOptions) -> Result<ArchiveSummary> {
     let layout = Layout::new(&opts.project_root);
+    if !opts.dry_run {
+        ensure_clean_index(layout.root())?;
+    }
     let candidates = enumerate_committed(&layout)?;
 
     let mut summary = ArchiveSummary {
@@ -107,6 +117,38 @@ pub fn ark_archive(opts: ArchiveOptions) -> Result<ArchiveSummary> {
     }
 
     Ok(summary)
+}
+
+/// Errors with [`Error::ArchiveIndexNotEmpty`] when `git diff --cached
+/// --quiet` reports a dirty index.
+///
+/// Treats "not a git repository" (non-zero exit + empty staged listing) as
+/// clean — bulk archive is also legal in non-git Ark installs (rare; the
+/// workflow advises git, but the precondition shouldn't artificially break
+/// non-git users).
+fn ensure_clean_index(project_root: &std::path::Path) -> Result<()> {
+    use crate::io::git::run_git;
+    let quiet = run_git(&["diff", "--cached", "--quiet"], project_root)?;
+    if quiet.is_success() {
+        return Ok(());
+    }
+    let listing = run_git(&["diff", "--cached", "--name-only"], project_root)?;
+    let staged: Vec<String> = listing
+        .stdout
+        .lines()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect();
+    if staged.is_empty() {
+        // No real staged paths — likely "fatal: not a git repository" or
+        // empty index after the quiet check tripped on a non-git working
+        // tree. Treat as clean.
+        return Ok(());
+    }
+    Err(Error::ArchiveIndexNotEmpty {
+        staged_paths: staged,
+    })
 }
 
 /// Walks `.ark/tasks/` for `phase = Committed` tasks with a `committed_at`
@@ -312,6 +354,32 @@ mod tests {
     }
 
     /// Verifies idempotency: re-running over the same set is a no-op.
+    #[test]
+    fn ensure_clean_index_errors_on_dirty_index() {
+        use crate::io::{PathExt, git::run_git};
+        let tmp = tempfile::tempdir().unwrap();
+        run_git(&["init", "--quiet"], tmp.path()).unwrap();
+        run_git(&["config", "user.email", "x@y.z"], tmp.path()).unwrap();
+        run_git(&["config", "user.name", "T"], tmp.path()).unwrap();
+        run_git(&["checkout", "-b", "main"], tmp.path()).unwrap();
+        tmp.path().join("a.txt").write_bytes(b"hello\n").unwrap();
+        run_git(&["add", "a.txt"], tmp.path()).unwrap();
+
+        let err = ensure_clean_index(tmp.path()).unwrap_err();
+        assert!(matches!(err, Error::ArchiveIndexNotEmpty { .. }));
+    }
+
+    #[test]
+    fn ensure_clean_index_succeeds_on_clean() {
+        use crate::io::git::run_git;
+        let tmp = tempfile::tempdir().unwrap();
+        run_git(&["init", "--quiet"], tmp.path()).unwrap();
+        run_git(&["config", "user.email", "x@y.z"], tmp.path()).unwrap();
+        run_git(&["config", "user.name", "T"], tmp.path()).unwrap();
+        run_git(&["checkout", "-b", "main"], tmp.path()).unwrap();
+        ensure_clean_index(tmp.path()).unwrap();
+    }
+
     #[test]
     fn ark_archive_is_idempotent() {
         let tmp = tempfile::tempdir().unwrap();

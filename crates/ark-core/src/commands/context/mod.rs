@@ -23,7 +23,7 @@ pub use model::{
     ArchiveState, ArchivedTask, ArtifactKind, ArtifactSummary, Context, CurrentTask, GitCommit,
     GitState, SCHEMA_VERSION, SpecRow, SpecsState, TaskSummary, TasksState,
 };
-pub use projection::{PhaseFilter, ProjectedContext, Scope, ScopeTag, project};
+pub use projection::{PhaseFilter, ProjectedContext, RecordProjection, Scope, ScopeTag, project};
 use render::TextSummary;
 
 use crate::{
@@ -112,7 +112,10 @@ pub fn context(opts: ContextOptions) -> Result<ContextSummary> {
         });
     }
     let ctx = gather_context(&layout)?;
-    let projected = project(ctx, opts.scope);
+    let mut projected = project(ctx, opts.scope);
+    if matches!(opts.scope, Scope::Record) {
+        projected.record = Some(gather_record_projection(&layout));
+    }
     match opts.format {
         Format::Json => {
             let raw =
@@ -126,6 +129,86 @@ pub fn context(opts: ContextOptions) -> Result<ContextSummary> {
         }
         Format::Text => Ok(ContextSummary::Text(Box::new(projected))),
     }
+}
+
+/// Gathers the workspace record projection (developer + active journal +
+/// config + branch).
+///
+/// All fields are best-effort: missing identity / no entries / git
+/// unavailable produce `None` rather than erroring, so the slash command's
+/// renderer can still produce a useful draft.
+fn gather_record_projection(layout: &Layout) -> RecordProjection {
+    use crate::commands::agent::workspace::{
+        WorkspaceConfig, identity::ResolveOptions, identity_resolve,
+    };
+
+    let cfg = WorkspaceConfig::load_or_default(layout).unwrap_or_default();
+    let identity = identity_resolve(ResolveOptions::new(layout.root()))
+        .ok()
+        .map(|id| id.name().to_string());
+
+    let (active_journal_path, session_count) = match identity.as_deref() {
+        Some(name) => {
+            let dev_dir = layout.workspace_developer_dir(name);
+            scan_developer_dir(&dev_dir, layout.root())
+        }
+        None => (None, 0),
+    };
+
+    let branch = crate::io::git::run_git(&["rev-parse", "--abbrev-ref", "HEAD"], layout.root())
+        .ok()
+        .filter(|out| out.is_success())
+        .map(|out| out.stdout.trim().to_string());
+
+    RecordProjection {
+        identity,
+        active_journal_path,
+        journal_max_lines: cfg.journal_max_lines(),
+        session_count,
+        branch,
+    }
+}
+
+/// Returns `(Option<journal-relpath>, session_count)` for `dev_dir`.
+fn scan_developer_dir(
+    dev_dir: &std::path::Path,
+    project_root: &std::path::Path,
+) -> (Option<String>, u32) {
+    let entries = match std::fs::read_dir(dev_dir) {
+        Ok(it) => it,
+        Err(_) => return (None, 0),
+    };
+    let mut max_n: Option<(u32, std::path::PathBuf)> = None;
+    let mut count: u32 = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(rest) = name.strip_prefix("journal-") else {
+            continue;
+        };
+        let Some(stem) = rest.strip_suffix(".md") else {
+            continue;
+        };
+        let Ok(n) = stem.parse::<u32>() else {
+            continue;
+        };
+        let path = entry.path();
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            count += text
+                .lines()
+                .filter(|l| l.trim_start().starts_with("## Session "))
+                .count() as u32;
+        }
+        match &max_n {
+            Some((m, _)) if n <= *m => {}
+            _ => max_n = Some((n, path)),
+        }
+    }
+    let active = max_n.map(|(_, p)| {
+        p.strip_prefix(project_root)
+            .map(|r| r.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/"))
+            .unwrap_or_else(|_| p.to_string_lossy().into_owned())
+    });
+    (active, count)
 }
 
 /// Wraps a JSON payload in Claude Code's SessionStart envelope.
