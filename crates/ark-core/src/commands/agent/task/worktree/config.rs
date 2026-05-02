@@ -229,7 +229,7 @@ post_create = ["echo hi"]
         layout.ark_dir().ensure_dir().unwrap();
         layout
             .config_file()
-            .write_bytes(b"[workspace]\njournal_max_lines = 500\n")
+            .write_bytes(b"[other]\nkey = \"value\"\n")
             .unwrap();
         let cfg = WorktreeConfig::load_or_default(&layout).unwrap();
         assert_eq!(cfg.worktree_dir, ".ark/worktrees");

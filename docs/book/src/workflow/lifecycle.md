@@ -30,11 +30,15 @@ Every task moves through the same states. Quick skips most of them; standard and
        └─────┬──────┘  rejected → halt for user decision
              ▼
        ┌────────────┐
-       │  ARCHIVE   │  move to tasks/archive/YYYY-MM/;
-       └────────────┘  deep: extract SPEC → specs/features/<name>/
+       │   COMMIT   │  atomic close: deep extracts SPEC → specs/features/<name>/;
+       └─────┬──────┘  single git commit; rollback on any pre-commit failure
+             ▼
+       ┌────────────┐
+       │  ARCHIVE   │  bulk-move Committed tasks to tasks/archive/YYYY-MM/
+       └────────────┘  via top-level `ark archive`
 ```
 
-State is recorded in `task.toml.phase`. Each transition is mediated by a CLI command (`ark agent task plan`, `... review`, `... execute`, `... verify`, `... archive`); illegal transitions error out with `IllegalPhaseTransition` rather than silently corrupting state.
+State is recorded in `task.toml.phase`. Each transition is mediated by a CLI command (`ark agent task plan`, `... review`, `... execute`, `... verify`, `... commit`, `... archive`); illegal transitions error out with `IllegalPhaseTransition` rather than silently corrupting state.
 
 ## DESIGN — capture what & why
 
@@ -92,19 +96,25 @@ State is recorded in `task.toml.phase`. Each transition is mediated by a CLI com
 - `ark context --scope phase --for verify` — current task with PRD + latest PLAN + VERIFY.md (if exists) + git state.
 - `ark agent task verify` — transitions to VERIFY and seeds `VERIFY.md`.
 
-**Gate.** Verdict *Approved* or *Approved with Follow-ups* → tell the user to run `/ark:archive`. *Rejected* → halt for user decision.
+**Gate.** Verdict *Approved* or *Approved with Follow-ups* → tell the user to run `/ark:commit`. *Rejected* → halt for user decision.
 
 VERIFY is **single-pass**. Unlike REVIEW, it doesn't loop. If the verdict is rejected, you decide: create fix tasks, promote tier with `ark agent task promote`, accept with acknowledgement, or discard.
 
-## ARCHIVE — preserve as memory
+## COMMIT — atomic close
 
-**Purpose.** Move the task to `tasks/archive/YYYY-MM/<slug>/`. Deep tier additionally extracts the final PLAN's `## Spec` section to `specs/features/<name>/SPEC.md` and registers it in the features INDEX.
+**Purpose.** Land all pending work plus the closing `task.toml` flip in a single git commit. Deep tier additionally extracts the final PLAN's `## Spec` to `specs/features/<name>/SPEC.md` and registers it in the features INDEX *inside the same commit*. A scoped rollback restores every touched file if any pre-commit step fails.
 
 **Calls.**
-- `ark agent task archive` — moves the dir; on deep tier, internally invokes `ark agent spec extract` and `ark agent spec register`. If a workspace developer is initialized, also appends a `task` entry to that developer's journal under `.ark/workspace/<dev>/`. Disable globally via `[workspace].auto_record_on_archive = false` in `.ark/config.toml`.
+- `ark agent task commit` — VERIFY gate, deep-tier SPEC extract + register, single git commit covering work + `task.toml` + (deep) SPEC + features INDEX. Rolls back on any pre-commit failure.
 
-**Trigger.** `/ark:archive`. The `/ark:design` and `/ark:quick` commands deliberately stop at VERIFY (or EXECUTE for quick); you decide when to close out.
+**Trigger.** `/ark:commit`. The `/ark:design` and `/ark:quick` commands deliberately stop short of commit; you decide when to close out.
+
+## ARCHIVE — preserve as memory
+
+**Purpose.** Move every `phase = Committed` task into `tasks/archive/YYYY-MM/<slug>/`, where the month is derived from the task's own `committed_at` timestamp. Side-effect-free: no SPEC promotion, no git work — that already happened at COMMIT time.
+
+**Calls.**
+- `ark archive` (top-level, manager-only) — bulk-archives every committed task. `--month YYYY-MM` filters; `--dry-run` lists candidates without moving anything.
+- `ark agent task archive --slug <s>` — single-task variant, used internally and as a manual escape hatch.
 
 **Reopen.** Move the archived dir back to `.ark/tasks/<slug>/` and reset `phase = "design"` + clear `archived_at` in `task.toml`. Refuses if a same-slug active task already exists.
-
-For non-task work — research, debugging, doc edits — invoke `/ark:record [<title>]` to append a `manual` entry to the same journal. Mirrors the auto-record path archive uses.

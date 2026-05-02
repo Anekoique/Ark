@@ -1,10 +1,10 @@
 # `ark agent`
 
-The hidden internal namespace that drives task lifecycle, spec management, and workspace journaling.
+The hidden internal namespace that drives task lifecycle and spec management.
 
 ## Stability
 
-`ark agent` is **not** semver-stable. The contract is between the shipped binary and the shipped templates — they version together. End users should drive the workflow through slash commands (`/ark:quick`, `/ark:design`, `/ark:archive`, `/ark:record`) rather than calling `ark agent` directly. The sole reasons to reach for it manually:
+`ark agent` is **not** semver-stable. The contract is between the shipped binary and the shipped templates — they version together. End users should drive the workflow through slash commands (`/ark:quick`, `/ark:design`, `/ark:commit`) rather than calling `ark agent` directly. The sole reasons to reach for it manually:
 
 - Rare lifecycle operations the slash commands don't wrap (e.g. tier promotion mid-flight).
 - Debugging a stuck workflow.
@@ -28,17 +28,15 @@ ark agent
 │   ├── review         # transition plan → review (deep only)
 │   ├── execute        # transition plan/review → execute
 │   ├── verify         # transition execute → verify
-│   ├── archive        # transition verify → archived (move dir)
+│   ├── commit         # atomically close: SPEC extract + single git commit
+│   ├── archive        # transition committed → archived (move dir)
 │   ├── promote        # change tier mid-flight
 │   └── worktree
 │       ├── list       # enumerate worktree-backed tasks
 │       └── cleanup    # remove a worktree dir + optionally delete branch
-├── spec
-│   ├── extract        # extract PLAN's `## Spec` to specs/features/<name>/SPEC.md
-│   └── register       # add a row to specs/features/INDEX.md's managed block
-└── workspace
-    ├── init           # bootstrap .ark/.developer + workspace dir
-    └── record         # write a manual session entry
+└── spec
+    ├── extract        # extract PLAN's `## Spec` to specs/features/<name>/SPEC.md
+    └── register       # add a row to specs/features/INDEX.md's managed block
 ```
 
 ## Common patterns
@@ -46,22 +44,23 @@ ark agent
 ### Task lifecycle
 
 ```bash
-# Quick tier — three commands.
+# Quick tier.
 ark agent task new --slug fix-typo --title "fix typo" --tier quick
 # ... edit code ...
 ark agent task execute
-ark agent task archive
+ark agent task commit
+# Bulk-archive Committed tasks later via `ark archive`.
 
-# Standard — five.
+# Standard.
 ark agent task new --slug rate-limit --title "add rate limit" --tier standard
 # ... fill PRD ...
 ark agent task plan
 # ... fill 00_PLAN.md ...
 ark agent task execute
-# ... edit code, commit ...
+# ... edit code, stage work ...
 ark agent task verify
 # ... fill VERIFY.md ...
-ark agent task archive
+ark agent task commit
 
 # Deep — review loop adds two more.
 ark agent task new --slug auth --title "auth refactor" --tier deep --worktree
@@ -74,9 +73,9 @@ ark agent task review
 # If revisions needed: copy NN_PLAN.md / NN_REVIEW.md to NN+1_*, bump iteration in task.toml,
 # reset phase = "plan", and run `ark agent task review` again.
 ark agent task execute
-# ... edit, commit ...
+# ... edit, stage ...
 ark agent task verify
-ark agent task archive   # promotes SPEC, registers in features INDEX
+ark agent task commit   # promotes SPEC, registers in features INDEX, single git commit
 ```
 
 ### Worktree management
@@ -98,23 +97,11 @@ ark agent task worktree cleanup --slug rate-limit --force   # for unmerged branc
 
 ### Spec promotion
 
-Normally invoked by `ark agent task archive` on deep tier; you can call it directly when reopening an archived task:
+Normally invoked by `ark agent task commit` on deep tier; you can call it directly when reopening an archived task:
 
 ```bash
 ark agent spec extract --slug auth                # extract PLAN's `## Spec` → specs/features/auth/SPEC.md
 ark agent spec register --slug auth               # add row to specs/features/INDEX.md
-```
-
-### Workspace journal
-
-```bash
-# Bootstrap identity (also done by `ark init --developer alice`).
-ark agent workspace init --name alice
-
-# Manual session entry (also done by /ark:record).
-ark agent workspace record --title "investigated SQL injection report" \
-    --summary "Looked at lines 42-89 of db.rs; no injection vectors..." \
-    --next "- Add fuzzing for the query builder."
 ```
 
 ## Defaults
@@ -136,4 +123,4 @@ Hand-edits to `task.toml` are sometimes the right escape hatch (specifically: bu
 ## See also
 
 - [Lifecycle](../workflow/lifecycle.md) — the conceptual model.
-- [Worktrees and Workspaces](../workflow/worktrees-and-workspaces.md) — when and why.
+- [Worktrees](../workflow/worktrees.md) — when and why.

@@ -14,7 +14,6 @@ use std::{
 use include_dir::Dir;
 
 use crate::{
-    commands::agent::workspace::{WorkspaceInitOptions, identity, workspace_init},
     error::Result,
     io::{PathExt, WriteMode, WriteOutcome, merge_managed_blocks, write_file},
     layout::{ARK_DIR, EMPTY_DIRS, Layout},
@@ -36,14 +35,6 @@ pub struct InitOptions {
     /// whatever the caller passes (an empty set yields a platform-free
     /// install with only `.ark/` artifacts).
     pub platforms: Vec<&'static Platform>,
-    /// Workspace developer name to bootstrap.
-    ///
-    /// When `Some`, init runs [`workspace_init`] after platform extraction,
-    /// creating `.ark/.developer` and `.ark/workspace/<name>/`. When `None`,
-    /// identity is skipped — callers can run `ark agent workspace init
-    /// --name <x>` later. The CLI adapter resolves this via interactive
-    /// prompt or `--developer` / `--no-developer` flags.
-    pub developer: Option<String>,
 }
 
 impl InitOptions {
@@ -53,7 +44,6 @@ impl InitOptions {
             project_root: project_root.into(),
             mode: WriteMode::default(),
             platforms: PLATFORMS.to_vec(),
-            developer: None,
         }
     }
 
@@ -70,12 +60,6 @@ impl InitOptions {
         self.platforms = platforms;
         self
     }
-
-    /// Bootstraps the workspace identity at init time.
-    pub fn with_developer(mut self, name: impl Into<String>) -> Self {
-        self.developer = Some(name.into());
-        self
-    }
 }
 
 /// Counts of per-file outcomes produced by `init`.
@@ -89,10 +73,6 @@ pub struct InitSummary {
     pub skipped: usize,
     /// Number of files overwritten.
     pub overwritten: usize,
-    /// Developer name bootstrapped at init time.
-    ///
-    /// `None` if identity was skipped (`InitOptions::developer == None`).
-    pub developer: Option<String>,
 }
 
 impl InitSummary {
@@ -129,9 +109,6 @@ impl fmt::Display for InitSummary {
                 self.skipped
             )?;
         }
-        if let Some(dev) = &self.developer {
-            write!(f, "\ndeveloper: {dev}")?;
-        }
         Ok(())
     }
 }
@@ -149,12 +126,6 @@ impl fmt::Display for InitSummary {
 /// `ark init --codex` on a Claude-installed project adds Codex without
 /// forgetting Claude.
 pub fn init(opts: InitOptions) -> Result<InitSummary> {
-    // Validate identity *first*: a malformed `--developer` should fail
-    // before we scaffold any platform files.
-    if let Some(name) = &opts.developer {
-        identity::validate_developer_name(name)?;
-    }
-
     let layout = Layout::new(&opts.project_root);
     let mut manifest = Manifest::read(layout.root())?.unwrap_or_default();
     let mut summary = InitSummary::default();
@@ -188,18 +159,6 @@ pub fn init(opts: InitOptions) -> Result<InitSummary> {
         .try_for_each(|dir| layout.resolve(dir).ensure_dir())?;
 
     manifest.write(layout.root())?;
-
-    // Workspace identity bootstrap. Runs after manifest write so a
-    // `workspace_init` failure does not roll back the platform scaffolding —
-    // the user can re-run `ark agent workspace init`.
-    if let Some(name) = opts.developer {
-        workspace_init(WorkspaceInitOptions {
-            project_root: opts.project_root.clone(),
-            name: name.clone(),
-        })?;
-        summary.developer = Some(name);
-    }
-
     Ok(summary)
 }
 
@@ -570,54 +529,5 @@ mod tests {
             v["hooks"]["SessionStart"][0]["hooks"][0]["command"],
             serde_json::Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()),
         );
-    }
-
-    /// Verifies that library init skips workspace identity by default.
-    #[test]
-    fn ark_init_with_no_developer_flag_skips_identity() {
-        let tmp = tempfile::tempdir().unwrap();
-        let summary = init(InitOptions::new(tmp.path())).unwrap();
-        assert!(summary.developer.is_none());
-        assert!(!tmp.path().join(".ark/.developer").exists());
-        assert!(!tmp.path().join(".ark/workspace").exists());
-    }
-
-    /// Verifies identity bootstrap from `--developer alice`.
-    #[test]
-    fn ark_init_with_developer_flag_bootstraps_identity() {
-        let tmp = tempfile::tempdir().unwrap();
-        let summary = init(InitOptions::new(tmp.path()).with_developer("alice")).unwrap();
-        assert_eq!(summary.developer.as_deref(), Some("alice"));
-        // Identity now lives in `.ark/.state.toml`'s `[identity]` section.
-        let layout = crate::layout::Layout::new(tmp.path());
-        let state =
-            crate::state::load_state(&layout, &crate::session::ppid::RealPpid::new()).unwrap();
-        assert_eq!(
-            state.identity.as_ref().map(|i| i.name.as_str()),
-            Some("alice")
-        );
-        assert!(tmp.path().join(".ark/workspace/alice/index.md").is_file());
-        assert!(
-            tmp.path()
-                .join(".ark/workspace/alice/journal-1.md")
-                .is_file()
-        );
-        let idx =
-            std::fs::read_to_string(tmp.path().join(".ark/workspace/alice/index.md")).unwrap();
-        assert!(idx.contains("ARK:WORKSPACE_STATUS:START"));
-        assert!(idx.contains("ARK:WORKSPACE_SESSIONS:START"));
-    }
-
-    /// Verifies invalid developer names fail before extraction.
-    #[test]
-    fn ark_init_with_invalid_developer_name_errors() {
-        let tmp = tempfile::tempdir().unwrap();
-        let err = init(InitOptions::new(tmp.path()).with_developer("1leading")).unwrap_err();
-        assert!(matches!(
-            err,
-            crate::error::Error::InvalidDeveloperName { .. }
-        ));
-        // Pre-flight failure → no scaffolding happened.
-        assert!(!tmp.path().join(".ark").exists());
     }
 }

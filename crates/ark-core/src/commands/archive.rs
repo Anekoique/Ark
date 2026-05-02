@@ -3,8 +3,8 @@
 //! Manager-only (visible) top-level CLI. Iterates `.ark/tasks/<slug>/` for
 //! every entry with `phase = Committed && committed_at = Some(...)` and
 //! invokes [`task_archive_move`] per slug, deriving the `YYYY-MM` bucket
-//! from the task's own `committed_at` timestamp. **No SPEC promotion. No
-//! journal recording.** Both already happened at `task_commit` time.
+//! from the task's own `committed_at` timestamp. **No SPEC promotion.**
+//! That already happened at `task_commit` time.
 
 use std::{fmt, path::PathBuf};
 
@@ -164,15 +164,12 @@ mod tests {
     use chrono::{TimeZone, Utc};
 
     use super::*;
-    use crate::{
-        commands::agent::{
-            state::Tier,
-            task::{
-                new::{TaskNewOptions, task_new},
-                phase::{TaskPhaseOptions, task_execute},
-            },
+    use crate::commands::agent::{
+        state::Tier,
+        task::{
+            new::{TaskNewOptions, task_new},
+            phase::{TaskPhaseOptions, task_execute},
         },
-        io::PathExt,
     };
 
     /// Hand-flips a task to `Committed` with the given commit timestamp.
@@ -312,43 +309,6 @@ mod tests {
         assert!(summary.successes.is_empty());
         assert!(tmp.path().join(".ark/tasks/demo").exists());
         assert!(!tmp.path().join(".ark/tasks/archive/2026-05/demo").exists());
-    }
-
-    /// Verifies that `ark archive` does not write to any workspace journal.
-    ///
-    /// Journal recording is `task_commit`'s responsibility (and that already
-    /// happened in the closing commit). Bulk archive must not duplicate it.
-    #[test]
-    fn ark_archive_writes_no_journal_entry() {
-        use crate::commands::agent::workspace::init::{WorkspaceInitOptions, workspace_init};
-        let tmp = tempfile::tempdir().unwrap();
-        workspace_init(WorkspaceInitOptions {
-            project_root: tmp.path().to_path_buf(),
-            name: "alice".into(),
-        })
-        .unwrap();
-        let layout = Layout::new(tmp.path());
-        let journal_path = layout.workspace_journal("alice", 1);
-        let pre_bytes = journal_path.read_bytes().unwrap();
-        quick_task(tmp.path(), "demo");
-        force_committed_at(
-            tmp.path(),
-            "demo",
-            Utc.with_ymd_and_hms(2026, 5, 1, 0, 0, 0).unwrap(),
-        );
-
-        ark_archive(ArchiveOptions {
-            project_root: tmp.path().to_path_buf(),
-            month: None,
-            dry_run: false,
-        })
-        .unwrap();
-
-        let post_bytes = journal_path.read_bytes().unwrap();
-        assert_eq!(
-            pre_bytes, post_bytes,
-            "ark archive must not touch the journal"
-        );
     }
 
     /// Verifies idempotency: re-running over the same set is a no-op.

@@ -12,7 +12,7 @@ ark unload [OPTIONS]
 
 `ark unload` produces a portable snapshot of the entire Ark footprint:
 
-1. **Files** — every regular file under owned dirs (`.ark/`, `.claude/commands/ark/`, `.codex/`, `.opencode/`), excluding `.ark/worktrees/` and `.ark/.developer`.
+1. **Files** — every regular file under owned dirs (`.ark/`, `.claude/commands/ark/`, `.codex/`, `.opencode/`), excluding `.ark/worktrees/`.
 2. **Managed blocks** — every `<!-- ARK -->` block recorded in `.ark/.installed.json` (or every shipping platform's managed-block target as a fallback if the manifest is missing).
 3. **Hook entries** — every Ark-owned `SessionStart` entry across every platform's hook file. Stage A captures known platforms' entries; Stage B scans every `*.json` file under owned dirs for orphan Ark-identity entries (e.g. from a future-version platform whose plumbing this Ark binary doesn't know about).
 
@@ -27,8 +27,6 @@ After capture, the snapshot is written to `.ark.db` (TOML at the project root), 
 ## Worktree exclusion
 
 `unload` skips `.ark/worktrees/` to avoid recursing into per-task git checkouts (which would capture their `target/`, uncommitted edits, etc.). The skip path comes from `[worktree].worktree_dir` in `.ark/config.toml`, so a non-default setting is honored.
-
-The gitignored `.ark/.developer` identity file is also excluded — it's per-machine, not portable.
 
 ## VCS
 

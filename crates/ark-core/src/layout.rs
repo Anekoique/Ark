@@ -50,8 +50,8 @@ pub const WORKTREES_DIR: &str = ".ark/worktrees";
 
 /// User-editable consolidated config (`<project>/.ark/config.toml`).
 ///
-/// Sectioned TOML: `[worktree]`, `[workspace]`, etc. Created by `init`
-/// from the embedded template; `upgrade` does NOT overwrite.
+/// Sectioned TOML: `[worktree]`, etc. Created by `init` from the embedded
+/// template; `upgrade` does NOT overwrite.
 pub const CONFIG_FILE: &str = ".ark/config.toml";
 
 /// Fully Ark-owned gitignore at `<project>/.ark/.gitignore`.
@@ -61,24 +61,11 @@ pub const CONFIG_FILE: &str = ".ark/config.toml";
 /// `.ark/`; no managed-block is needed since users do not co-author it.
 pub const ARK_GITIGNORE_FILE: &str = ".ark/.gitignore";
 
-/// Root for per-developer session journals (`<project>/.ark/workspace/`).
-///
-/// Created lazily by `ark agent workspace init`. Captured normally by
-/// `unload`/`load`.
-pub const WORKSPACE_DIR: &str = ".ark/workspace";
-
-/// Gitignored, per-machine identity file (`<project>/.ark/.developer`).
-///
-/// Legacy layout. New installs carry identity in `.state.toml`'s
-/// `[identity]` section. The constant survives for the migration
-/// reader; remove once all installs have migrated.
-pub const DEVELOPER_FILE: &str = ".ark/.developer";
-
 /// Per-checkout state index (`<project>/.ark/.state.toml`).
 ///
-/// Carries developer identity, the active-task slug set, and a per-session
-/// focus map. Treated as an index over `task.toml` truth: reconciled on
-/// every read. Gitignored. Skipped by `unload` in both walk sites.
+/// Carries the active-task slug set and a per-session focus map. Treated
+/// as an index over `task.toml` truth: reconciled on every read.
+/// Gitignored. Skipped by `unload` in both walk sites.
 pub const STATE_FILE: &str = ".ark/.state.toml";
 
 /// Lock file co-located with the state file (`<project>/.ark/.state.toml.lock`).
@@ -149,31 +136,6 @@ impl Layout {
     /// Returns the project root.
     pub fn root(&self) -> &Path {
         &self.root
-    }
-
-    /// Returns the parent checkout's [`Layout`] when this root is nested
-    /// inside a `.ark/worktrees/<branch>/...` directory.
-    ///
-    /// Walks the path components looking for `.ark` followed by `worktrees`;
-    /// the parent is the prefix up to (but not including) the `.ark`
-    /// component of that pair. Returns `None` for unworktreed checkouts.
-    ///
-    /// Used by identity / state-file consumers that need to fall back to the
-    /// parent's per-machine state when the worktree itself does not carry a
-    /// matching value (e.g. `.developer` lives only on the parent because
-    /// the file is gitignored).
-    pub fn parent_for_worktree(&self) -> Option<Layout> {
-        let comps: Vec<_> = self.root.components().collect();
-        for (i, w) in comps.windows(2).enumerate() {
-            if w[0].as_os_str() == ".ark" && w[1].as_os_str() == "worktrees" {
-                let prefix: PathBuf = comps[..i].iter().collect();
-                if prefix.as_os_str().is_empty() {
-                    return None;
-                }
-                return Some(Layout::new(prefix));
-            }
-        }
-        None
     }
 
     /// Returns the root directory for Ark state.
@@ -300,32 +262,6 @@ impl Layout {
     /// Returns the Ark-owned `.ark/.gitignore` path.
     pub fn ark_gitignore(&self) -> PathBuf {
         self.root.join(ARK_GITIGNORE_FILE)
-    }
-
-    /// Returns the root directory for per-developer workspace state.
-    pub fn workspace_dir(&self) -> PathBuf {
-        self.root.join(WORKSPACE_DIR)
-    }
-
-    /// Returns the workspace directory for developer `dev`.
-    pub fn workspace_developer_dir(&self, dev: &str) -> PathBuf {
-        self.workspace_dir().join(dev)
-    }
-
-    /// Returns the workspace index path for developer `dev`.
-    pub fn workspace_index(&self, dev: &str) -> PathBuf {
-        self.workspace_developer_dir(dev).join("index.md")
-    }
-
-    /// Returns journal file `n` for developer `dev`.
-    pub fn workspace_journal(&self, dev: &str, n: u32) -> PathBuf {
-        self.workspace_developer_dir(dev)
-            .join(format!("journal-{n}.md"))
-    }
-
-    /// Returns the per-machine developer identity path.
-    pub fn developer_file(&self) -> PathBuf {
-        self.root.join(DEVELOPER_FILE)
     }
 
     /// Returns the per-checkout state file path.
@@ -517,25 +453,5 @@ mod tests {
 
         let err = Layout::discover_from(&nested).unwrap_err();
         assert!(matches!(err, Error::NotLoaded { .. }));
-    }
-
-    #[test]
-    fn parent_for_worktree_recovers_root_above_dot_ark_worktrees() {
-        let layout = Layout::new("/tmp/proj/.ark/worktrees/feat/foo");
-        let parent = layout.parent_for_worktree().expect("parent");
-        assert_eq!(parent.root(), Path::new("/tmp/proj"));
-    }
-
-    #[test]
-    fn parent_for_worktree_returns_none_for_plain_root() {
-        let layout = Layout::new("/tmp/proj");
-        assert!(layout.parent_for_worktree().is_none());
-    }
-
-    #[test]
-    fn parent_for_worktree_returns_none_when_arked_at_root() {
-        // `.ark` exists but not nested under `.ark/worktrees/<branch>`.
-        let layout = Layout::new("/tmp/proj");
-        assert!(layout.parent_for_worktree().is_none());
     }
 }

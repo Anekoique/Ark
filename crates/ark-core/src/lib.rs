@@ -41,11 +41,6 @@ pub use commands::{
             task_discard, task_execute, task_new, task_plan, task_promote, task_resume,
             task_review, task_verify, worktree_cleanup, worktree_list,
         },
-        workspace::{
-            RecordTaskOptions, WorkspaceConfig, WorkspaceInitOptions, WorkspaceInitSummary,
-            WorkspaceRecordOptions, WorkspaceRecordSummary, WorkspaceRecorded, record_task,
-            workspace_init, workspace_record,
-        },
     },
     ark_archive, context, init, load, remove, unload, upgrade,
 };
@@ -58,6 +53,6 @@ pub use session::{
     release_session_id, resolve_session_id,
 };
 pub use state::{
-    Identity, Session, StateFile, Tasks, clear_focus_for_slug, load_state, prune_dead_sessions,
+    Session, StateFile, Tasks, clear_focus_for_slug, load_state, prune_dead_sessions,
     reconcile_against_disk, state_mutate,
 };

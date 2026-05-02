@@ -18,7 +18,7 @@ Three things are **always** re-applied unconditionally (they're not hash-tracked
 - Each platform's Ark `SessionStart` hook entry.
 - The shipped `extra_files` for any platform that has them (e.g. OpenCode's `ark-context.ts` plugin).
 
-`.ark/config.toml` is **never** overwritten, even if its hash changed. User edits to `[worktree]` and `[workspace]` settings persist across upgrades.
+`.ark/config.toml` is **never** overwritten, even if its hash changed. User edits to `[worktree]` settings persist across upgrades.
 
 ## Flags
 

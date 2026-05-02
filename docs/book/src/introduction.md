@@ -20,7 +20,7 @@ AI coding agents work better with a harness.
 This book has five parts:
 
 1. **Getting Started** walks you through install, the first `ark init`, and a complete `/ark:quick` task.
-2. **Workflow** is the conceptual model: tiers, lifecycle, the spec system, and how worktrees and workspaces fit in.
+2. **Workflow** is the conceptual model: tiers, lifecycle, the spec system, and how worktrees fit in.
 3. **Reference** documents every top-level CLI command and the `.ark/config.toml` schema.
 4. **Platform Integrations** covers what files Ark drops where, per platform.
 5. **Contributing** is for developers extending Ark itself: workspace layout, adding a slash command, adding a platform, and the release process.

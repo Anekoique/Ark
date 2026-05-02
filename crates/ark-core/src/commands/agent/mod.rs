@@ -16,7 +16,5 @@ pub mod state;
 pub mod task;
 /// Embedded workflow artifact template helper.
 pub mod template;
-/// Per-developer workspace command implementations.
-pub mod workspace;
 
 pub use state::{Phase, Status, TaskToml, Tier};

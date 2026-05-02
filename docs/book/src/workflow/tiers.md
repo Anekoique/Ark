@@ -46,4 +46,4 @@ This creates a git worktree at `.ark/worktrees/feat/foo/` (override branch with 
 
 Configure copies and post-create hooks via `.ark/config.toml`'s `[worktree]` section. After the branch merges, run `ark agent task worktree cleanup --slug foo` from the parent to remove the directory. Archive does NOT auto-clean the worktree.
 
-See [Worktrees and Workspaces](./worktrees-and-workspaces.md) for the full surface.
+See [Worktrees](./worktrees.md) for the full surface.

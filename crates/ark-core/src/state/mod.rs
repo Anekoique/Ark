@@ -5,7 +5,7 @@
 //! - [`crate::state::snapshot::Snapshot`] — `.ark.db`, a portable dump of the full Ark
 //!   footprint used to hibernate and restore state across `unload` / `load`.
 //! - [`crate::state::checkout::StateFile`] — `.ark/.state.toml`, the per-checkout index
-//!   carrying developer identity, the active-task slug set, and per-session focus.
+//!   carrying the active-task slug set and per-session focus.
 
 /// Per-checkout state index (`.ark/.state.toml`).
 pub mod checkout;
@@ -15,8 +15,8 @@ pub mod manifest;
 pub mod snapshot;
 
 pub use checkout::{
-    Identity, Session, StateFile, Tasks, clear_focus_for_slug, is_state_tmp, load_state,
-    prune_dead_sessions, reconcile_against_disk, state_mutate, synthesize_from_legacy,
+    Session, StateFile, Tasks, clear_focus_for_slug, is_state_tmp, load_state, prune_dead_sessions,
+    reconcile_against_disk, state_mutate, synthesize_from_legacy,
 };
 pub use manifest::Manifest;
 pub use snapshot::{SNAPSHOT_FILENAME, Snapshot, SnapshotBlock, SnapshotFile, SnapshotHookBody};

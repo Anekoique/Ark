@@ -657,8 +657,7 @@ mod tests {
         assert!(target.exists(), "init should ship config.toml");
         std::fs::write(
             &target,
-            "[worktree]\nbranch_prefix = \"fix\"\ncopy = \
-             [\".env\"]\n\n[workspace]\njournal_max_lines = 500\n",
+            "[worktree]\nbranch_prefix = \"fix\"\ncopy = [\".env\"]\n\n[user]\nkey = \"value\"\n",
         )
         .unwrap();
         let mut prompter = PanicPrompter;
@@ -670,7 +669,7 @@ mod tests {
         let after = std::fs::read_to_string(&target).unwrap();
         assert!(after.contains("branch_prefix = \"fix\""));
         assert!(after.contains(".env"));
-        assert!(after.contains("journal_max_lines = 500"));
+        assert!(after.contains("[user]"));
     }
 
     #[test]

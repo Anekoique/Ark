@@ -141,10 +141,10 @@ fn round_trip_preserves_bytes() { /* ... */ }
 **Inline why-comment:**
 
 ```rust
-// Validate identity *first*: a malformed `--developer` should fail
-// before we scaffold any platform files (rolling back a partial scaffold
-// is harder than refusing the call).
-identity::validate_developer_name(name)?;
+// Validate the slug *first*: a malformed slug should fail before we
+// scaffold any task files (rolling back a partial scaffold is harder
+// than refusing the call).
+validate_slug(&opts.slug)?;
 ```
 
 [**See Also**]

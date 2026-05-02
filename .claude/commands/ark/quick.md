@@ -65,13 +65,22 @@ Follow the PRD's Outcome. Stay within scope — if work grows beyond trivial, st
 
 Run whatever check the Outcome describes (test, build, manual). Record the result by updating PRD's Outcome section with what you verified.
 
-### 7. Commit
+### 7. Stage your work
 
-The user commits. Do not run `git commit` — show the diff and let the user decide.
+The user runs `git add <files>` to stage their work. Quick tier has no
+VERIFY checklist; the PRD's Outcome already serves as the acceptance gate.
 
-### 8. Archive
+### 8. Close the task
 
-Once the user confirms the commit succeeded, tell the user: "Run `/ark:archive` to close out the task." Do NOT archive automatically. See `/ark:archive`.
+Tell the user to run `/ark:commit -m "<message>"`. That single command flips
+phase to `Committed`, stages the Ark-managed files (`task.toml`), and runs
+`git commit -m "<message>"`. The user's already-staged work lands in the
+same commit.
+
+If the user prefers to write the commit message themselves, they can pass
+`-m`; otherwise the agent generates a Conventional Commits message from the
+staged diff and shows it for confirmation. See `/ark:commit` for the full
+contract (rollback on hook failure, `--no-commit` opt-out).
 
 ## If the task grows mid-flight
 

@@ -49,25 +49,20 @@ ark agent task execute
 
 This transitions `task.toml.phase` from `design` → `execute`. Now the agent edits the README. For a typo fix, that's literally one `Edit` call. The agent runs whatever checks the project enforces (`cargo build`, `pytest`, etc.), confirms they pass, and reports back.
 
-## Step 4: Archive
+## Step 4: Commit
 
 You decide when to close out — Ark deliberately stops at the end of execute and waits.
 
 ```
-/ark:archive
+/ark:commit
 ```
 
-This:
-
-1. Calls `ark agent task archive` which moves `.ark/tasks/fix-readme-typo/` to `.ark/tasks/archive/2026-04/fix-readme-typo/`.
-2. If a workspace journal is initialized, appends a session entry recording slug, branch, commits since branch start, and the title.
-3. Clears `.ark/tasks/.current` so the next task can claim it.
+This calls `ark agent task commit`, which lands the staged work in a single git commit (with rollback on any failure) and flips the task to `phase = committed`. The directory stays at `.ark/tasks/fix-readme-typo/` until you bulk-archive it later via `ark archive`.
 
 ## What you have at the end
 
-- A clean `.ark/tasks/` ready for the next task.
-- One commit on the branch (the typo fix itself).
-- One journal entry in `.ark/workspace/<you>/journal-1.md` (if journaling is enabled).
+- One commit on the branch (the typo fix itself, plus the `task.toml` flip).
+- A `phase = committed` task ready for `ark archive` to move it into `.ark/tasks/archive/<YYYY-MM>/`.
 - An archived `PRD.md` you can grep for later.
 
 ## What about the standard and deep tiers?

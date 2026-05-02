@@ -72,7 +72,7 @@ VERIFY checklist; the PRD's Outcome already serves as the acceptance gate.
 
 ### 8. Close the task
 
-Tell the user to invoke `ark-commit` with a message. That single skill flips phase to `Committed`, renders the journal entry, stages the Ark-managed files (workspace journal, workspace index, task.toml), and runs `git commit -m "<message>"`. The user's already-staged work lands in the same commit. See `ark-commit` for the full contract (rollback on hook failure, `--no-commit` opt-out, slug-anchored SHA recovery).
+Tell the user to invoke `ark-commit` with a message. That single skill flips phase to `Committed`, stages the Ark-managed files (`task.toml`), and runs `git commit -m "<message>"`. The user's already-staged work lands in the same commit. See `ark-commit` for the full contract (rollback on hook failure, `--no-commit` opt-out).
 
 ## If the task grows mid-flight
 
