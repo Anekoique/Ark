@@ -101,12 +101,17 @@ pub(crate) fn task_archive_move_with_ppid(
     }
 
     // Patch the workspace journal's `<PENDING:<slug>>` sentinel with the
-    // resolved closing-commit short SHA before any further state changes.
-    // Idempotent: re-running on an already-patched journal is a no-op
-    // (the sentinel won't match anymore). Quietly skips when the task has
+    // resolved closing-commit short SHA, and re-render the Git Commits
+    // table now that the closing commit's range is known. Idempotent on
+    // re-archive (sentinel already gone). Quietly skips when the task has
     // no `journal_path` (legacy, --no-commit, identity-missing).
     if let Some(journal_rel) = toml.journal_path.as_deref() {
-        patch_workspace_slot(&layout, journal_rel, &opts.slug)?;
+        patch_workspace_slot(
+            &layout,
+            journal_rel,
+            &opts.slug,
+            toml.start_head.as_deref(),
+        )?;
     }
 
     // Clear state-file references *before* rename so the focused-session
@@ -131,13 +136,23 @@ pub(crate) fn task_archive_move_with_ppid(
 }
 
 /// Patches the journal's `<PENDING:<slug>>` sentinel with the resolved
-/// closing-commit short SHA, and patches the matching personal-index row
-/// in lockstep.
+/// closing-commit short SHA, re-renders the `### Git Commits` table over
+/// the now-known `start_head..closing_sha` range, and patches the matching
+/// personal-index row in lockstep.
+///
+/// The Git Commits table is empty at `task_commit` time because the
+/// closing commit hasn't happened yet; archive is the first place both
+/// ends of the range exist.
 ///
 /// Idempotent: returns `Ok(())` when the sentinel is already absent
 /// (re-archived task, or manual entry that never had a sentinel). Errors
 /// with `SlotResolveNoMatch`, `SlotResolveAmbiguous`, or `JournalMissing`.
-fn patch_workspace_slot(layout: &Layout, journal_rel: &str, slug: &str) -> Result<()> {
+fn patch_workspace_slot(
+    layout: &Layout,
+    journal_rel: &str,
+    slug: &str,
+    start_head: Option<&str>,
+) -> Result<()> {
     let journal_path = layout.root().join(journal_rel);
     if !journal_path.exists() {
         return Err(Error::JournalMissing { path: journal_path });
@@ -149,11 +164,16 @@ fn patch_workspace_slot(layout: &Layout, journal_rel: &str, slug: &str) -> Resul
         return Ok(());
     }
 
-    let short_sha = resolve_closing_sha(layout.root(), &journal_path, slug)?;
-    write_atomic(
-        &journal_path,
-        journal_text.replace(&sentinel, &short_sha).as_bytes(),
-    )?;
+    let (full_sha, short) = resolve_closing_sha(layout.root(), &journal_path, slug)?;
+    let with_sha = journal_text.replace(&sentinel, &short);
+    let final_text = match start_head {
+        Some(start) => {
+            let commits = collect_commits_in_range(layout.root(), start, &full_sha);
+            replace_git_commits_table(&with_sha, slug, &commits)
+        }
+        None => with_sha,
+    };
+    write_atomic(&journal_path, final_text.as_bytes())?;
 
     if let Some(dev_dir) = journal_path.parent() {
         let personal_index = dev_dir.join("index.md");
@@ -164,7 +184,7 @@ fn patch_workspace_slot(layout: &Layout, journal_rel: &str, slug: &str) -> Resul
             update_managed_block(
                 &personal_index,
                 SESSIONS_MARKER,
-                &body.replace(&sentinel, &short_sha),
+                &body.replace(&sentinel, &short),
             )?;
         }
     }
@@ -173,10 +193,15 @@ fn patch_workspace_slot(layout: &Layout, journal_rel: &str, slug: &str) -> Resul
 
 /// Resolves the closing commit SHA via slug-anchored pickaxe.
 ///
-/// Runs `git log -S '**Slug**: <slug>' --format=%H -- <journal>` (no `-n`
-/// cap) and classifies the match count: 0 → `SlotResolveNoMatch`, >1 →
-/// `SlotResolveAmbiguous`, exactly 1 → `git rev-parse --short=12`.
-fn resolve_closing_sha(project_root: &Path, journal_path: &Path, slug: &str) -> Result<String> {
+/// Returns `(full_sha, short_sha)`. Runs `git log -S '**Slug**: <slug>'
+/// --format=%H -- <journal>` (no `-n` cap) and classifies the match count:
+/// 0 → `SlotResolveNoMatch`, >1 → `SlotResolveAmbiguous`, exactly 1 →
+/// `git rev-parse --short=12` for the link-friendly form.
+fn resolve_closing_sha(
+    project_root: &Path,
+    journal_path: &Path,
+    slug: &str,
+) -> Result<(String, String)> {
     let pickaxe = format!("-S**Slug**: {slug}");
     let journal_str = journal_path.to_string_lossy();
     let out = run_git(
@@ -199,7 +224,7 @@ fn resolve_closing_sha(project_root: &Path, journal_path: &Path, slug: &str) -> 
         .collect();
     match candidates.as_slice() {
         [] => Err(no_match()),
-        [full] => Ok(short_sha(project_root, full)),
+        [full] => Ok((full.clone(), short_sha(project_root, full))),
         _ => Err(Error::SlotResolveAmbiguous {
             slug: slug.to_string(),
             candidates,
@@ -215,6 +240,78 @@ fn short_sha(project_root: &Path, full: &str) -> String {
         .filter(|out| out.is_success())
         .map(|out| out.stdout.trim().to_string())
         .unwrap_or_else(|| full.chars().take(12).collect())
+}
+
+/// Returns `(short_sha, subject)` rows for `start..end` in commit order
+/// (newest first, matching `git log` default).
+fn collect_commits_in_range(project_root: &Path, start: &str, end: &str) -> Vec<(String, String)> {
+    let range = format!("{start}..{end}");
+    let out = match run_git(&["log", &range, "--format=%h %s"], project_root) {
+        Ok(o) if o.is_success() => o,
+        _ => return Vec::new(),
+    };
+    out.stdout
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(2, ' ');
+            let sha = parts.next()?.to_string();
+            let subject = parts.next().unwrap_or("").to_string();
+            Some((sha, subject))
+        })
+        .collect()
+}
+
+/// Rewrites the `### Git Commits` table for the entry whose `**Slug**:
+/// <slug>` line we just patched. The block runs from the literal
+/// `### Git Commits\n` heading to the next `## ` or `### ` heading (or
+/// end-of-file).
+///
+/// If no such block exists in `text`, returns `text` unchanged — the
+/// entry was a manual record (no Git Commits section) or the agent
+/// stripped the heading.
+fn replace_git_commits_table(text: &str, slug: &str, commits: &[(String, String)]) -> String {
+    let slug_anchor = format!("**Slug**: {slug}");
+    let Some(slug_pos) = text.find(&slug_anchor) else {
+        return text.to_string();
+    };
+    let after_slug = &text[slug_pos..];
+    let Some(rel_heading) = after_slug.find("### Git Commits") else {
+        return text.to_string();
+    };
+    let heading_pos = slug_pos + rel_heading;
+    let after_heading = &text[heading_pos..];
+    // First line is the heading itself; scan for the next section break.
+    let scan = match after_heading.find('\n') {
+        Some(nl) => &after_heading[nl + 1..],
+        None => "",
+    };
+    let next_section = scan
+        .find("\n## ")
+        .or_else(|| scan.find("\n### "))
+        .map(|i| heading_pos + after_heading.find('\n').unwrap() + 1 + i + 1)
+        .unwrap_or(text.len());
+
+    let new_block = render_commits_block(commits);
+    let mut out = String::with_capacity(text.len() + new_block.len());
+    out.push_str(&text[..heading_pos]);
+    out.push_str(&new_block);
+    if next_section < text.len() {
+        out.push_str(&text[next_section..]);
+    }
+    out
+}
+
+fn render_commits_block(commits: &[(String, String)]) -> String {
+    let mut s = String::from("### Git Commits\n\n| Hash | Message |\n|------|---------|\n");
+    if commits.is_empty() {
+        s.push_str("| _(none)_ |   |\n");
+    } else {
+        for (sha, subject) in commits {
+            s.push_str(&format!("| `{sha}` | {subject} |\n"));
+        }
+    }
+    s.push('\n');
+    s
 }
 
 #[cfg(test)]
@@ -438,14 +535,15 @@ mod slot_patch_tests {
     }
 
     #[test]
-    fn resolve_closing_sha_returns_short_sha_for_unique_match() {
+    fn resolve_closing_sha_returns_full_and_short_sha_for_unique_match() {
         let (tmp, rel) = repo_with_pending_journal("workspace");
         let layout = Layout::new(tmp.path());
         let journal = layout.root().join(&rel);
-        let sha = resolve_closing_sha(layout.root(), &journal, "workspace").unwrap();
-        assert_eq!(sha.len(), 12);
-        // Hex characters only.
-        assert!(sha.chars().all(|c| c.is_ascii_hexdigit()));
+        let (full, short) = resolve_closing_sha(layout.root(), &journal, "workspace").unwrap();
+        assert_eq!(full.len(), 40);
+        assert!(full.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(short.len(), 12);
+        assert!(full.starts_with(&short));
     }
 
     #[test]
@@ -461,7 +559,7 @@ mod slot_patch_tests {
     fn patch_workspace_slot_replaces_sentinel_in_journal() {
         let (tmp, rel) = repo_with_pending_journal("workspace");
         let layout = Layout::new(tmp.path());
-        patch_workspace_slot(&layout, &rel, "workspace").unwrap();
+        patch_workspace_slot(&layout, &rel, "workspace", None).unwrap();
 
         let patched = std::fs::read_to_string(layout.root().join(&rel)).unwrap();
         assert!(!patched.contains("<PENDING:workspace>"));
@@ -472,9 +570,65 @@ mod slot_patch_tests {
     fn patch_workspace_slot_is_idempotent() {
         let (tmp, rel) = repo_with_pending_journal("workspace");
         let layout = Layout::new(tmp.path());
-        patch_workspace_slot(&layout, &rel, "workspace").unwrap();
+        patch_workspace_slot(&layout, &rel, "workspace", None).unwrap();
         // Second call: sentinel is gone — no-op, no error.
-        patch_workspace_slot(&layout, &rel, "workspace").unwrap();
+        patch_workspace_slot(&layout, &rel, "workspace", None).unwrap();
+    }
+
+    #[test]
+    fn patch_workspace_slot_renders_git_commits_table_when_start_head_present() {
+        // Build a repo with two intermediate commits between start_head
+        // (the scaffold commit) and the final commit that introduces the
+        // pending-sentinel journal. The table should list both intermediate
+        // commits plus the closing commit.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        run_git(&["init", "--quiet"], root).unwrap();
+        run_git(&["config", "user.email", "test@example.com"], root).unwrap();
+        run_git(&["config", "user.name", "Test"], root).unwrap();
+        run_git(&["config", "commit.gpgsign", "false"], root).unwrap();
+        run_git(&["checkout", "-b", "main"], root).unwrap();
+
+        // start_head: scaffold commit (table excludes this).
+        root.join("scaffold").write_bytes(b"x").unwrap();
+        run_git(&["add", "."], root).unwrap();
+        run_git(&["commit", "-m", "scaffold", "--quiet"], root).unwrap();
+        let start_head = run_git(&["rev-parse", "HEAD"], root).unwrap().stdout.trim().to_string();
+
+        // Intermediate commits (table includes both).
+        root.join("a.rs").write_bytes(b"a").unwrap();
+        run_git(&["add", "."], root).unwrap();
+        run_git(&["commit", "-m", "feat(x): step 1", "--quiet"], root).unwrap();
+        root.join("b.rs").write_bytes(b"b").unwrap();
+        run_git(&["add", "."], root).unwrap();
+        run_git(&["commit", "-m", "feat(x): step 2", "--quiet"], root).unwrap();
+
+        // Closing commit: the journal write itself, with sentinel + Git
+        // Commits placeholder.
+        let rel = ".ark/workspace/alice/journal-1.md".to_string();
+        let abs = root.join(&rel);
+        abs.parent().unwrap().ensure_dir().unwrap();
+        let body = "## Session 1: x\n\n**Slug**: workspace\n\
+            **Closing Commit**: <PENDING:workspace>\n\n\
+            ### Git Commits\n\n| Hash | Message |\n|------|---------|\n| _(none)_ |   |\n";
+        abs.write_bytes(body.as_bytes()).unwrap();
+        run_git(&["add", "."], root).unwrap();
+        run_git(&["commit", "-m", "close", "--quiet"], root).unwrap();
+
+        let layout = Layout::new(root);
+        patch_workspace_slot(&layout, &rel, "workspace", Some(&start_head)).unwrap();
+
+        let patched = abs.read_text().unwrap();
+        assert!(!patched.contains("<PENDING:workspace>"));
+        assert!(patched.contains("feat(x): step 1"));
+        assert!(patched.contains("feat(x): step 2"));
+        assert!(patched.contains("close"));
+        assert!(!patched.contains("_(none)_"));
+        // Order: newest first (matches `git log` default).
+        let step1 = patched.find("step 1").unwrap();
+        let step2 = patched.find("step 2").unwrap();
+        let close = patched.find("| close").unwrap();
+        assert!(close < step2 && step2 < step1, "newest-first order broken");
     }
 
     #[test]
@@ -482,7 +636,8 @@ mod slot_patch_tests {
         let tmp = tempfile::tempdir().unwrap();
         run_git(&["init", "--quiet"], tmp.path()).unwrap();
         let layout = Layout::new(tmp.path());
-        let err = patch_workspace_slot(&layout, ".ark/workspace/x/journal-1.md", "x").unwrap_err();
+        let err =
+            patch_workspace_slot(&layout, ".ark/workspace/x/journal-1.md", "x", None).unwrap_err();
         assert!(matches!(err, Error::JournalMissing { .. }));
     }
 }
