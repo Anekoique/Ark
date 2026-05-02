@@ -194,6 +194,8 @@ mod tests {
             date: date("2026-04-29"),
             kind: JournalKind::Manual,
             branch: Some("main".into()),
+            start_head: None,
+            base_branch: None,
             summary: "did stuff".into(),
             commits: Vec::new(),
             next_steps: Vec::new(),

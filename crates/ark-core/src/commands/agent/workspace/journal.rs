@@ -29,6 +29,12 @@ pub struct JournalEntry {
     pub kind: JournalKind,
     /// `None` renders as `unknown`.
     pub branch: Option<String>,
+    /// Start of the task's commit range. Rendered as `**Start Head**: \`<sha>\``
+    /// for task entries; omitted entirely for manual entries.
+    pub start_head: Option<String>,
+    /// Base branch the task forked from. Rendered as `**Base Branch**: \`<branch>\``
+    /// for task entries; omitted entirely for manual entries.
+    pub base_branch: Option<String>,
     /// Markdown summary body.
     pub summary: String,
     /// Recent commits associated with the session.
@@ -103,7 +109,17 @@ pub fn render_entry(entry: &JournalEntry) -> String {
     out.push_str(&format!("**Date**: {}\n", entry.date));
     out.push_str(&format!("**Kind**: {kind_label}\n"));
     out.push_str(&format!("**Slug**: {slug}\n"));
-    out.push_str(&format!("**Branch**: `{branch}`\n\n"));
+    out.push_str(&format!("**Branch**: `{branch}`\n"));
+    if matches!(entry.kind, JournalKind::Task { .. }) {
+        let start = entry
+            .start_head
+            .as_deref()
+            .unwrap_or("(unknown — pre-refactor task)");
+        let base = entry.base_branch.as_deref().unwrap_or("(unknown)");
+        out.push_str(&format!("**Start Head**: `{start}`\n"));
+        out.push_str(&format!("**Base Branch**: `{base}`\n"));
+    }
+    out.push('\n');
 
     out.push_str("### Summary\n");
     if entry.summary.is_empty() {
@@ -448,6 +464,8 @@ mod tests {
                 slug: "demo".to_string(),
             },
             branch: Some("feat/demo".to_string()),
+            start_head: Some("abc123".to_string()),
+            base_branch: Some("main".to_string()),
             summary: "Did the thing.".to_string(),
             commits: vec![JournalCommit {
                 short: "abc1234".to_string(),
@@ -457,21 +475,44 @@ mod tests {
         };
         let rendered = render_entry(&entry);
         let expected = "\n## Session 1: First session\n\n**Date**: 2026-04-29\n**Kind**: \
-                        task\n**Slug**: demo\n**Branch**: `feat/demo`\n\n### Summary\nDid the \
-                        thing.\n\n### Commits\n\n| Hash | Message |\n|------|---------|\n| \
-                        `abc1234` | feat: thing |\n\n### Next Steps\n- next step\n";
+                        task\n**Slug**: demo\n**Branch**: `feat/demo`\n**Start Head**: \
+                        `abc123`\n**Base Branch**: `main`\n\n### Summary\nDid the thing.\n\n### \
+                        Commits\n\n| Hash | Message |\n|------|---------|\n| `abc1234` | feat: \
+                        thing |\n\n### Next Steps\n- next step\n";
         assert_eq!(rendered, expected);
     }
 
-    /// Verifies that a manual entry renders with `-` slug and `manual` label.
+    /// Verifies that a task entry renders the pre-refactor placeholder when start_head is None.
     #[test]
-    fn render_entry_manual_uses_dash_slug() {
+    fn render_entry_task_without_start_head_uses_placeholder() {
+        let entry = JournalEntry {
+            session_number: 1,
+            title: "Pre-refactor".to_string(),
+            date: date("2026-04-29"),
+            kind: JournalKind::Task { slug: "old".into() },
+            branch: Some("feat/old".into()),
+            start_head: None,
+            base_branch: None,
+            summary: "x".into(),
+            commits: Vec::new(),
+            next_steps: Vec::new(),
+        };
+        let r = render_entry(&entry);
+        assert!(r.contains("**Start Head**: `(unknown — pre-refactor task)`"));
+        assert!(r.contains("**Base Branch**: `(unknown)`"));
+    }
+
+    /// Verifies that a manual entry renders with `-` slug, `manual` label, and no Start/Base fields.
+    #[test]
+    fn render_entry_manual_uses_dash_slug_and_omits_range_fields() {
         let entry = JournalEntry {
             session_number: 5,
             title: "Manual one".to_string(),
             date: date("2026-04-29"),
             kind: JournalKind::Manual,
             branch: None,
+            start_head: None,
+            base_branch: None,
             summary: String::new(),
             commits: Vec::new(),
             next_steps: Vec::new(),
@@ -480,6 +521,14 @@ mod tests {
         assert!(r.contains("**Kind**: manual"));
         assert!(r.contains("**Slug**: -"));
         assert!(r.contains("**Branch**: `unknown`"));
+        assert!(
+            !r.contains("**Start Head**"),
+            "manual entries omit Start Head"
+        );
+        assert!(
+            !r.contains("**Base Branch**"),
+            "manual entries omit Base Branch"
+        );
         assert!(r.contains("(no summary provided)"));
         assert!(r.contains("| - | (no commits) |"));
         assert!(r.contains("- (none)"));
@@ -494,6 +543,8 @@ mod tests {
             date: date("2026-04-01"),
             kind: JournalKind::Task { slug: "a".into() },
             branch: Some("feat/a".into()),
+            start_head: Some("deadbeef".into()),
+            base_branch: Some("main".into()),
             summary: "s1".into(),
             commits: vec![JournalCommit {
                 short: "abc1234".into(),
@@ -507,6 +558,8 @@ mod tests {
             date: date("2026-04-02"),
             kind: JournalKind::Manual,
             branch: None,
+            start_head: None,
+            base_branch: None,
             summary: "s2".into(),
             commits: Vec::new(),
             next_steps: Vec::new(),
@@ -623,6 +676,8 @@ mod tests {
             date: date("2026-04-29"),
             kind: JournalKind::Manual,
             branch: None,
+            start_head: None,
+            base_branch: None,
             summary: "s".into(),
             commits: vec![JournalCommit {
                 short: "abc".into(),

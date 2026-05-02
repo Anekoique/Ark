@@ -53,7 +53,7 @@ ark-core/src/
     │   └── related_specs.rs #  PRD [**Related Specs**] parser
     └── agent/          # `ark agent` namespace (hidden CLI, not semver)
         ├── state.rs    #   TaskToml + legal-transition table
-        ├── task/       #   task lifecycle (new/plan/review/execute/verify/archive)
+        ├── task/       #   task lifecycle (new/plan/review/execute/verify/commit/archive)
         ├── spec/       #   feature SPEC extract + register
         └── template.rs #   internal helper: extract embedded templates
 ```
@@ -65,8 +65,9 @@ ark-core/src/
 **Stability policy:** the CLI surface under `ark agent` is **not covered by semver**. The contract is internal — the binary and its shipped templates version together, not against external callers. `ark --help` does not list `agent`; `ark agent --help` renders its children with a stability banner.
 
 **Responsibilities of this layer:**
-- Create task directories (`task new`) and move them on archive (`task archive`) — whenever the operation touches filesystem structure that has to be correct.
-- Transition phases (`task plan` / `review` / `execute` / `verify` / `archive`) — the state machine enforces legality per tier.
+- Create task directories (`task new`) and move them on archive (`task archive`, also reachable as the side-effect-free `task_archive_move` Rust helper) — whenever the operation touches filesystem structure that has to be correct.
+- Transition phases (`task plan` / `review` / `execute` / `verify` / `commit` / `archive`) — the state machine enforces legality per tier.
+- Atomically close a task (`task commit`): VERIFY gate, deep-tier SPEC extract, single git commit covering work + journal + task.toml + (deep) SPEC + features INDEX, with scoped rollback on any pre-commit failure.
 - Extract SPEC bodies from PLANs and upsert rows in `specs/features/INDEX.md`'s managed block.
 
 **Not** this layer's responsibility:
@@ -140,7 +141,7 @@ User-authored files inside owned dirs (`.ark/tasks/...`, custom slash commands) 
 - Don't mutate `reference/` or commit anything from `target/`.
 
 <!-- ARK:START -->
-Ark is installed in this project. Use `/ark:quick` or `/ark:design` to start tasks.
+Ark is installed in this project. Use `/ark:quick` or `/ark:design` to start tasks. Close a task with `/ark:commit -m "<message>"` (replaces the older `/ark:archive`); bulk archive (post-closure) is a manager-only operation via the top-level `ark archive` CLI.
 
 See `.ark/workflow.md` for the full workflow.
 

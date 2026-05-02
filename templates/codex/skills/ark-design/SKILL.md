@@ -221,7 +221,7 @@ Fill VERIFY.md:
 
 ### 5.2 Decide
 
-- **Approved / Approved with Follow-ups** → report the verdict to the user. If follow-ups exist, list them; they can create new tasks. Tell the user: "Use `ark-archive` to close out the task." Do NOT archive automatically.
+- **Approved / Approved with Follow-ups** → report the verdict to the user. If follow-ups exist, list them; they can create new tasks. Tell the user to stage their work with `git add <files>`, then invoke `ark-commit` with a message to close out the task. Do NOT commit automatically — the staged-work precondition belongs to the user.
 - **Rejected** → halt. Summarize findings to the user and ask how to proceed (create fix tasks, promote tier via `ark agent task promote`, accept with acknowledgement, discard).
 
-Archival is a separate user-invoked step. See `ark-archive`.
+Closure is a separate user-invoked step. See `ark-commit`. Bulk archive (post-closure) is a manager-only operation via the top-level `ark archive` CLI; this skill set no longer archives.

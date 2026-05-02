@@ -21,10 +21,10 @@ pub mod state;
 pub mod templates;
 
 pub use commands::{
-    ConflictChoice, ConflictPolicy, ContextOptions, ContextSummary, Format as ContextFormat,
-    InitOptions, InitSummary, LoadOptions, LoadSummary, PhaseFilter, ProjectedContext, Prompter,
-    RemoveOptions, RemoveSummary, Scope as ContextScope, ScopeTag, UnloadOptions, UnloadSummary,
-    UpgradeOptions, UpgradeSummary,
+    ArchiveOptions, ArchiveSummary, ConflictChoice, ConflictPolicy, ContextOptions, ContextSummary,
+    Format as ContextFormat, InitOptions, InitSummary, LoadOptions, LoadSummary, PhaseFilter,
+    ProjectedContext, Prompter, RemoveOptions, RemoveSummary, Scope as ContextScope, ScopeTag,
+    UnloadOptions, UnloadSummary, UpgradeOptions, UpgradeSummary,
     agent::{
         Phase, Status, TaskToml, Tier,
         spec::{
@@ -32,11 +32,12 @@ pub use commands::{
             spec_extract, spec_register,
         },
         task::{
-            TaskArchiveOptions, TaskArchiveSummary, TaskDiscardOptions, TaskDiscardSummary,
-            TaskNewOptions, TaskNewSummary, TaskNewWorktree, TaskNewWorktreeSummary,
-            TaskPhaseOptions, TaskPhaseSummary, TaskPromoteOptions, TaskPromoteSummary,
-            TaskResumeOptions, TaskResumeSummary, WorktreeCleanupOptions, WorktreeCleanupSummary,
-            WorktreeConfig, WorktreeListOptions, WorktreeListSummary, WorktreeRow, task_archive,
+            TaskArchiveMoveOptions, TaskArchiveMoveSummary, TaskCommitOptions, TaskCommitSummary,
+            TaskDiscardOptions, TaskDiscardSummary, TaskNewOptions, TaskNewSummary,
+            TaskNewWorktree, TaskNewWorktreeSummary, TaskPhaseOptions, TaskPhaseSummary,
+            TaskPromoteOptions, TaskPromoteSummary, TaskResumeOptions, TaskResumeSummary,
+            VerifyPendingCounts, WorktreeCleanupOptions, WorktreeCleanupSummary, WorktreeConfig,
+            WorktreeListOptions, WorktreeListSummary, WorktreeRow, task_archive_move, task_commit,
             task_discard, task_execute, task_new, task_plan, task_promote, task_resume,
             task_review, task_verify, worktree_cleanup, worktree_list,
         },
@@ -46,7 +47,7 @@ pub use commands::{
             workspace_init, workspace_record,
         },
     },
-    context, init, load, remove, unload, upgrade,
+    ark_archive, context, init, load, remove, unload, upgrade,
 };
 pub use error::{Error, Result};
 pub use io::{PathExt, WriteMode, hash_bytes};

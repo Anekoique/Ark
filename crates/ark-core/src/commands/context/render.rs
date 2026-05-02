@@ -57,6 +57,7 @@ fn phase_label(p: PhaseFilter) -> &'static str {
         PhaseFilter::Review => "review",
         PhaseFilter::Execute => "execute",
         PhaseFilter::Verify => "verify",
+        PhaseFilter::Commit => "commit",
     }
 }
 

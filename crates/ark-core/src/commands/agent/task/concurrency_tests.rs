@@ -7,11 +7,13 @@
 
 use std::path::Path;
 
+use chrono::Utc;
+
 use crate::{
     commands::agent::{
-        state::Tier,
+        state::{Phase, TaskToml, Tier},
         task::{
-            archive::{TaskArchiveOptions, task_archive_with_ppid},
+            archive::{TaskArchiveMoveOptions, task_archive_move_with_ppid},
             discard::{TaskDiscardOptions, task_discard_with_ppid},
             new::{TaskNewOptions, task_new_with_ppid},
             phase::{TaskPhaseOptions, task_execute},
@@ -43,6 +45,21 @@ fn focus_for(layout: &Layout, ppid: &dyn Ppid) -> Option<String> {
     let id = lookup_session_id(layout, ppid).ok().flatten()?;
     let state = load_state(layout, ppid).ok()?;
     state.sessions.get(id.as_str()).map(|s| s.focus.clone())
+}
+
+/// Hand-flips a task's `task.toml` to `Phase::Committed` so the side-effect-free
+/// archive helper has a legal precondition. These tests don't drive
+/// `task_commit` because doing so would require a real git repo with staged
+/// work; they only need the precondition met.
+fn force_committed(tmp: &Path, slug: &str) {
+    let layout = Layout::new(tmp);
+    let task_dir = layout.task_dir(slug);
+    let mut toml = TaskToml::load(&task_dir).unwrap();
+    toml.phase = Phase::Committed;
+    let now = Utc::now();
+    toml.committed_at = Some(now);
+    toml.updated_at = now;
+    toml.save(&task_dir).unwrap();
 }
 
 /// Verifies that two sessions create distinct tasks and each sees its own focus.
@@ -128,10 +145,12 @@ fn archive_of_focused_task_releases_session_cache() {
     let cache_path = cache_file_path(&layout, session_a.parent_id());
     assert!(cache_path.exists(), "cache should exist after task_new");
 
-    task_archive_with_ppid(
-        TaskArchiveOptions {
+    force_committed(tmp.path(), "demo");
+    task_archive_move_with_ppid(
+        TaskArchiveMoveOptions {
             project_root: tmp.path().to_path_buf(),
             slug: "demo".into(),
+            archive_month: "2026-05".into(),
         },
         &session_a,
     )
@@ -159,10 +178,12 @@ fn archive_in_one_session_does_not_clear_the_others_focus() {
     })
     .unwrap();
 
-    task_archive_with_ppid(
-        TaskArchiveOptions {
+    force_committed(tmp.path(), "alpha");
+    task_archive_move_with_ppid(
+        TaskArchiveMoveOptions {
             project_root: tmp.path().to_path_buf(),
             slug: "alpha".into(),
+            archive_month: "2026-05".into(),
         },
         &session_a,
     )

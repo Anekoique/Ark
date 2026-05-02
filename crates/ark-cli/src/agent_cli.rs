@@ -5,12 +5,13 @@
 use std::path::{Path, PathBuf};
 
 use ark_core::{
-    Layout, RealPpid, SpecExtractOptions, SpecRegisterOptions, TaskArchiveOptions,
-    TaskDiscardOptions, TaskNewOptions, TaskNewWorktree, TaskPhaseOptions, TaskPromoteOptions,
-    TaskResumeOptions, Tier, WorkspaceInitOptions, WorkspaceRecordOptions, WorktreeCleanupOptions,
-    WorktreeListOptions, load_state, resolve_session_id, spec_extract, spec_register, task_archive,
-    task_discard, task_execute, task_new, task_plan, task_promote, task_resume, task_review,
-    task_verify, workspace_init, workspace_record, worktree_cleanup, worktree_list,
+    Layout, RealPpid, SpecExtractOptions, SpecRegisterOptions, TaskArchiveMoveOptions,
+    TaskCommitOptions, TaskDiscardOptions, TaskNewOptions, TaskNewWorktree, TaskPhaseOptions,
+    TaskPromoteOptions, TaskResumeOptions, TaskToml, Tier, WorkspaceInitOptions,
+    WorkspaceRecordOptions, WorktreeCleanupOptions, WorktreeListOptions, load_state,
+    resolve_session_id, spec_extract, spec_register, task_archive_move, task_commit, task_discard,
+    task_execute, task_new, task_plan, task_promote, task_resume, task_review, task_verify,
+    workspace_init, workspace_record, worktree_cleanup, worktree_list,
 };
 use chrono::NaiveDate;
 use clap::Subcommand;
@@ -54,8 +55,14 @@ enum TaskCommand {
     Execute(TaskSlugArgs),
     /// Transition: -> Verify.
     Verify(TaskSlugArgs),
-    /// Transition: -> Archived; deep tier extracts + registers SPEC.
-    Archive(TaskSlugArgs),
+    /// Transition: -> Committed. Atomic: VERIFY gate, deep-tier SPEC extract,
+    /// stage Ark-managed files, single `git commit` covering work + journal +
+    /// task.toml + (deep) SPEC + features INDEX.
+    Commit(TaskCommitCliArgs),
+    /// Transition: -> Archived. Side-effect-free move of a committed task to
+    /// `tasks/archive/<month>/<slug>/`. Defaults `--month` to the task's own
+    /// `committed_at`. Bulk archive lives at the top-level `ark archive` CLI.
+    Archive(TaskArchiveCliArgs),
     /// Claim an active task as this session's focus.
     Resume(TaskResumeCliArgs),
     /// Discard an unarchived task; refuses without `--force` when seeded files have user content.
@@ -151,6 +158,35 @@ struct TaskSlugArgs {
     /// Task slug. Defaults to this session's focused task in `.ark/.state.toml`.
     #[arg(long)]
     slug: Option<String>,
+}
+
+#[derive(clap::Args)]
+struct TaskCommitCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug. Defaults to this session's focused task in `.ark/.state.toml`.
+    #[arg(long)]
+    slug: Option<String>,
+    /// Commit message. Required unless `--no-commit` is set.
+    #[arg(short = 'm', long = "message")]
+    message: Option<String>,
+    /// Skip git commit + journal write; deep tier still extracts SPEC and the
+    /// phase still flips to Committed.
+    #[arg(long = "no-commit", default_value_t = false)]
+    no_commit: bool,
+}
+
+#[derive(clap::Args)]
+struct TaskArchiveCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug. Defaults to this session's focused task in `.ark/.state.toml`.
+    #[arg(long)]
+    slug: Option<String>,
+    /// `YYYY-MM` archive bucket. Defaults to the task's own `committed_at`
+    /// month — set explicitly only to override historical placement.
+    #[arg(long)]
+    month: Option<String>,
 }
 
 #[derive(clap::Args)]
@@ -323,12 +359,27 @@ impl TaskCommand {
             Self::Review(a) => run_phase(a, task_review)?,
             Self::Execute(a) => run_phase(a, task_execute)?,
             Self::Verify(a) => run_phase(a, task_verify)?,
+            Self::Commit(a) => {
+                let root = a.target.resolve();
+                let slug = resolve_slug(&root, a.slug)?;
+                render(task_commit(TaskCommitOptions {
+                    project_root: root,
+                    slug,
+                    message: a.message,
+                    no_commit: a.no_commit,
+                })?);
+            }
             Self::Archive(a) => {
                 let root = a.target.resolve();
                 let slug = resolve_slug(&root, a.slug)?;
-                render(task_archive(TaskArchiveOptions {
+                let archive_month = match a.month {
+                    Some(m) => m,
+                    None => derive_archive_month(&root, &slug)?,
+                };
+                render(task_archive_move(TaskArchiveMoveOptions {
                     project_root: root,
                     slug,
+                    archive_month,
                 })?);
             }
             Self::Resume(a) => {
@@ -439,4 +490,22 @@ fn resolve_slug(root: &Path, explicit: Option<String>) -> anyhow::Result<String>
         }
         .into()),
     }
+}
+
+/// Reads the slug's `task.toml` and returns its `committed_at` month as `YYYY-MM`.
+///
+/// Used by `ark agent task archive` when `--month` is omitted so the archive
+/// bucket always reflects the task's *commit* time, not the archive run's
+/// wall clock. Errors with `CommittedAtMissing` if the task is in
+/// `Committed` phase but has no `committed_at` field.
+fn derive_archive_month(root: &Path, slug: &str) -> anyhow::Result<String> {
+    let layout = Layout::new(root);
+    let task_dir = layout.task_dir(slug);
+    let toml = TaskToml::load(&task_dir)?;
+    let when = toml
+        .committed_at
+        .ok_or_else(|| ark_core::Error::CommittedAtMissing {
+            slug: slug.to_string(),
+        })?;
+    Ok(when.format("%Y-%m").to_string())
 }
