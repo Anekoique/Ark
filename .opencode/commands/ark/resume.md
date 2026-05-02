@@ -4,7 +4,7 @@ description: Switch this session's focused task to an existing active slug. Idem
 
 # `/ark:resume $ARGUMENTS`
 
-Claim an existing active task as **this session's focused task**. After this, slug-less commands like `/ark:archive` resolve to the resumed slug.
+Claim an existing active task as **this session's focused task**. After this, slug-less commands like `/ark:commit` resolve to the resumed slug.
 
 ## Preconditions
 
@@ -31,7 +31,7 @@ This single command:
 
 ### 3. Report to user
 
-Confirm the new focus in one line. Mention any next step that depends on focus (e.g. "now `/ark:archive` will close out `<slug>`").
+Confirm the new focus in one line. Mention any next step that depends on focus (e.g. "now `/ark:commit` will close out `<slug>`").
 
 ## Failure modes
 

@@ -1,33 +1,30 @@
 
 [**Goals**]
 
-- G-1: A single per-checkout `.ark/.state.toml` file carries identity, the active-task set, and a per-session focus map. Truth still lives in `.ark/tasks/<slug>/task.toml`; the state file is an index reconciled (two-way: add + drop + prune-sessions) on every read.
+- G-1: A single per-checkout `.ark/.state.toml` file carries the active-task set and a per-session focus map. Truth still lives in `.ark/tasks/<slug>/task.toml`; the state file is an index reconciled (two-way: add + drop + prune-sessions) on every read.
 - G-2: Concurrent CLI invocations from independent shells in the same `.ark/` each get an independent `[sessions.<uuid>]` entry and an independent focused task. No session can clobber another's focus.
 - G-3: Two new agent ops — `ark agent task resume <slug>` and `ark agent task discard <slug>` — extend the agent task verb set (extends `ark-agent-namespace` SPEC G-3).
-- G-4: The identity API (`read_developer_name`, `require_developer_name`, `write_developer_file` in `commands/agent/workspace/identity.rs`) preserves its public signatures; bodies delegate to the new state-file API. The 4 existing call sites are unchanged.
-- G-5: Legacy `.ark/.developer` and `.ark/tasks/.current` are auto-migrated on the first state-file mutation and then deleted. The reader tolerates either layout indefinitely so a pure read in a not-yet-migrated install does not change the on-disk state.
-- G-6: State-file mutations are atomic across crash *and* across concurrent CLI invocations on Linux, macOS, and Windows. Crash mid-write leaves no partial `.state.toml`. Concurrent writers serialize via an OS-level file lock with bounded backoff.
-- G-7: Dead sessions are pruned transparently on the next state read (in-memory; persisted on the next mutation). A session is "dead" when its temp-dir cache file is missing or mismatched. Pruning lives in `state_file::reconcile`, called via `session::cache::cache_matches` predicate.
-- G-8: `task new` warns (does not refuse) when there are other active tasks before the new one is appended. The warn check excludes the just-created slug (added to `active` by the prior two-way reconcile pass). First task is silent; second distinct task warns.
-- G-9: Each git worktree's `.ark/` owns its own `.state.toml`. `task new --worktree` writes only to the worktree's state file. `task worktree list` and `task worktree cleanup` enumerate via each worktree's `state.tasks.active`, **not** via session focus.
-- G-10: `--slug`-less commands resolve to *this session's* focused slug. With no focus, return `Error::NoCurrentTask`.
-- G-11: `task discard <slug>` refuses without `--force` when seeded files (PRD/PLAN/etc.) differ from their templates. Always refuses if the task is already archived.
-- G-12: `.ark/.state.toml`, `.ark/.state.toml.lock`, and any `.ark/.state.toml.tmp.*` orphan files are skipped by `unload.rs` in both walk sites. Identity stays per-machine and is never captured into `.ark.db`. Active task state is recoverable on `load` via two-way reconcile.
-- G-13: Cross-platform parent-id via the `Ppid` trait. Production `RealPpid` delegates to a `cfg`-gated shim: Unix uses `std::os::unix::process::parent_id`; Windows uses `windows-sys`'s `CreateToolhelp32Snapshot` + `Process32FirstW`/`Process32NextW`. Failure on Windows returns the calling process's own PID (`std::process::id()`). Tests use `StubPpid(u32)` for deterministic injection.
-- G-14: Deep-tier archive remains rename-first to preserve SPEC promotion durability. `state_mutate` cleanup runs AFTER rename and after SPEC promotion. If cleanup fails, two-way reconcile recovers state-file integrity on next read; SPEC files stay correct (the slug they reference IS archived).
+- G-4: Legacy `.ark/tasks/.current` is auto-migrated on the first state-file mutation and then deleted. The reader tolerates either layout indefinitely so a pure read in a not-yet-migrated install does not change the on-disk state.
+- G-5: State-file mutations are atomic across crash *and* across concurrent CLI invocations on Linux, macOS, and Windows. Crash mid-write leaves no partial `.state.toml`. Concurrent writers serialize via an OS-level file lock with bounded backoff.
+- G-6: Dead sessions are pruned transparently on the next state read (in-memory; persisted on the next mutation). A session is "dead" when its temp-dir cache file is missing or mismatched. Pruning lives in `state_file::reconcile`, called via `session::cache::cache_matches` predicate.
+- G-7: `task new` warns (does not refuse) when there are other active tasks before the new one is appended. The warn check excludes the just-created slug (added to `active` by the prior two-way reconcile pass). First task is silent; second distinct task warns.
+- G-8: Each git worktree's `.ark/` owns its own `.state.toml`. `task new --worktree` writes only to the worktree's state file. `task worktree list` and `task worktree cleanup` enumerate via each worktree's `state.tasks.active`, **not** via session focus.
+- G-9: `--slug`-less commands resolve to *this session's* focused slug. With no focus, return `Error::NoCurrentTask`.
+- G-10: `task discard <slug>` refuses without `--force` when seeded files (PRD/PLAN/etc.) differ from their templates. Always refuses if the task is already archived.
+- G-11: `.ark/.state.toml`, `.ark/.state.toml.lock`, and any `.ark/.state.toml.tmp.*` orphan files are skipped by `unload.rs` in both walk sites. Active task state is recoverable on `load` via two-way reconcile.
+- G-12: Cross-platform parent-id via the `Ppid` trait. Production `RealPpid` delegates to a `cfg`-gated shim: Unix uses `std::os::unix::process::parent_id`; Windows uses `windows-sys`'s `CreateToolhelp32Snapshot` + `Process32FirstW`/`Process32NextW`. Failure on Windows returns the calling process's own PID (`std::process::id()`). Tests use `StubPpid(u32)` for deterministic injection.
+- G-13: Deep-tier archive remains rename-first to preserve SPEC promotion durability. `state_mutate` cleanup runs AFTER rename and after SPEC promotion. If cleanup fails, two-way reconcile recovers state-file integrity on next read; SPEC files stay correct (the slug they reference IS archived).
 
 - NG-1: Workflow-phase model changes — ROADMAP item #2.
 - NG-2: SessionStart hook integration.
 - NG-3: Explicit `session end` / `session list` ops.
 - NG-4: Cross-host coordination (NFS-shared `.ark/`).
 - NG-5: Heartbeats / `last_seen` timestamps.
-- NG-6: Identity rename.
-- NG-7: Removal of `Layout::tasks_current()` / `Layout::developer_file()` accessors.
-- NG-8: Multi-task focus per session.
-- NG-9: Capturing `.state.toml` into `.ark.db` snapshots.
-- NG-10: `ark upgrade` migration step.
-- NG-11: A pure-Rust Windows process-tree walker without `windows-sys`.
-- NG-12: A test-only mutable-global session-provider override (e.g. `thread_local!`). The trait+stub approach (T-9) is preferred.
+- NG-6: Multi-task focus per session.
+- NG-7: Capturing `.state.toml` into `.ark.db` snapshots.
+- NG-8: `ark upgrade` migration step.
+- NG-9: A pure-Rust Windows process-tree walker without `windows-sys`.
+- NG-10: A test-only mutable-global session-provider override (e.g. `thread_local!`). The trait+stub approach (T-9) is preferred.
 
 [**Architecture**]
 
@@ -37,7 +34,7 @@ New module tree under `crates/ark-core/src/`:
 crates/ark-core/src/
 ├── state_file/                        (NEW)
 │   ├── mod.rs                         pub use; invariants doc
-│   ├── model.rs                       StateFile, Identity, Tasks, Session + serde
+│   ├── model.rs                       StateFile, Tasks, Session + serde
 │   ├── io.rs                          load_state, state_mutate, lock acquire/release, atomic write
 │   ├── reconcile.rs                   two-way: add_missing + drop_stale + prune_dead_sessions
 │   └── migrate.rs                     synthesize_from_legacy + delete_legacy_files
@@ -52,8 +49,6 @@ crates/ark-core/src/
 │   ├── new.rs                         MOD: post-reconcile had_other_active filter (C-21)
 │   ├── archive.rs                     MOD: rename-first; state_mutate cleanup after (C-22)
 │   └── mod.rs                         MOD: pub mod resume; pub mod discard;
-├── commands/agent/workspace/
-│   └── identity.rs                    MOD: bodies delegate to state_file
 ├── commands/context/gather.rs         MOD: focused slug via state_file (this session only)
 ├── commands/agent/task/worktree/
 │   ├── discovery.rs                   MOD: enumerate via state.tasks.active per worktree
@@ -82,7 +77,6 @@ state_file → io::PathExt, io::hash_bytes, layout, error, session::cache (cache
 session    → io::PathExt, io::hash_bytes, layout, error
                                      (LEAF: does NOT import state_file)
 commands/agent/task/{new,archive,resume,discard} → state_file, session, state (existing TaskToml)
-commands/agent/workspace/identity → state_file
 commands/context/gather → state_file, session (this session's focus)
 commands/agent/task/worktree/{discovery,list} → state_file
 commands/unload → state_file (path constants only)
@@ -139,7 +133,6 @@ task_archive(opts)
   │     }
   │     Ok(())
   │   })?
-  └── record_task(...)?                               // (5) workspace bridge (unchanged)
 ```
 
 Failure recovery for step (4): if state_mutate fails after (1)-(3) succeed, the next `load_state` runs reconcile: (a) add-pass enumerates `.ark/tasks/` (excluding `archive/`), so the archived task is NOT re-added; (b) drop-pass removes the slug from any stale `state.tasks.active` entry because no `tasks/<slug>/task.toml` exists anymore. State integrity is restored. SPEC files and INDEX.md correctly reference an archived task. No corruption.
@@ -164,23 +157,14 @@ worktree_list()
 // crates/ark-core/src/state_file/model.rs
 
 use std::collections::BTreeMap;
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StateFile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub identity: Option<Identity>,
     #[serde(default)]
     pub tasks: Tasks,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub sessions: BTreeMap<String, Session>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Identity {
-    pub name: String,
-    pub initialized_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -265,7 +249,7 @@ Library re-exports added to `crates/ark-core/src/lib.rs`:
 
 ```rust
 pub use state_file::{
-    Identity, Session, StateFile,
+    Session, StateFile,
     load_state, state_mutate,
     reconcile::{prune_dead_sessions, reconcile_against_disk},
 };
@@ -314,7 +298,7 @@ pub fn task_discard(opts: TaskDiscardOptions) -> Result<TaskDiscardSummary>;
 
 The two task-op entry points (`task_resume`, `task_discard`, plus existing `task_new`/`task_archive`) construct `RealPpid` internally as a default. A follow-up could thread a `Ppid` argument through `*Options` for advanced testing, but that is not required for this task — integration tests construct `RealPpid` and rely on the OS PPID being stable within one test process; unit tests in `state_file::*` and `session::cache::*` exercise the Ppid trait directly via `StubPpid`.
 
-Identity API and CLI subcommand additions are unchanged from PLAN 01.
+CLI subcommand additions are unchanged from PLAN 01.
 
 [**Constraints**]
 
@@ -325,7 +309,7 @@ Identity API and CLI subcommand additions are unchanged from PLAN 01.
 - C-5: Cache file naming: `<temp_dir>/ark-session-<project_hash>-<ppid>.id`. PPID source is the `Ppid` trait passed at the call site.
 - C-6: No `.unwrap()` in production code. Single allowed `.expect("StateFile serializes")` mirrors `TaskToml::save`.
 - C-7: All filesystem access in `state_file/`, `session/`, and the new task ops routes through `io::PathExt`.
-- C-8: All `.ark/`-relative paths route through `Layout` helpers. New constants: `STATE_FILE`, `STATE_LOCK_FILE`. New accessors: `Layout::state_file()`, `Layout::state_lock_file()`. Legacy `tasks_current()` / `developer_file()` accessors kept for migration.
+- C-8: All `.ark/`-relative paths route through `Layout` helpers. New constants: `STATE_FILE`, `STATE_LOCK_FILE`. New accessors: `Layout::state_file()`, `Layout::state_lock_file()`. The legacy `tasks_current()` accessor is kept for migration.
 - C-9: Reconcile drops a `tasks.active` entry when the corresponding `task.toml` is missing OR `phase == Archived`. Drops a `sessions.*` entry when its slug-focus is no longer in `tasks.active` after the active reconcile.
 - C-10: Session pruning (in `state_file::reconcile::prune_dead_sessions`) drops a `sessions.*` entry when `cache_matches(layout, session.pid, session_id) == false`.
 - C-11: A read (`load_state`) does NOT delete legacy files. Migration's delete step happens only on the next successful `state_mutate` save.
@@ -335,7 +319,7 @@ Identity API and CLI subcommand additions are unchanged from PLAN 01.
 - C-15: `[tasks].active` is sorted+deduped on every save.
 - C-16: No SessionStart hook integration.
 - C-17: Each worktree's state file is independent.
-- C-18: `unload.rs` skip set in BOTH walk sites: `[cfg.resolve_worktrees_dir(&layout), layout.state_file(), layout.state_lock_file(), layout.developer_file()]`. `walk_files_excluding` extended to skip `.state.toml.tmp.*` orphans under `<root>/.ark/`.
+- C-18: `unload.rs` skip set in BOTH walk sites: `[cfg.resolve_worktrees_dir(&layout), layout.state_file(), layout.state_lock_file()]`. `walk_files_excluding` extended to skip `.state.toml.tmp.*` orphans under `<root>/.ark/`.
 - C-19: `state_file::reconcile::reconcile_against_disk` runs in this order: (1) enumerate `.ark/tasks/<slug>/task.toml` excluding `archive/`; for each found slug whose `phase != Archived`, push to `state.tasks.active` if not already present; (2) drop `state.tasks.active` entries whose `task.toml` is missing or `phase == Archived`; (3) sort+dedup active per C-15; (4) drop `state.sessions.*` entries whose `focus` is no longer in active; (5) `prune_dead_sessions(layout, state)` removes sessions whose cache file is missing/mismatched. Order matters: add must precede drop so a brief inconsistent state never collapses an active slug; prune-sessions must come last so newly-inactive sessions (from step 4) are pruned in the same pass.
 - C-20: `RealPpid::parent_id()` on Windows returns the calling process's own PID (`std::process::id()`) when toolhelp snapshot creation or walk fails. Unix path has no failure mode.
 - C-21 (NEW per R-002): `task_new`'s `state_mutate` closure computes `had_other_active = state.tasks.active.iter().any(|s| s != &opts.slug)` AFTER reconcile (which may have added the just-created slug). Warn iff `had_other_active`. The push is guarded: `if !state.tasks.active.contains(&opts.slug) { state.tasks.active.push(opts.slug.clone()) }`. C-15's sort+dedup is the belt-and-braces second line; C-21's contains-check is the user-visible-correctness first line.

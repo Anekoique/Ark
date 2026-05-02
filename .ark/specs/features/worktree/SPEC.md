@@ -1,7 +1,7 @@
 
 [**Goals**]
 
-- **G-1:** New project-tracked file `.ark/worktree.toml` (TOML, parsed via the `toml` crate) carrying four keys, all optional with defaults: `worktree_dir = ".ark/worktrees"`, `branch_prefix = "feat"`, `copy = []`, `post_create = []`. Missing file is not an error — defaults apply. Created with documented defaults by `ark init`, never overwritten by `ark upgrade` (per C-9). Singular name (`worktree.toml`, not `workspace.toml`) reserves `workspace` for a future per-developer journal feature.
+- **G-1:** New project-tracked file `.ark/worktree.toml` (TOML, parsed via the `toml` crate) carrying four keys, all optional with defaults: `worktree_dir = ".ark/worktrees"`, `branch_prefix = "feat"`, `copy = []`, `post_create = []`. Missing file is not an error — defaults apply. Created with documented defaults by `ark init`, never overwritten by `ark upgrade` (per C-9).
 
 - **G-2:** Worktree creation is bound to `task new`, not exposed as a separate subcommand. The CLI flag `task new --slug <s> --tier <t> --worktree [--branch-type <t>] [--branch <full>]` is the *sole* path that creates a worktree. The flag is opt-in for every tier; `task new` without `--worktree` is unchanged. Two `task worktree` subcommands exist for post-creation lifecycle: `cleanup` and `list`.
 
@@ -53,7 +53,7 @@
 
 [**Non-goals**]
 
-- **NG-1:** No per-developer workspace dir, no journals, no developer identity. Reserved for a follow-up `workspace-support` task.
+- **NG-1:** No per-developer state outside the worktree's own `.ark/`.
 - **NG-2:** No agent process supervision. The user `cd`s into the worktree and runs their own AI agent.
 - **NG-3:** No registry of running PIDs.
 - **NG-4:** No automatic worktree creation. `--worktree` is opt-in for all tiers.

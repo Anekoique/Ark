@@ -24,7 +24,7 @@
 Non-goals:
 
 - **NG-1:** No mutation. `ark context` is read-only; no `--write`, no state transitions, no file creation.
-- **NG-2:** No multi-developer / assignee / journal concepts.
+- **NG-2:** No multi-developer / assignee concepts.
 - **NG-3:** No monorepo / sub-repo aggregation.
 - **NG-4:** No deep git history beyond the last 5 one-line commits. `git log` is still the tool for that.
 - **NG-5:** No cross-task search (`ark search` is reserved for a future phase).

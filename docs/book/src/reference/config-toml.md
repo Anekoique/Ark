@@ -10,17 +10,13 @@ worktree_dir = ".ark/worktrees"
 branch_prefix = "feat"
 copy = []
 post_create = []
-
-[workspace]
-journal_max_lines = 2000
-auto_record_on_archive = true
 ```
 
 ## Lifecycle
 
-Created by `ark init` from the embedded template. **Never overwritten by `ark upgrade`** — your edits to `[worktree]` and `[workspace]` settings persist across CLI updates. To pick up a new default that ships in a later Ark version, edit your `config.toml` by hand.
+Created by `ark init` from the embedded template. **Never overwritten by `ark upgrade`** — your edits to `[worktree]` settings persist across CLI updates. To pick up a new default that ships in a later Ark version, edit your `config.toml` by hand.
 
-If the file is missing entirely (e.g. the project predates this config), every section falls through to its default. If a specific `[section]` is absent, that feature uses defaults. If the file exists but is malformed TOML, the next operation that needs a config (e.g. `ark agent task new --worktree`) errors with `WorktreeConfigCorrupt` or `WorkspaceConfigCorrupt`.
+If the file is missing entirely (e.g. the project predates this config), every section falls through to its default. If a specific `[section]` is absent, that feature uses defaults. If the file exists but is malformed TOML, the next operation that needs a config (e.g. `ark agent task new --worktree`) errors with `WorktreeConfigCorrupt`.
 
 ## `[worktree]`
 
@@ -37,17 +33,6 @@ If the file is missing entirely (e.g. the project predates this config), every s
 
 **`post_create` semantics.** Each command runs via `sh -c <cmd>` with cwd set to the new worktree. Stdout/stderr inherit. The first non-zero exit aborts the rest of the list and rolls back the worktree dir (`git worktree remove --force`).
 
-## `[workspace]`
-
-| Field                     | Type   | Default | Description                                                                                       |
-| ------------------------- | ------ | ------- | ------------------------------------------------------------------------------------------------- |
-| `journal_max_lines`       | u32    | `2000`  | Lines per journal file before rotation. Must be ≥ 100 (smaller caps cause index re-render to thrash). |
-| `auto_record_on_archive`  | bool   | `true`  | When `false`, `task archive` skips workspace auto-record entirely.                                 |
-
-**Validation.** `journal_max_lines < 100` → `InvalidConfigField` with `field = "journal_max_lines"`.
-
-**`auto_record_on_archive = false` semantics.** `task archive` returns `SkippedDisabled` without reading `.ark/.developer` or invoking `git log`. Use this if you've initialized a developer for some other purpose but don't want auto-records — e.g. you prefer to record only via explicit `/ark:record`.
-
 ## Examples
 
 ```toml
@@ -55,11 +40,6 @@ If the file is missing entirely (e.g. the project predates this config), every s
 [worktree]
 copy = [".env"]
 post_create = ["cargo build"]
-
-# Tighter rotation; record only when explicit.
-[workspace]
-journal_max_lines = 500
-auto_record_on_archive = false
 ```
 
 ## Adding a new section

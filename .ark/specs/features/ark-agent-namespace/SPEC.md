@@ -9,7 +9,7 @@
 - G-7: Archival is user-invoked via the `/ark:archive` slash command. `/ark:design` and `/ark:quick` stop at VERIFY (or EXECUTE for quick tier) and never archive automatically.
 - G-8: Update the shipped slash commands and workflow doc to reference `ark agent` commands in place of raw `mkdir`/`cp`/`echo`/manual-TOML recipes, kept in lockstep across both embedded templates and the live repo's copies.
 
-- NG-1: No workspace/journal/identity subcommands. Reserved for a follow-up task.
+- NG-1: No identity / multi-developer subcommands.
 - NG-2: No git or GitHub operations. The agent uses `git`/`gh` directly.
 - NG-3: No content-generating commands. Content (PRD prose, PLAN sections, REVIEW verdicts) is the agent's judgment; `ark agent` owns only structural mutation.
 - NG-4: No generic `ark agent set <k>=<v>` TOML editor. Every mutation is a named command.

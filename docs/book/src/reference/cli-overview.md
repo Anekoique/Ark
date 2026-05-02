@@ -2,20 +2,21 @@
 
 The `ark` binary has two visible top-level commands:
 
-| Command       | What it does                                                                     |
-| ------------- | -------------------------------------------------------------------------------- |
-| `ark init`    | Scaffold `.ark/` and per-platform integrations from embedded templates.          |
-| `ark load`    | Restore from `.ark.db` snapshot, or scaffold like `init` if no snapshot exists.   |
-| `ark unload`  | Snapshot everything under `.ark/` + managed blocks + Ark hooks into `.ark.db`.    |
-| `ark remove`  | Wipe Ark fully: `.ark/`, platform dirs, managed blocks, `.ark.db`, hooks.         |
-| `ark upgrade` | Refresh embedded templates to the current CLI version.                           |
-| `ark context` | Print a structured snapshot of git + `.ark/` workflow state. Read-only.          |
+| Command       | What it does                                                                                         |
+| ------------- | ---------------------------------------------------------------------------------------------------- |
+| `ark init`    | Scaffold `.ark/` and per-platform integrations from embedded templates.                              |
+| `ark load`    | Restore from `.ark.db` snapshot, or scaffold like `init` if no snapshot exists.                      |
+| `ark unload`  | Snapshot everything under `.ark/` + managed blocks + Ark hooks into `.ark.db`.                       |
+| `ark remove`  | Wipe Ark fully: `.ark/`, platform dirs, managed blocks, `.ark.db`, hooks.                            |
+| `ark upgrade` | Refresh embedded templates to the current CLI version.                                               |
+| `ark context` | Print a structured snapshot of git + `.ark/` workflow state. Read-only.                              |
+| `ark archive` | Bulk-move every `phase = Committed` task into its `committed_at` month bucket. Manager-only.         |
 
 Plus one hidden internal command:
 
-| Command     | Purpose                                                                              |
-| ----------- | ------------------------------------------------------------------------------------ |
-| `ark agent` | Task lifecycle, spec management, workspace journaling. **Not semver-stable.**        |
+| Command     | Purpose                                                            |
+| ----------- | ------------------------------------------------------------------ |
+| `ark agent` | Task lifecycle and spec management. **Not semver-stable.**         |
 
 ## Stability policy
 

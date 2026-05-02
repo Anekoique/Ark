@@ -1,8 +1,7 @@
-//! `.ark/.state.toml` model: identity, active task slugs, per-session focus.
+//! `.ark/.state.toml` model: active task slugs, per-session focus.
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Per-checkout state index.
@@ -11,10 +10,6 @@ use serde::{Deserialize, Serialize};
 /// against that truth on every read by `state::checkout::reconcile`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StateFile {
-    /// Developer identity, when set.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub identity: Option<Identity>,
-
     /// Active (non-archived) task slugs.
     #[serde(default)]
     pub tasks: Tasks,
@@ -24,15 +19,6 @@ pub struct StateFile {
     /// `BTreeMap` for stable serialization order across writes.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub sessions: BTreeMap<String, Session>,
-}
-
-/// Per-checkout developer identity.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Identity {
-    /// Developer name. Validated by `workspace::identity::validate_developer_name`.
-    pub name: String,
-    /// Timestamp the identity was first written.
-    pub initialized_at: DateTime<Utc>,
 }
 
 /// Active task slugs.

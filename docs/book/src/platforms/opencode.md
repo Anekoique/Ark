@@ -9,8 +9,7 @@
 ├── commands/ark/
 │   ├── quick.md          # /ark:quick $ARGUMENTS
 │   ├── design.md         # /ark:design [--deep] $ARGUMENTS
-│   ├── archive.md        # /ark:archive
-│   └── record.md         # /ark:record [<title>]
+│   └── commit.md         # /ark:commit
 └── plugins/
     └── ark-context.ts    # injects `ark context` output as additionalContext
 

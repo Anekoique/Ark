@@ -13,7 +13,7 @@
 - [Tiers](./workflow/tiers.md)
 - [Lifecycle](./workflow/lifecycle.md)
 - [Specs](./workflow/specs.md)
-- [Worktrees and Workspaces](./workflow/worktrees-and-workspaces.md)
+- [Worktrees](./workflow/worktrees.md)
 
 # Reference
 

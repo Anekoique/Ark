@@ -9,8 +9,7 @@
 ├── skills/
 │   ├── ark-quick/SKILL.md
 │   ├── ark-design/SKILL.md
-│   ├── ark-archive/SKILL.md
-│   └── ark-record/SKILL.md
+│   └── ark-commit/SKILL.md
 ├── config.toml           # Codex hook config
 └── hooks.json            # Ark's SessionStart hook entry
 
@@ -101,7 +100,7 @@ A Codex-only project has an `AGENTS.md` but no `CLAUDE.md`; a both-platforms pro
 ```bash
 ark init --no-codex                # Claude only
 ark init --no-claude               # Codex only
-ark init                           # interactive prompt (TTY) or all platforms (with --no-developer non-TTY)
+ark init                           # interactive prompt (TTY) or all platforms (non-TTY)
 ```
 
 A Claude-only project upgraded with a CLI version that knows about Codex stays Claude-only — `ark upgrade` does not silently install Codex artifacts. Run `ark init --codex` (additive, idempotent) to opt into Codex on an already-installed project.

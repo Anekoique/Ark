@@ -7,11 +7,10 @@ use std::path::{Path, PathBuf};
 use ark_core::{
     Layout, RealPpid, SpecExtractOptions, SpecRegisterOptions, TaskArchiveMoveOptions,
     TaskCommitOptions, TaskDiscardOptions, TaskNewOptions, TaskNewWorktree, TaskPhaseOptions,
-    TaskPromoteOptions, TaskResumeOptions, TaskToml, Tier, WorkspaceInitOptions,
-    WorkspaceRecordOptions, WorktreeCleanupOptions, WorktreeListOptions, load_state,
-    resolve_session_id, spec_extract, spec_register, task_archive_move, task_commit, task_discard,
-    task_execute, task_new, task_plan, task_promote, task_resume, task_review, task_verify,
-    workspace_init, workspace_record, worktree_cleanup, worktree_list,
+    TaskPromoteOptions, TaskResumeOptions, TaskToml, Tier, WorktreeCleanupOptions,
+    WorktreeListOptions, load_state, resolve_session_id, spec_extract, spec_register,
+    task_archive_move, task_commit, task_discard, task_execute, task_new, task_plan, task_promote,
+    task_resume, task_review, task_verify, worktree_cleanup, worktree_list,
 };
 use chrono::NaiveDate;
 use clap::Subcommand;
@@ -30,8 +29,6 @@ enum AgentCommand {
     Task(TaskArgs),
     /// Feature-SPEC operations.
     Spec(SpecArgs),
-    /// Workspace (per-developer session journal) operations.
-    Workspace(WorkspaceCliArgs),
 }
 
 #[derive(clap::Args)]
@@ -249,46 +246,6 @@ struct SpecRegisterCliArgs {
     date: Option<String>,
 }
 
-#[derive(clap::Args)]
-struct WorkspaceCliArgs {
-    #[command(subcommand)]
-    command: WorkspaceSubcommand,
-}
-
-#[derive(Subcommand)]
-enum WorkspaceSubcommand {
-    /// Initialize developer identity (alternative to `ark init --developer <x>`).
-    /// Use this on already-installed projects, for idempotent re-init, or when
-    /// `ark init` was run with `--no-developer`.
-    Init(WorkspaceInitCliArgs),
-    /// Append a session entry to the developer's active journal.
-    Record(WorkspaceRecordCliArgs),
-}
-
-#[derive(clap::Args)]
-struct WorkspaceInitCliArgs {
-    #[command(flatten)]
-    target: TargetArgs,
-    /// Developer name (1-40 chars, leading letter, then `[A-Za-z0-9_-]`).
-    #[arg(long)]
-    name: String,
-}
-
-#[derive(clap::Args)]
-struct WorkspaceRecordCliArgs {
-    #[command(flatten)]
-    target: TargetArgs,
-    /// Session title.
-    #[arg(long)]
-    title: Option<String>,
-    /// Session summary body.
-    #[arg(long)]
-    summary: Option<String>,
-    /// Newline-separated next steps (leading `- ` is stripped).
-    #[arg(long)]
-    next: Option<String>,
-}
-
 fn parse_tier(s: &str) -> Result<Tier, String> {
     match s {
         "quick" => Ok(Tier::Quick),
@@ -305,32 +262,7 @@ impl AgentArgs {
         match self.command {
             AgentCommand::Task(a) => a.command.dispatch(),
             AgentCommand::Spec(a) => a.command.dispatch(),
-            AgentCommand::Workspace(a) => a.command.dispatch(),
         }
-    }
-}
-
-impl WorkspaceSubcommand {
-    fn dispatch(self) -> anyhow::Result<()> {
-        match self {
-            Self::Init(a) => {
-                let root = a.target.resolve();
-                render(workspace_init(WorkspaceInitOptions {
-                    project_root: root,
-                    name: a.name,
-                })?);
-            }
-            Self::Record(a) => {
-                let root = a.target.resolve();
-                render(workspace_record(WorkspaceRecordOptions {
-                    project_root: root,
-                    title: a.title,
-                    summary: a.summary,
-                    next: a.next,
-                })?);
-            }
-        }
-        Ok(())
     }
 }
 

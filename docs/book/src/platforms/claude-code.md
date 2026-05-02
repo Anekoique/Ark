@@ -9,8 +9,7 @@
 ├── commands/ark/
 │   ├── quick.md          # /ark:quick $ARGUMENTS
 │   ├── design.md         # /ark:design [--deep] $ARGUMENTS
-│   ├── archive.md        # /ark:archive
-│   └── record.md         # /ark:record [<title>]
+│   └── commit.md         # /ark:commit
 └── settings.json         # contains Ark's SessionStart hook entry
 
 CLAUDE.md                 # managed block pointing at .ark/
@@ -20,12 +19,11 @@ The `.claude/commands/ark/` files are slash-command bodies. Each one carries Cla
 
 ## Slash commands
 
-| Command         | Trigger                            | What it does                                                                  |
-| --------------- | ---------------------------------- | ----------------------------------------------------------------------------- |
-| `/ark:quick`    | Any message starting with this     | Quick-tier flow: PRD → execute → user invokes archive.                        |
-| `/ark:design`   | `/ark:design [--deep] <title>`     | Standard-tier flow (or deep with `--deep`): PRD → PLAN → review → execute → verify. |
-| `/ark:archive`  | `/ark:archive`                     | Close out the current task. On deep tier, promotes SPEC.                      |
-| `/ark:record`   | `/ark:record [<title>]`            | Append a manual session entry to the workspace journal.                       |
+| Command        | Trigger                        | What it does                                                                                                                |
+| -------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `/ark:quick`   | Any message starting with this | Quick-tier flow: PRD → execute → user invokes commit.                                                                       |
+| `/ark:design`  | `/ark:design [--deep] <title>` | Standard-tier flow (or deep with `--deep`): PRD → PLAN → review → execute → verify.                                         |
+| `/ark:commit`  | `/ark:commit`                  | Atomically close the current task in a single git commit. On deep tier, promotes SPEC.                                      |
 
 Each command body starts by calling `ark context --scope phase --for <phase> --format json` to orient itself, then guides the agent through the rest of the phase.
 

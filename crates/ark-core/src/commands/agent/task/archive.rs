@@ -2,7 +2,7 @@
 //!
 //! After the workflow refactor, archive is **side-effect-free**: it performs
 //! only directory rename + `task.toml` phase update + state-file cleanup.
-//! SPEC promotion and journal recording happen earlier, in `task_commit`,
+//! SPEC promotion happens earlier, in `task_commit`,
 //! and live in the task-closing commit. Bulk archive (`ark archive`,
 //! top-level CLI) iterates this helper across every `phase = Committed`
 //! task.
@@ -58,7 +58,7 @@ impl fmt::Display for TaskArchiveMoveSummary {
 
 /// Moves a committed task into `tasks/archive/<archive_month>/<slug>/`.
 ///
-/// Performs no SPEC promotion or workspace journal write — those happen at
+/// Performs no SPEC promotion — that happens at
 /// `task_commit` time and are already part of the task-closing commit.
 ///
 /// # Errors
@@ -271,33 +271,6 @@ mod tests {
         })
         .unwrap_err();
         assert!(matches!(err, Error::IllegalPhaseTransition { .. }));
-    }
-
-    /// Verifies that archive does not write anything to the workspace journal.
-    ///
-    /// The journal entry is the responsibility of `task_commit`; bulk archive
-    /// (and this single-slug helper) must not touch it.
-    #[test]
-    fn archive_writes_no_journal_entry() {
-        use crate::commands::agent::workspace::init::{WorkspaceInitOptions, workspace_init};
-        let tmp = tempfile::tempdir().unwrap();
-        workspace_init(WorkspaceInitOptions {
-            project_root: tmp.path().to_path_buf(),
-            name: "alice".into(),
-        })
-        .unwrap();
-        let layout = Layout::new(tmp.path());
-        let journal_path = layout.workspace_journal("alice", 1);
-        let pre_bytes = journal_path.read_bytes().unwrap();
-        standard_at_committed(tmp.path());
-        task_archive_move(TaskArchiveMoveOptions {
-            project_root: tmp.path().to_path_buf(),
-            slug: "demo".into(),
-            archive_month: "2026-05".into(),
-        })
-        .unwrap();
-        let post_bytes = journal_path.read_bytes().unwrap();
-        assert_eq!(pre_bytes, post_bytes, "archive must not touch the journal");
     }
 
     /// Verifies that archive does not promote a SPEC.

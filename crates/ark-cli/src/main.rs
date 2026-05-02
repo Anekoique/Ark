@@ -97,17 +97,6 @@ struct InitArgs {
     /// Skip OpenCode integration.
     #[arg(long = "no-opencode")]
     no_opencode: bool,
-    /// Bootstraps workspace identity at init time.
-    ///
-    /// Mutually exclusive with `--no-developer`. The name is validated by
-    /// the workspace identity helper.
-    #[arg(long, conflicts_with = "no_developer")]
-    developer: Option<String>,
-    /// Skips workspace identity.
-    ///
-    /// Use `ark agent workspace init --name <x>` later to bootstrap.
-    #[arg(long = "no-developer", conflicts_with = "developer")]
-    no_developer: bool,
 }
 
 /// Stores positive and negative CLI flag state for one platform.
@@ -156,16 +145,6 @@ impl InitArgs {
             anyhow::bail!("init requires at least one platform");
         }
         Ok(resolved)
-    }
-
-    /// Resolves the workspace developer name from CLI flags + TTY state.
-    fn resolve_developer(&self) -> anyhow::Result<Option<String>> {
-        resolve_developer_pure(
-            self.developer.clone(),
-            self.no_developer,
-            std::io::stdin().is_terminal(),
-            interactive_select_developer,
-        )
     }
 }
 
@@ -225,71 +204,6 @@ fn interactive_select_platforms() -> anyhow::Result<Vec<&'static Platform>> {
         }
     }
     Ok(chosen)
-}
-
-/// Resolves the workspace developer name.
-///
-/// Mirrors `resolve_platforms_pure` for testability:
-/// - `--developer <name>` → `Some(name)`.
-/// - `--no-developer` → `None`.
-/// - Neither, TTY → run the interactive prompt.
-/// - Neither, non-TTY → error (mirrors the platform rule).
-fn resolve_developer_pure(
-    explicit: Option<String>,
-    no_dev: bool,
-    is_tty: bool,
-    interactive: impl FnOnce() -> anyhow::Result<Option<String>>,
-) -> anyhow::Result<Option<String>> {
-    if let Some(name) = explicit {
-        return Ok(Some(name));
-    }
-    if no_dev {
-        return Ok(None);
-    }
-    if is_tty {
-        return interactive();
-    }
-    anyhow::bail!(
-        "init requires --developer <name> or --no-developer when stdin is not a TTY (workspace \
-         identity bootstrap)"
-    );
-}
-
-/// Tiny stdin-driven name prompt. `Y` opens a follow-up name read; `n` skips.
-/// Default suggestion is `whoami` output if available.
-fn interactive_select_developer() -> anyhow::Result<Option<String>> {
-    let default_name = std::env::var("USER")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .or_else(|| std::env::var("USERNAME").ok().filter(|s| !s.is_empty()));
-
-    eprint!("  set up workspace identity? [Y/n] ");
-    let mut line = String::new();
-    std::io::stdin().lock().read_line(&mut line).ok();
-    if matches!(line.trim().to_ascii_lowercase().as_str(), "n" | "no") {
-        return Ok(None);
-    }
-
-    // Re-prompt until the user supplies a name (or accepts the default when
-    // present). Without this, a blank line + missing USER/USERNAME would
-    // silently skip identity setup despite the user opting in.
-    let prompt = match &default_name {
-        Some(d) => format!("  developer name [{d}]: "),
-        None => "  developer name: ".to_string(),
-    };
-    loop {
-        eprint!("{prompt}");
-        let mut name = String::new();
-        std::io::stdin().lock().read_line(&mut name).ok();
-        let trimmed = name.trim();
-        if !trimmed.is_empty() {
-            return Ok(Some(trimmed.to_string()));
-        }
-        if let Some(d) = default_name {
-            return Ok(Some(d));
-        }
-        eprintln!("  (name required; type a name or Ctrl-C to abort)");
-    }
 }
 
 #[derive(clap::Args)]
@@ -484,7 +398,6 @@ impl Command {
             Self::Init(a) => {
                 // `init` creates `.ark/`; no walk-up.
                 let platforms = a.resolve_platforms()?;
-                let developer = a.resolve_developer()?;
                 let root = a.target.resolve();
                 let mode = if a.force {
                     WriteMode::Force
@@ -492,12 +405,9 @@ impl Command {
                     WriteMode::Skip
                 };
                 announce("initializing ark in", &root);
-                let mut opts = InitOptions::new(root)
+                let opts = InitOptions::new(root)
                     .with_mode(mode)
                     .with_platforms(platforms);
-                if let Some(name) = developer {
-                    opts = opts.with_developer(name);
-                }
                 render(init(opts)?);
             }
             Self::Load(a) => {

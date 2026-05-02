@@ -4,7 +4,7 @@ An Agent Harness and Development Workflow Designed to Orchestrate AI-driven Prog
 
 Use the simple CLI `ark` to define your AI workflow and manage your coding agent.
 
-> Current status: Ark is experimental and currently only supports Claude Code.
+> Current status: Ark is experimental and some features are unstable.
 
 ## Why Ark ?
 
@@ -24,7 +24,7 @@ Prebuilt binaries ship for macOS, Linux, and Windows on every tagged release.
 npm install -g @anekoique/ark
 ```
 
-### Cargo (requires Rust toolchain)
+### Cargo
 
 ```bash
 cargo install --git https://github.com/Anekoique/ark ark-cli --locked
@@ -76,14 +76,14 @@ See `.ark/workflow.md` for the full workflow.
 
 `ark` has these commands for managing its presence in a project:
 
-| Command       | What it does                                                                     |
-| ------------- | -------------------------------------------------------------------------------- |
-| `ark init`    | Scaffold `.ark/` and Claude Code integration from the embedded templates.        |
-| `ark load`    | Restore from `.ark.db` or init.                                                  |
-| `ark unload`  | Snapshot everything under `.ark/` + managed blocks + Ark hook into `.ark.db`.    |
+| Command       | What it does                                                                       |
+| ------------- | ---------------------------------------------------------------------------------- |
+| `ark init`    | Scaffold `.ark/` and Claude Code integration from the embedded templates.          |
+| `ark load`    | Restore from `.ark.db` or init.                                                    |
+| `ark unload`  | Snapshot everything under `.ark/` + managed blocks + Ark hook into `.ark.db`.      |
 | `ark remove`  | Wipe Ark fully: `.ark/`, `.claude/commands/ark/`, managed blocks, `.ark.db`, hook. |
-| `ark upgrade` | Refresh embedded templates to the current CLI version.                           |
-| `ark context` | Print a snapshot of git + `.ark/` state. Read-only. JSON or text.                |
+| `ark upgrade` | Refresh embedded templates to the current CLI version.                             |
+| `ark context` | Print a snapshot of git + `.ark/` state. Read-only. JSON or text.                  |
 
 ## Inspiration
 

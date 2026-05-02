@@ -17,15 +17,3 @@ copy = []
 # Shell commands run in the worktree directory after creation, in order,
 # aborting on first non-zero exit.
 post_create = []
-
-[workspace]
-# Lines per journal file before rotation (`journal-N.md` -> `journal-{N+1}.md`).
-# Must be >= 100. Default 2000.
-journal_max_lines = 2000
-
-# Whether `ark agent task archive` automatically appends a session entry to
-# the developer's active journal. When `false`, archive is silent and the
-# developer must run `/ark:record` manually if they want a journal entry.
-# Identity must still be initialized via `ark agent workspace init` (or
-# `ark init --developer <name>`) for any auto-record to fire.
-auto_record_on_archive = true

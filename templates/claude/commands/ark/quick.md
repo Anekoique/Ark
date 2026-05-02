@@ -72,20 +72,15 @@ VERIFY checklist; the PRD's Outcome already serves as the acceptance gate.
 
 ### 8. Close the task
 
-Tell the user to run `/ark:commit -m "<message>"`. That single command:
-
-- Flips phase to `Committed`.
-- Renders the journal entry and re-renders the workspace index.
-- Stages exactly the Ark-managed files (workspace journal, workspace index,
-  task.toml).
-- Runs `git commit -m "<message>"`. The user's already-staged work lands in
-  the same commit.
+Tell the user to run `/ark:commit -m "<message>"`. That single command flips
+phase to `Committed`, stages the Ark-managed files (`task.toml`), and runs
+`git commit -m "<message>"`. The user's already-staged work lands in the
+same commit.
 
 If the user prefers to write the commit message themselves, they can pass
 `-m`; otherwise the agent generates a Conventional Commits message from the
 staged diff and shows it for confirmation. See `/ark:commit` for the full
-contract (rollback on hook failure, `--no-commit` opt-out, slug-anchored
-SHA recovery).
+contract (rollback on hook failure, `--no-commit` opt-out).
 
 ## If the task grows mid-flight
 

@@ -240,7 +240,6 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let layout = layout_for(&tmp);
         let state = load_state(&layout, &StubPpid(1)).unwrap();
-        assert!(state.identity.is_none());
         assert!(state.tasks.active.is_empty());
         assert!(state.sessions.is_empty());
     }
@@ -250,12 +249,9 @@ mod tests {
     fn load_state_does_not_delete_legacy_on_pure_read() {
         let tmp = tempfile::tempdir().unwrap();
         let layout = layout_for(&tmp);
-        layout
-            .developer_file()
-            .write_bytes(b"name=alice\ninitialized_at=2026-01-01T00:00:00Z\n")
-            .unwrap();
+        layout.tasks_current().write_bytes(b"foo\n").unwrap();
         load_state(&layout, &StubPpid(1)).unwrap();
-        assert!(layout.developer_file().exists());
+        assert!(layout.tasks_current().exists());
     }
 
     /// Verifies that `state_mutate` persists an edit and releases the lock.
@@ -283,18 +279,14 @@ mod tests {
         assert!(!any_tmp, "tmp orphan must not survive successful mutate");
     }
 
-    /// Verifies that `state_mutate` deletes legacy files after the first save.
+    /// Verifies that `state_mutate` deletes the legacy `.current` file after
+    /// the first save.
     #[test]
     fn state_mutate_deletes_legacy_files_on_first_save() {
         let tmp = tempfile::tempdir().unwrap();
         let layout = layout_for(&tmp);
-        layout
-            .developer_file()
-            .write_bytes(b"name=alice\ninitialized_at=2026-01-01T00:00:00Z\n")
-            .unwrap();
         layout.tasks_current().write_bytes(b"foo\n").unwrap();
         state_mutate(&layout, &StubPpid(1), |_| Ok(())).unwrap();
-        assert!(!layout.developer_file().exists());
         assert!(!layout.tasks_current().exists());
     }
 

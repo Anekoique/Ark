@@ -296,52 +296,6 @@ pub enum Error {
         reason: &'static str,
     },
 
-    // Workspace feature errors.
-    /// Developer identity has not been initialized.
-    #[error(
-        "developer not initialized: {path:?} is missing; run `ark agent workspace init --name \
-         <x>` to create it"
-    )]
-    DeveloperNotInitialized {
-        /// Missing developer identity path.
-        path: PathBuf,
-    },
-
-    /// Developer identity already exists with a different name.
-    #[error("developer already initialized as `{name}`; remove .ark/.developer to re-init")]
-    DeveloperAlreadyInitialized {
-        /// Existing developer name.
-        name: String,
-    },
-
-    /// Workspace config TOML could not be parsed.
-    #[error("config.toml corrupt at {path:?}: {source}")]
-    WorkspaceConfigCorrupt {
-        /// Config file path.
-        path: PathBuf,
-        /// TOML parse error.
-        #[source]
-        source: toml::de::Error,
-    },
-
-    /// Workspace journal rotation reached its configured cap.
-    #[error("journal rotation limit hit for `{dev}`: max {max} journals")]
-    JournalRotationLimit {
-        /// Developer identity.
-        dev: String,
-        /// Maximum allowed journal index.
-        max: u32,
-    },
-
-    /// Developer identity name failed validation.
-    #[error("invalid developer name `{name}`: {reason}")]
-    InvalidDeveloperName {
-        /// Invalid developer name.
-        name: String,
-        /// Validation failure reason.
-        reason: &'static str,
-    },
-
     /// State file `.state.toml` failed to parse.
     #[error("state.toml corrupt at {path:?}: {source}")]
     StateTomlCorrupt {
