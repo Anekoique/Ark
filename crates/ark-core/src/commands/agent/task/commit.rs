@@ -448,7 +448,7 @@ fn record_workspace_journal(
     let start_head_short = prev_toml
         .start_head
         .as_deref()
-        .map(|s| s.chars().take(12).collect::<String>())
+        .map(|s| s.chars().take(7).collect::<String>())
         .unwrap_or_else(|| "<unknown>".into());
     let commits_in_range = collect_commits_in_range(task_cwd, prev_toml.start_head.as_deref());
 

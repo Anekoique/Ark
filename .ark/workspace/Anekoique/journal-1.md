@@ -4,8 +4,8 @@
 **Slug**: workspace
 **Branch**: `feat/workspace`
 **Base Branch**: `main`
-**Start Head**: `73d46ba10f39`
-**Closing Commit**: <PENDING:workspace>
+**Start Head**: `73d46ba`
+**Closing Commit**: 6a796a1
 
 ### Summary
 
@@ -28,4 +28,4 @@ Re-introduce per-developer workspace journals. The deferred-slot mechanism resol
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `6a796a1` | feat(workflow): add workspace support |

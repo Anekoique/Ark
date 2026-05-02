@@ -106,12 +106,7 @@ pub(crate) fn task_archive_move_with_ppid(
     // re-archive (sentinel already gone). Quietly skips when the task has
     // no `journal_path` (legacy, --no-commit, identity-missing).
     if let Some(journal_rel) = toml.journal_path.as_deref() {
-        patch_workspace_slot(
-            &layout,
-            journal_rel,
-            &opts.slug,
-            toml.start_head.as_deref(),
-        )?;
+        patch_workspace_slot(&layout, journal_rel, &opts.slug, toml.start_head.as_deref())?;
     }
 
     // Clear state-file references *before* rename so the focused-session
@@ -196,7 +191,7 @@ fn patch_workspace_slot(
 /// Returns `(full_sha, short_sha)`. Runs `git log -S '**Slug**: <slug>'
 /// --format=%H -- <journal>` (no `-n` cap) and classifies the match count:
 /// 0 → `SlotResolveNoMatch`, >1 → `SlotResolveAmbiguous`, exactly 1 →
-/// `git rev-parse --short=12` for the link-friendly form.
+/// `git rev-parse --short=7` for the link-friendly form.
 fn resolve_closing_sha(
     project_root: &Path,
     journal_path: &Path,
@@ -232,14 +227,14 @@ fn resolve_closing_sha(
     }
 }
 
-/// Returns the 12-char short SHA for `full`, falling back to a hard truncate
+/// Returns the 7-char short SHA for `full`, falling back to a hard truncate
 /// when `git rev-parse` fails.
 fn short_sha(project_root: &Path, full: &str) -> String {
-    run_git(&["rev-parse", "--short=12", full], project_root)
+    run_git(&["rev-parse", "--short=7", full], project_root)
         .ok()
         .filter(|out| out.is_success())
         .map(|out| out.stdout.trim().to_string())
-        .unwrap_or_else(|| full.chars().take(12).collect())
+        .unwrap_or_else(|| full.chars().take(7).collect())
 }
 
 /// Returns `(short_sha, subject)` rows for `start..end` in commit order
@@ -542,7 +537,7 @@ mod slot_patch_tests {
         let (full, short) = resolve_closing_sha(layout.root(), &journal, "workspace").unwrap();
         assert_eq!(full.len(), 40);
         assert!(full.chars().all(|c| c.is_ascii_hexdigit()));
-        assert_eq!(short.len(), 12);
+        assert_eq!(short.len(), 7);
         assert!(full.starts_with(&short));
     }
 
@@ -593,7 +588,11 @@ mod slot_patch_tests {
         root.join("scaffold").write_bytes(b"x").unwrap();
         run_git(&["add", "."], root).unwrap();
         run_git(&["commit", "-m", "scaffold", "--quiet"], root).unwrap();
-        let start_head = run_git(&["rev-parse", "HEAD"], root).unwrap().stdout.trim().to_string();
+        let start_head = run_git(&["rev-parse", "HEAD"], root)
+            .unwrap()
+            .stdout
+            .trim()
+            .to_string();
 
         // Intermediate commits (table includes both).
         root.join("a.rs").write_bytes(b"a").unwrap();
@@ -608,9 +607,9 @@ mod slot_patch_tests {
         let rel = ".ark/workspace/alice/journal-1.md".to_string();
         let abs = root.join(&rel);
         abs.parent().unwrap().ensure_dir().unwrap();
-        let body = "## Session 1: x\n\n**Slug**: workspace\n\
-            **Closing Commit**: <PENDING:workspace>\n\n\
-            ### Git Commits\n\n| Hash | Message |\n|------|---------|\n| _(none)_ |   |\n";
+        let body = "## Session 1: x\n\n**Slug**: workspace\n**Closing Commit**: \
+                    <PENDING:workspace>\n\n### Git Commits\n\n| Hash | Message \
+                    |\n|------|---------|\n| _(none)_ |   |\n";
         abs.write_bytes(body.as_bytes()).unwrap();
         run_git(&["add", "."], root).unwrap();
         run_git(&["commit", "-m", "close", "--quiet"], root).unwrap();

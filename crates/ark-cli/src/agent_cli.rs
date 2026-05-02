@@ -345,7 +345,7 @@ impl WorkspaceCommand {
                     let start_head_short = toml
                         .start_head
                         .as_deref()
-                        .map(|s| s.chars().take(12).collect::<String>())
+                        .map(|s| s.chars().take(7).collect::<String>())
                         .unwrap_or_else(|| "<unknown>".into());
                     let mode = ark_core::RecordMode::Task {
                         slug: &slug,

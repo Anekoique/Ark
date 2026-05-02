@@ -1,11 +1,12 @@
 id = "ark-workflow-refactor"
 title = "refactor ark-workflow"
 tier = "deep"
-phase = "committed"
+phase = "archived"
 iteration = 2
 max_iterations = 3
 created_at = "2026-05-01T16:04:01.064025Z"
-updated_at = "2026-05-02T07:03:45.236761Z"
+updated_at = "2026-05-02T12:32:25.024834Z"
+archived_at = "2026-05-02T12:32:25.024834Z"
 committed_at = "2026-05-02T07:03:45.236761Z"
 branch = "refactor/workflow"
 worktree_path = ".ark/worktrees/refactor/workflow"
