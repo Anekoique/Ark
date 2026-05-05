@@ -1,22 +1,26 @@
 # Ark
 
-An Agent Harness and Development Workflow Designed to Orchestrate AI-driven Programming Tasks.
+Ark is an agent harness and development workflow designed to orchestrate AI-driven programming tasks.
 
-Use the simple CLI `ark` to define your AI workflow and manage your coding agent.
+Use the simple CLI `ark` to define your AI workflow and manage coding agents in your project.
 
 > Current status: Ark is experimental and some features are unstable.
 
 ## Why Ark ?
 
-AI coding agents work better with a harness.
+Ark defines the next generation of AI-native software engineering work: structured workflows, agent collaboration, and tool orchestration.
 
-- **Right ceremony, right task.** Three tiers — quick fix, feature, deep refactor — each with the minimum process that fits.
-- **Reviewed, not rubber-stamped.** PLAN ↔ REVIEW iteration on deep work; a VERIFY gate before every archive.
-- **Plain markdown, no hidden magic.** Tasks and specs live in `.ark/`, diffable and git-tracked; Ark writes only what it tracks.
+Ark provides:
+
+- A simple CLI for managing AI-native software projects.
+- A workflow harness for coordinating Claude Code, Codex, and other coding agents.
+- Session-level journals for tracking agent activity and workspace state.
+- Task-level development records with integrated worktree management.
+- Specification management for projects and features.
 
 ## Installation
 
-Prebuilt binaries ship for macOS, Linux, and Windows on every tagged release.
+Prebuilt binaries are available for macOS, Linux, and Windows on every tagged release.
 
 ### npm
 
@@ -30,7 +34,7 @@ npm install -g @anekoique/ark
 cargo install --git https://github.com/Anekoique/ark ark-cli --locked
 ```
 
-Confirm the install:
+Confirm the installation:
 
 ```bash
 ark --version
@@ -38,13 +42,13 @@ ark --version
 
 ## Quick Start
 
-From the root of a project you want Ark in:
+From the root of a project where you want to use Ark:
 
 ```bash
 ark init
 ```
 
-On first run this scaffolds:
+On first run, Ark scaffolds:
 
 ```
 .ark/
@@ -65,7 +69,7 @@ CLAUDE.md                 # managed block pointing Claude Code at .ark/
 Open Claude Code in the project and start a task:
 
 ```
-/ark:quick fix typo in readme
+/ark:quick  fix typo in readme
 /ark:design add rate-limit middleware
 /ark:design --deep refactor auth layer
 ```
@@ -74,25 +78,29 @@ See `.ark/workflow.md` for the full workflow.
 
 ## Lifecycle
 
-`ark` has these commands for managing its presence in a project:
+`ark` provides the following commands for managing its presence in a project:
 
-| Command       | What it does                                                                       |
-| ------------- | ---------------------------------------------------------------------------------- |
-| `ark init`    | Scaffold `.ark/` and Claude Code integration from the embedded templates.          |
-| `ark load`    | Restore from `.ark.db` or init.                                                    |
-| `ark unload`  | Snapshot everything under `.ark/` + managed blocks + Ark hook into `.ark.db`.      |
-| `ark remove`  | Wipe Ark fully: `.ark/`, `.claude/commands/ark/`, managed blocks, `.ark.db`, hook. |
-| `ark upgrade` | Refresh embedded templates to the current CLI version.                             |
-| `ark context` | Print a snapshot of git + `.ark/` state. Read-only. JSON or text.                  |
+| Command       | What it does                                                 |
+| ------------- | ------------------------------------------------------------ |
+| `ark init`    | Scaffold `.ark/` and Claude Code integration from the embedded templates. |
+| `ark load`    | Restore from `.ark.db` or initialize Ark if no snapshot exists. |
+| `ark unload`  | Snapshot `.ark/`, managed blocks, and the Ark hook into `.ark.db`. |
+| `ark remove`  | Wipe Ark fully: `.ark/`.                                     |
+| `ark upgrade` | Refresh embedded templates to match the current CLI version. |
+| `ark context` | Current `ark` related context for the project                |
 
 ## Inspiration
 
-The project is highly inspired and learn from the project: [trellis](https://github.com/mindfold-ai/trellis)
+Ark is highly inspired by and learns from:
 
-Also inspired by those projects:
+- [trellis](https://github.com/mindfold-ai/trellis)
 
-[superpowers](https://github.com/obra/superpowers)
+- [superpowers](https://github.com/obra/superpowers)
 
-[openspec](https://github.com/Fission-AI/OpenSpec) / [spec-kit](https://github.com/github/spec-kit)
+- [openspec](https://github.com/Fission-AI/OpenSpec) / [spec-kit](https://github.com/github/spec-kit)
 
-[humanize](https://github.com/humania-org/humanize)
+- [humanize](https://github.com/humania-org/humanize)
+
+## LICENCE
+
+MIT
