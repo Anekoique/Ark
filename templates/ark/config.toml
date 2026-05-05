@@ -11,12 +11,16 @@ worktree_dir = ".ark/worktrees"
 branch_prefix = "feat"
 
 # Files copied from the project root into each new worktree (e.g. `.env`).
-# Source-not-found is a hard error.
+# Source-not-found is a hard error — only list paths that exist at the
+# project root. Note: `.ark/.developer` is synced automatically; do not
+# add it here.
 copy = []
 
 # Shell commands run in the worktree directory after creation, in order,
-# aborting on first non-zero exit.
-post_create = []
+# aborting on first non-zero exit. Default initializes git submodules in
+# the new worktree (no-op in repos without `.gitmodules`). Set to `[]` to
+# disable.
+post_create = ["git submodule update --init --recursive"]
 
 [workspace]
 # Lines per journal file before rotation (`journal-N.md` -> `journal-{N+1}.md`).

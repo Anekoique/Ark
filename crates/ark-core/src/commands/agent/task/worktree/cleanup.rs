@@ -186,6 +186,7 @@ mod tests {
     };
 
     fn init_repo() -> tempfile::TempDir {
+        use crate::commands::agent::workspace::{Identity, identity_write};
         let tmp = tempfile::tempdir().unwrap();
         run_git(&["init", "--quiet"], tmp.path()).unwrap();
         run_git(&["config", "user.email", "test@example.com"], tmp.path()).unwrap();
@@ -198,6 +199,7 @@ mod tests {
             .unwrap();
         run_git(&["add", "."], tmp.path()).unwrap();
         run_git(&["commit", "-m", "init", "--quiet"], tmp.path()).unwrap();
+        identity_write(tmp.path(), &Identity::new("test-dev").unwrap()).unwrap();
         tmp
     }
 

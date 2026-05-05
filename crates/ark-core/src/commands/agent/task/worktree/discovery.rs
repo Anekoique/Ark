@@ -209,7 +209,10 @@ branch refs/heads/feat/foo";
 
     /// Initializes a temp git repo with one commit so `git worktree add` works.
     fn init_repo_with_commit() -> tempfile::TempDir {
-        use crate::io::{PathExt, git::run_git};
+        use crate::{
+            commands::agent::workspace::{Identity, identity_write},
+            io::{PathExt, git::run_git},
+        };
         let tmp = tempfile::tempdir().unwrap();
         run_git(&["init", "--quiet"], tmp.path()).unwrap();
         run_git(&["config", "user.email", "test@example.com"], tmp.path()).unwrap();
@@ -222,6 +225,7 @@ branch refs/heads/feat/foo";
             .unwrap();
         run_git(&["add", "."], tmp.path()).unwrap();
         run_git(&["commit", "-m", "init", "--quiet"], tmp.path()).unwrap();
+        identity_write(tmp.path(), &Identity::new("test-dev").unwrap()).unwrap();
         tmp
     }
 }

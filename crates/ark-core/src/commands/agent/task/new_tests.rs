@@ -1,10 +1,13 @@
 use std::path::Path;
 
 use super::*;
+use crate::commands::agent::workspace::{Identity, identity_write};
 
-/// Initializes a temp git repo with one commit.
+/// Initializes a temp git repo with one commit and a parent developer identity.
 ///
-/// The initial commit lets `git worktree add` run. Returns the repo root.
+/// The initial commit lets `git worktree add` run. The pre-seeded
+/// `.ark/.developer` lets `task new --worktree` skip its prompt branch in
+/// non-TTY test processes. Returns the repo root.
 fn init_repo() -> tempfile::TempDir {
     let tmp = tempfile::tempdir().unwrap();
     run_git(&["init", "--quiet"], tmp.path()).unwrap();
@@ -19,6 +22,19 @@ fn init_repo() -> tempfile::TempDir {
         .unwrap();
     run_git(&["add", "."], tmp.path()).unwrap();
     run_git(&["commit", "-m", "init", "--quiet"], tmp.path()).unwrap();
+    identity_write(tmp.path(), &Identity::new("test-dev").unwrap()).unwrap();
+    tmp
+}
+
+/// Variant of [`init_repo`] without seeded developer identity.
+///
+/// Use to exercise the missing-identity branch of `task new --worktree`.
+fn init_repo_without_identity() -> tempfile::TempDir {
+    let tmp = init_repo();
+    let dev = tmp.path().join(".ark/.developer");
+    if dev.exists() {
+        std::fs::remove_file(&dev).unwrap();
+    }
     tmp
 }
 
@@ -430,4 +446,99 @@ fn worktree_branch_type_override() {
     let wt = summary.worktree.unwrap();
     assert_eq!(wt.branch, "fix/foo");
     assert!(tmp.path().join(".ark/worktrees/fix/foo").is_dir());
+}
+
+// ---- V-IT-1 / V-IT-2 / V-IT-3 / V-E-1: identity-sync + submodule defaults ----
+
+/// V-IT-1: parent identity is mirrored into the new worktree.
+#[test]
+fn worktree_creation_mirrors_parent_identity() {
+    let tmp = init_repo(); // seeds .ark/.developer = "test-dev"
+    // Override post_create to keep the test fast (skip submodule init).
+    tmp.path().join(".ark").ensure_dir().unwrap();
+    tmp.path()
+        .join(".ark/config.toml")
+        .write_bytes(b"[worktree]\npost_create = []\n")
+        .unwrap();
+
+    task_new(TaskNewOptions {
+        project_root: tmp.path().to_path_buf(),
+        slug: "foo".into(),
+        title: "t".into(),
+        tier: Tier::Standard,
+        worktree: Some(TaskNewWorktree::default()),
+    })
+    .unwrap();
+
+    let wt_dev = tmp.path().join(".ark/worktrees/feat/foo/.ark/.developer");
+    assert!(wt_dev.is_file(), "worktree must have .ark/.developer");
+    let content = std::fs::read_to_string(&wt_dev).unwrap();
+    assert_eq!(content.trim(), "test-dev");
+}
+
+/// V-IT-2: missing parent identity in non-TTY context returns MissingIdentity
+/// and rolls back the worktree dir.
+#[test]
+fn worktree_creation_fails_on_missing_identity_when_non_tty() {
+    let tmp = init_repo_without_identity();
+    // cargo test runs with stdin redirected — IsTerminal returns false.
+    tmp.path().join(".ark").ensure_dir().unwrap();
+    tmp.path()
+        .join(".ark/config.toml")
+        .write_bytes(b"[worktree]\npost_create = []\n")
+        .unwrap();
+
+    let err = task_new(TaskNewOptions {
+        project_root: tmp.path().to_path_buf(),
+        slug: "foo".into(),
+        title: "t".into(),
+        tier: Tier::Standard,
+        worktree: Some(TaskNewWorktree::default()),
+    })
+    .unwrap_err();
+    assert!(matches!(err, Error::MissingIdentity));
+    assert!(
+        !tmp.path().join(".ark/worktrees/feat/foo").exists(),
+        "rollback should remove the worktree dir"
+    );
+}
+
+/// V-IT-3: default `post_create` (submodule init) is a safe no-op in repos
+/// without `.gitmodules`.
+#[test]
+fn worktree_post_create_default_runs_submodule_init() {
+    let tmp = init_repo();
+    // No config.toml override — exercise the embedded default post_create.
+    task_new(TaskNewOptions {
+        project_root: tmp.path().to_path_buf(),
+        slug: "foo".into(),
+        title: "t".into(),
+        tier: Tier::Standard,
+        worktree: Some(TaskNewWorktree::default()),
+    })
+    .unwrap();
+
+    assert!(tmp.path().join(".ark/worktrees/feat/foo").is_dir());
+}
+
+/// V-E-1: explicit `post_create = []` overrides the default.
+#[test]
+fn worktree_creation_succeeds_when_user_overrides_post_create_to_empty() {
+    let tmp = init_repo();
+    tmp.path().join(".ark").ensure_dir().unwrap();
+    tmp.path()
+        .join(".ark/config.toml")
+        .write_bytes(b"[worktree]\npost_create = []\n")
+        .unwrap();
+
+    task_new(TaskNewOptions {
+        project_root: tmp.path().to_path_buf(),
+        slug: "foo".into(),
+        title: "t".into(),
+        tier: Tier::Standard,
+        worktree: Some(TaskNewWorktree::default()),
+    })
+    .unwrap();
+
+    assert!(tmp.path().join(".ark/worktrees/feat/foo").is_dir());
 }

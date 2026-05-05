@@ -49,8 +49,11 @@ pub struct WorktreeConfig {
 
     /// Lists shell commands run in the worktree dir after `git worktree add`.
     ///
-    /// Commands run sequentially and abort on first non-zero exit.
-    #[serde(default)]
+    /// Commands run sequentially and abort on first non-zero exit. Defaults
+    /// to a single `git submodule update --init --recursive` — a no-op in
+    /// repos without `.gitmodules`. Set `post_create = []` in
+    /// `.ark/config.toml` to disable.
+    #[serde(default = "default_post_create")]
     pub post_create: Vec<String>,
 }
 
@@ -60,7 +63,7 @@ impl Default for WorktreeConfig {
             worktree_dir: default_worktree_dir(),
             branch_prefix: default_branch_prefix(),
             copy: Vec::new(),
-            post_create: Vec::new(),
+            post_create: default_post_create(),
         }
     }
 }
@@ -127,6 +130,14 @@ fn default_branch_prefix() -> String {
     "feat".into()
 }
 
+/// Default `post_create` hook list.
+///
+/// Initializes git submodules in the new worktree. Exits 0 in repos
+/// without `.gitmodules`, so it's safe in every project.
+pub(crate) fn default_post_create() -> Vec<String> {
+    vec!["git submodule update --init --recursive".to_string()]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,7 +152,25 @@ mod tests {
         assert_eq!(cfg.worktree_dir, ".ark/worktrees");
         assert_eq!(cfg.branch_prefix, "feat");
         assert!(cfg.copy.is_empty());
-        assert!(cfg.post_create.is_empty());
+        assert_eq!(cfg.post_create, default_post_create());
+    }
+
+    /// V-UT-1: default `post_create` initializes submodules.
+    #[test]
+    fn worktree_config_default_post_create_has_submodule_init() {
+        assert_eq!(
+            WorktreeConfig::default().post_create,
+            vec!["git submodule update --init --recursive".to_string()]
+        );
+    }
+
+    /// V-UT-2: shipped template's `[worktree].post_create` matches the code default.
+    #[test]
+    fn worktree_template_default_matches_code() {
+        let template = include_str!("../../../../../../../templates/ark/config.toml");
+        let raw: RawConfig = toml::from_str(template).expect("template parses");
+        let wt = raw.worktree.expect("template has [worktree] section");
+        assert_eq!(wt.post_create, default_post_create());
     }
 
     /// Verifies that corrupt TOML returns `WorktreeConfigCorrupt`.

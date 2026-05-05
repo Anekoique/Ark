@@ -28,6 +28,10 @@ use crate::{
             resolve_branch,
         },
         template::copy_template,
+        workspace::{
+            ResolveOptions as IdentityResolveOptions, identity_resolve, identity_write,
+            identity::identity_prompt,
+        },
     },
     error::{Error, Result},
     io::{
@@ -288,6 +292,9 @@ fn scaffold_inside_worktree(
 
     let other_active = register_focus(&wt_layout, ppid, &opts.slug)?;
 
+    // Mirror parent identity into the worktree (prompts on TTY when missing).
+    sync_identity(project_root, worktree_path)?;
+
     // Hard-fail on missing copy source so partial worktrees never escape creation.
     for rel in &cfg.copy {
         let src = project_root.join(rel);
@@ -323,6 +330,32 @@ fn scaffold_inside_worktree(
         }),
         other_active,
     })
+}
+
+/// Mirrors developer identity from `parent` into `worktree`.
+///
+/// Reads `<parent>/.ark/.developer`. On `MissingIdentity`, prompts the user
+/// when stdin is a TTY, writes the answer to the parent (so subsequent
+/// worktrees skip the prompt), then mirrors into the worktree. Non-TTY +
+/// missing identity returns `Error::MissingIdentity` unchanged so the agent
+/// surfaces the existing remediation message.
+fn sync_identity(parent: &Path, worktree: &Path) -> Result<()> {
+    use std::io::{BufReader, IsTerminal, stderr, stdin};
+    const MAX_PROMPT_ATTEMPTS: u8 = 3;
+
+    match identity_resolve(IdentityResolveOptions::new(parent)) {
+        Ok(id) => identity_write(worktree, &id),
+        Err(Error::MissingIdentity) if stdin().is_terminal() => {
+            let stdin_handle = stdin();
+            let mut reader = BufReader::new(stdin_handle.lock());
+            let stderr_handle = stderr();
+            let mut writer = stderr_handle.lock();
+            let id = identity_prompt(&mut reader, &mut writer, MAX_PROMPT_ATTEMPTS)?;
+            identity_write(parent, &id)?;
+            identity_write(worktree, &id)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 fn build_task_toml(opts: &TaskNewOptions) -> TaskToml {

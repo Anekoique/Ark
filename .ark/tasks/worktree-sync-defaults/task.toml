@@ -1,0 +1,9 @@
+id = "worktree-sync-defaults"
+title = "document .developer and submodule sync defaults in worktree config"
+tier = "standard"
+phase = "committed"
+iteration = 0
+created_at = "2026-05-05T11:54:26.160891Z"
+updated_at = "2026-05-05T12:14:16.054310Z"
+committed_at = "2026-05-05T12:14:16.054310Z"
+start_head = "1a129d80269a08f61a75405e58c457e12cb11189"

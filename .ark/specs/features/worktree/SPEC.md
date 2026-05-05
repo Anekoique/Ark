@@ -1,7 +1,7 @@
 
 [**Goals**]
 
-- **G-1:** New project-tracked file `.ark/worktree.toml` (TOML, parsed via the `toml` crate) carrying four keys, all optional with defaults: `worktree_dir = ".ark/worktrees"`, `branch_prefix = "feat"`, `copy = []`, `post_create = []`. Missing file is not an error — defaults apply. Created with documented defaults by `ark init`, never overwritten by `ark upgrade` (per C-9).
+- **G-1:** Project-tracked `[worktree]` section of `.ark/config.toml` (TOML, parsed via the `toml` crate) carrying four keys, all optional with defaults: `worktree_dir = ".ark/worktrees"`, `branch_prefix = "feat"`, `copy = []`, `post_create = ["git submodule update --init --recursive"]`. Missing file or section is not an error — defaults apply. Created with documented defaults by `ark init`, never overwritten by `ark upgrade` (per C-9). The submodule-init default is a no-op in repos without `.gitmodules` (`git submodule update` exits 0); users disable it explicitly with `post_create = []`.
 
 - **G-2:** Worktree creation is bound to `task new`, not exposed as a separate subcommand. The CLI flag `task new --slug <s> --tier <t> --worktree [--branch-type <t>] [--branch <full>]` is the *sole* path that creates a worktree. The flag is opt-in for every tier; `task new` without `--worktree` is unchanged. Two `task worktree` subcommands exist for post-creation lifecycle: `cleanup` and `list`.
 
@@ -51,6 +51,8 @@
 
 - **G-12:** `templates/ark/workflow.md` and the in-repo `.ark/workflow.md` gain a `### Worktree (optional)` subsection under §6 Mechanics describing `task new --worktree`, `task worktree cleanup`, `task worktree list`, and noting that `worktree.toml` is user-editable.
 
+- **G-13 (identity sync):** `task new --worktree` mirrors developer identity from the parent's `.ark/.developer` into the new worktree. Step runs after `register_focus` and before the `cfg.copy` loop, inside the existing rollback boundary (C-2). Sequence: (1) `identity_resolve(parent)` — on `Ok(id)`, `identity_write(worktree, &id)`; (2) on `Err(MissingIdentity)` and `std::io::stdin().is_terminal() == true`, prompt via `identity_prompt` (writer = stderr, max 3 attempts), then `identity_write(parent, &id)` followed by `identity_write(worktree, &id)`; (3) on `Err(MissingIdentity)` and non-TTY, return `Error::MissingIdentity` unchanged so agents surface the existing remediation message ("run `ark init --developer <name>` ..."); (4) any other error from `identity_resolve` / `identity_write` propagates unchanged. Failure triggers `rollback_worktree`. No new error variants; reuses `Error::MissingIdentity` and `Error::DeveloperWriteFailed`.
+
 [**Non-goals**]
 
 - **NG-1:** No per-developer state outside the worktree's own `.ark/`.
@@ -59,7 +61,7 @@
 - **NG-4:** No automatic worktree creation. `--worktree` is opt-in for all tiers.
 - **NG-5:** No automatic cleanup on archive.
 - **NG-6:** No worktree rename or move post-creation. Re-create with a new branch if needed.
-- **NG-7:** No monorepo / submodule init in worktrees.
+- **NG-7:** No automatic submodule logic in Ark code. Submodule init in new worktrees is achieved via the documented default `post_create` shell command (G-1); the worktree code itself remains submodule-agnostic and just runs the configured shell. Users who want to opt out set `post_create = []` in `.ark/config.toml`.
 - **NG-8:** No structured-output JSON for `task worktree list`. One line per row, like other `agent` commands.
 - **NG-9:** No PR-creation integration (`gh pr create`). Out of scope.
 - **NG-10:** No standalone `task worktree create`. Worktree creation only via `task new --worktree`. Migration of pre-existing parent-only task dirs into a worktree is unsupported (see `Error::TaskExistsOnParent`).
