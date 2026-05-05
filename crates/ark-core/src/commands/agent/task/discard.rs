@@ -28,6 +28,9 @@ fn template_for(filename: &str) -> Option<&'static str> {
     if filename == "VERIFY.md" {
         return Some("VERIFY");
     }
+    if filename == "PLAN.md" {
+        return Some("PLAN");
+    }
     if filename.ends_with("_PLAN.md") && filename_has_iter_prefix(filename) {
         return Some("PLAN");
     }

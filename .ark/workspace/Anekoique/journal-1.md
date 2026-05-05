@@ -58,3 +58,31 @@ Re-introduce per-developer workspace journals. The deferred-slot mechanism resol
 | Hash | Message |
 |------|---------|
 | `96865d5` | fix(worktree): fix worktree synchronization issues |
+
+## Session 3: Tier-aware PLAN naming
+
+**Date**: 2026-05-05
+**Slug**: tier-aware-plan-naming
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `12f975b`
+**Closing Commit**: <PENDING:tier-aware-plan-naming>
+
+### Summary
+
+Standard- and quick-tier tasks now seed `PLAN.md` (no `NN_` prefix); deep tier keeps `NN_PLAN.md` for the iteration loop. All locators accept both forms so legacy `00_PLAN.md` archives remain readable.
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| seeding | `phase::artifact_for` is `(Phase, Tier, u32)`; standard/quick → `PLAN.md`, deep → `NN_PLAN.md`. Quick still never enters Plan phase |
+| locators | new `phase::locate_latest_plan` helper prefers `PLAN.md`, falls back to highest `NN_PLAN.md`. `phase::latest_plan_goals`, `verify_migration::latest_plan_goals`, `spec::extract::find_final_plan`, `gather::classify_artifact`, `discard::template_for` all accept both forms |
+| promote | Standard→Deep promotion renames `PLAN.md` → `00_PLAN.md` so the body is preserved when deep iteration kicks in. Doc comment updated |
+| tests | `phase::standard_design_to_plan_to_execute_to_verify` now asserts `PLAN.md` (and `!00_PLAN.md`); `phase::deep_design_to_plan_to_review` asserts `00_PLAN.md`; `promote::legal_promotion_preserves_artifacts` asserts the rename + body preservation; integration `standard_tier_archive_after_commit` asserts `PLAN.md` lands in archives |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

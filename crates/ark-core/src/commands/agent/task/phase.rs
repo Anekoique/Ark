@@ -10,7 +10,7 @@ use chrono::Utc;
 
 use crate::{
     commands::agent::{
-        state::{Phase, TaskToml, check_transition, validate_slug},
+        state::{Phase, TaskToml, Tier, check_transition, validate_slug},
         task::verify_seed::{
             SeedInputs, read_plan_goals, read_prd_constraints, read_project_specs,
             read_related_specs, render_seeded_verify,
@@ -86,7 +86,7 @@ fn transition(opts: TaskPhaseOptions, to: Phase) -> Result<TaskPhaseSummary> {
     // fails, the toml on disk still reflects the old phase and the caller can
     // retry the same transition. Saving first would advance the phase and
     // leave a missing artifact that no legal transition can re-seed.
-    if let Some((template, filename)) = artifact_for(to, toml.iteration) {
+    if let Some((template, filename)) = artifact_for(to, toml.tier, toml.iteration) {
         let path = task_dir.join(filename);
         if !path.exists() {
             copy_template(template, &path)?;
@@ -111,9 +111,19 @@ fn transition(opts: TaskPhaseOptions, to: Phase) -> Result<TaskPhaseSummary> {
 }
 
 /// Returns the template and filename to seed when entering `phase`.
-fn artifact_for(phase: Phase, iteration: u32) -> Option<(&'static str, String)> {
+///
+/// Standard tier never iterates the plan, so its lone PLAN is named
+/// `PLAN.md` (parallel to `VERIFY.md`). Deep tier keeps the `NN_PLAN.md`
+/// form to support the iteration loop. Quick tier never enters Plan.
+fn artifact_for(phase: Phase, tier: Tier, iteration: u32) -> Option<(&'static str, String)> {
     match phase {
-        Phase::Plan => Some(("PLAN", format!("{iteration:02}_PLAN.md"))),
+        Phase::Plan => {
+            let name = match tier {
+                Tier::Deep => format!("{iteration:02}_PLAN.md"),
+                _ => "PLAN.md".into(),
+            };
+            Some(("PLAN", name))
+        }
         Phase::Review => Some(("REVIEW", format!("{iteration:02}_REVIEW.md"))),
         Phase::Verify => Some(("VERIFY", "VERIFY.md".into())),
         _ => None,
@@ -143,15 +153,29 @@ fn seed_verify_dynamic_sections(
     verify_path.write_bytes(rendered.as_bytes())
 }
 
-/// Returns the latest `NN_PLAN.md`'s Goals as bullet labels.
+/// Returns the latest plan's Goals as bullet labels.
 ///
-/// The latest is the highest-numbered `NN_PLAN.md` in the task dir; absence
-/// (e.g. quick tier) yields an empty list.
+/// Prefers `PLAN.md` (standard tier's single plan); falls back to the
+/// highest-numbered `NN_PLAN.md` (deep tier or legacy archives). Absence
+/// of any plan (e.g. quick tier) yields an empty list.
 fn latest_plan_goals(task_dir: &std::path::Path) -> Result<Vec<String>> {
+    match locate_latest_plan(task_dir) {
+        Some(path) => read_plan_goals(&path),
+        None => Ok(Vec::new()),
+    }
+}
+
+/// Returns the path to the latest plan in `task_dir`, if any.
+///
+/// Resolution order: plain `PLAN.md` first; otherwise the highest-numbered
+/// `NN_PLAN.md`. Returns `None` when neither form exists.
+pub(crate) fn locate_latest_plan(task_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let plain = task_dir.join("PLAN.md");
+    if plain.is_file() {
+        return Some(plain);
+    }
+    let entries = std::fs::read_dir(task_dir).ok()?;
     let mut highest: Option<(u32, std::path::PathBuf)> = None;
-    let Ok(entries) = std::fs::read_dir(task_dir) else {
-        return Ok(Vec::new());
-    };
     for entry in entries.flatten() {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
@@ -163,10 +187,7 @@ fn latest_plan_goals(task_dir: &std::path::Path) -> Result<Vec<String>> {
             highest = Some((n, entry.path()));
         }
     }
-    match highest {
-        Some((_, path)) => read_plan_goals(&path),
-        None => Ok(Vec::new()),
-    }
+    highest.map(|(_, p)| p)
 }
 
 #[cfg(test)]
@@ -203,7 +224,9 @@ mod tests {
 
         let s = task_plan(o(&slug)).unwrap();
         assert_eq!((s.from, s.to), (Phase::Design, Phase::Plan));
-        assert!(tmp.path().join(".ark/tasks/demo/00_PLAN.md").exists());
+        // Standard tier seeds the unprefixed `PLAN.md`.
+        assert!(tmp.path().join(".ark/tasks/demo/PLAN.md").exists());
+        assert!(!tmp.path().join(".ark/tasks/demo/00_PLAN.md").exists());
 
         let s = task_execute(o(&slug)).unwrap();
         assert_eq!((s.from, s.to), (Phase::Plan, Phase::Execute));
@@ -269,6 +292,8 @@ mod tests {
             slug: s.into(),
         };
         task_plan(o(&slug)).unwrap();
+        // Deep tier preserves the iterating `NN_PLAN.md` form.
+        assert!(tmp.path().join(".ark/tasks/demo/00_PLAN.md").exists());
         let s = task_review(o(&slug)).unwrap();
         assert_eq!((s.from, s.to), (Phase::Plan, Phase::Review));
         assert!(tmp.path().join(".ark/tasks/demo/00_REVIEW.md").exists());

@@ -387,6 +387,9 @@ fn classify_artifact(filename: &str) -> Option<ArtifactKind> {
     if filename == "task.toml" {
         return Some(ArtifactKind::TaskToml);
     }
+    if filename == "PLAN.md" {
+        return Some(ArtifactKind::Plan { iteration: 0 });
+    }
     if let Some(n) = parse_iteration_artifact(filename, "_PLAN.md") {
         return Some(ArtifactKind::Plan { iteration: n });
     }

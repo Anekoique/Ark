@@ -1,0 +1,10 @@
+id = "tier-aware-plan-naming"
+title = "tier-aware PLAN naming"
+tier = "quick"
+phase = "committed"
+iteration = 0
+created_at = "2026-05-05T12:58:51.089739Z"
+updated_at = "2026-05-05T13:05:56.545731Z"
+committed_at = "2026-05-05T13:05:56.545731Z"
+start_head = "12f975b3c2e13d50940ec1e52289c189fbb34c19"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

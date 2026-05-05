@@ -118,7 +118,11 @@ pub fn spec_extract(opts: SpecExtractOptions) -> Result<SpecExtractSummary> {
     })
 }
 
-/// Locates the highest-NN `NN_PLAN.md` in a task directory.
+/// Locates the latest plan in a task directory.
+///
+/// Prefers the highest-numbered `NN_PLAN.md` (deep tier's iterating form);
+/// falls back to plain `PLAN.md` (standard tier or legacy single-plan
+/// archives) when no `NN_` files are present.
 fn find_final_plan(task_dir: &Path) -> Result<PathBuf> {
     let mut best: Option<(u32, PathBuf)> = None;
     for entry in task_dir.list_dir()? {
@@ -130,7 +134,14 @@ fn find_final_plan(task_dir: &Path) -> Result<PathBuf> {
             best = Some((nn, entry.path()));
         }
     }
-    best.map(|(_, p)| p).ok_or_else(|| Error::NoPlanFound {
+    if let Some((_, p)) = best {
+        return Ok(p);
+    }
+    let plain = task_dir.join("PLAN.md");
+    if plain.is_file() {
+        return Ok(plain);
+    }
+    Err(Error::NoPlanFound {
         task_dir: task_dir.to_path_buf(),
     })
 }

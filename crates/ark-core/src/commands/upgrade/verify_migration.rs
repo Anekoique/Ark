@@ -111,10 +111,16 @@ fn is_legacy_verdict_shape(text: &str) -> bool {
         .any(|l| l.trim_start().starts_with("## Verdict"))
 }
 
-/// Returns the latest `NN_PLAN.md`'s Goals as bullet labels (mirrors the
-/// helper in `task::phase`; duplicated here to avoid pulling phase.rs into
-/// upgrade's dependency graph).
+/// Returns the latest plan's Goals as bullet labels (mirrors the helper in
+/// `task::phase`; duplicated here to avoid pulling phase.rs into upgrade's
+/// dependency graph).
+///
+/// Prefers `PLAN.md` (standard tier); falls back to highest `NN_PLAN.md`.
 fn latest_plan_goals(task_dir: &std::path::Path) -> Result<Vec<String>> {
+    let plain = task_dir.join("PLAN.md");
+    if plain.is_file() {
+        return read_plan_goals(&plain);
+    }
     let mut highest: Option<(u32, std::path::PathBuf)> = None;
     let Ok(entries) = std::fs::read_dir(task_dir) else {
         return Ok(Vec::new());

@@ -65,7 +65,8 @@ fn standard_tier_archive_after_commit() {
     .unwrap();
     assert!(s.archive_path.exists());
     assert!(s.archive_path.join("PRD.md").exists());
-    assert!(s.archive_path.join("00_PLAN.md").exists());
+    // Standard tier seeds the unprefixed `PLAN.md`.
+    assert!(s.archive_path.join("PLAN.md").exists());
     assert!(s.archive_path.join("VERIFY.md").exists());
     assert!(!tmp.path().join(".ark/tasks/std1").exists());
 

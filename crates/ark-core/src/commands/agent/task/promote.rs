@@ -2,8 +2,10 @@
 //!
 //! Swaps `task.toml.tier`. Refuses if the current phase would be illegal under
 //! the target tier (e.g. promoting deep→quick while `phase == Review`, since
-//! quick has no Review phase). Does NOT rewrite artifacts — the agent decides
-//! what to reshape after the tier change.
+//! quick has no Review phase). Does NOT rewrite artifact bodies — the agent
+//! decides what to reshape after the tier change. The one structural rename
+//! happens on Standard→Deep: the lone `PLAN.md` is moved to `00_PLAN.md` so
+//! deep-tier iteration semantics apply without losing the existing body.
 
 use std::{fmt, path::PathBuf};
 
@@ -69,6 +71,18 @@ pub fn task_promote(opts: TaskPromoteOptions) -> Result<TaskPromoteSummary> {
         });
     }
 
+    // When promoting Standard→Deep, the lone `PLAN.md` becomes the first
+    // iteration of the deep loop. Rename it to `00_PLAN.md` so subsequent
+    // `task plan` calls (deep iterations) don't shadow the existing body
+    // with a fresh empty template.
+    if from != Tier::Deep && opts.to == Tier::Deep {
+        let plain = task_dir.join("PLAN.md");
+        let nn = task_dir.join("00_PLAN.md");
+        if plain.is_file() && !nn.exists() {
+            std::fs::rename(&plain, &nn).map_err(|e| Error::io(&plain, e))?;
+        }
+    }
+
     toml.tier = opts.to;
     toml.updated_at = Utc::now();
     // Keep `max_iterations` consistent with tier semantics: it is Deep-only
@@ -130,9 +144,11 @@ mod tests {
             .join(".ark/tasks/demo/PRD.md")
             .read_bytes()
             .unwrap();
+        // Standard tier seeds the unprefixed `PLAN.md`; capture it before
+        // the promote renames it to `00_PLAN.md`.
         let plan_before = tmp
             .path()
-            .join(".ark/tasks/demo/00_PLAN.md")
+            .join(".ark/tasks/demo/PLAN.md")
             .read_bytes()
             .unwrap();
 
@@ -151,6 +167,8 @@ mod tests {
                 .read_bytes()
                 .unwrap()
         );
+        // Promote renamed `PLAN.md` → `00_PLAN.md`; body is preserved.
+        assert!(!tmp.path().join(".ark/tasks/demo/PLAN.md").exists());
         assert_eq!(
             plan_before,
             tmp.path()
