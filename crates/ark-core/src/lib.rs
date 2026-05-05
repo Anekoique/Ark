@@ -60,6 +60,6 @@ pub use session::{
     release_session_id, resolve_session_id,
 };
 pub use state::{
-    Session, StateFile, Tasks, clear_focus_for_slug, load_state, prune_dead_sessions,
+    Manifest, Session, StateFile, Tasks, clear_focus_for_slug, load_state, prune_dead_sessions,
     reconcile_against_disk, state_mutate,
 };

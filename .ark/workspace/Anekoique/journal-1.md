@@ -86,3 +86,32 @@ Standard- and quick-tier tasks now seed `PLAN.md` (no `NN_` prefix); deep tier k
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 4: Manifest-aware ark init
+
+**Date**: 2026-05-05
+**Slug**: manifest-aware-init
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `ccddfde`
+**Closing Commit**: <PENDING:manifest-aware-init>
+
+### Summary
+
+`ark init` now reads `.ark/.installed.json` to derive the platform set when no `--<platform>` flags are passed, eliminating the prompt on every re-run and the "init requires at least one platform" error after answering `n` to all prompts on an already-installed project.
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| resolution | new `installed_platforms(&Path)` helper reads `Manifest::read` and matches each platform's `dest_dir` against `manifest.files` prefixes. `resolve_platforms_pure` gains an `installed: Option<&[&Platform]>` parameter; the manifest-derived set takes precedence over the prompt branch when no flags are passed |
+| ux | when re-running on an installed project without flags, prints one stderr line: `note: detected installed platforms (...); use --<platform> / --no-<platform> to override`. Flags still win on conflict (positive narrows, negative excludes) |
+| api | `Manifest` re-exported from `ark_core` (was already public via `state::manifest`); `TargetArgs` derives `Clone` so `dispatch` can resolve the root before passing to `resolve_platforms` |
+| tests | 4 new CLI unit tests: manifest-derived defaults skip prompt; positive flag overrides manifest; negative flag overrides manifest; empty installed set falls back to interactive |
+| smoke | verified locally: `ark init --developer Anekoique` on this repo runs without prompting, reports `claude-code, codex, opencode` detected, 27 unchanged / 2 skipped |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

@@ -12,9 +12,9 @@ use std::{
 
 use ark_core::{
     ArchiveOptions, ConflictChoice, ConflictPolicy, ContextFormat, ContextOptions, ContextScope,
-    Identity, InitOptions, Layout, LoadOptions, PLATFORMS, PhaseFilter, Platform, Prompter,
-    RemoveOptions, UnloadOptions, UpgradeOptions, WriteMode, ark_archive, context, identity_write,
-    init, load, remove, unload, upgrade,
+    Identity, InitOptions, Layout, LoadOptions, Manifest, PLATFORMS, PhaseFilter, Platform,
+    Prompter, RemoveOptions, UnloadOptions, UpgradeOptions, WriteMode, ark_archive, context,
+    identity_write, init, load, remove, unload, upgrade,
 };
 use clap::{Parser, Subcommand};
 
@@ -150,12 +150,23 @@ impl InitArgs {
             .collect()
     }
 
-    /// Resolves `Vec<&'static Platform>` from CLI flags + TTY state.
-    fn resolve_platforms(&self) -> anyhow::Result<Vec<&'static Platform>> {
-        let resolved =
-            resolve_platforms_pure(&self.flags(), std::io::stdin().is_terminal(), || {
-                interactive_select_platforms()
-            })?;
+    /// Resolves `Vec<&'static Platform>` from CLI flags + manifest + TTY state.
+    fn resolve_platforms(&self, project_root: &Path) -> anyhow::Result<Vec<&'static Platform>> {
+        let installed = installed_platforms(project_root);
+        if let Some(set) = installed.as_deref()
+            && !self.flags().iter().any(|(_, f)| f.on || f.off)
+            && !set.is_empty()
+        {
+            let ids: Vec<&str> = set.iter().map(|p| p.id).collect();
+            eprintln!("note: detected installed platforms ({}); use --<platform> / --no-<platform> to override",
+                ids.join(", "));
+        }
+        let resolved = resolve_platforms_pure(
+            &self.flags(),
+            installed.as_deref(),
+            std::io::stdin().is_terminal(),
+            || interactive_select_platforms(),
+        )?;
         if resolved.is_empty() {
             anyhow::bail!("init requires at least one platform");
         }
@@ -163,17 +174,36 @@ impl InitArgs {
     }
 }
 
+/// Returns the set of platforms whose `dest_dir` appears in the on-disk
+/// `.ark/.installed.json`, or `None` when the manifest is missing.
+fn installed_platforms(project_root: &Path) -> Option<Vec<&'static Platform>> {
+    let manifest = Manifest::read(project_root).ok().flatten()?;
+    let detected: Vec<&'static Platform> = PLATFORMS
+        .iter()
+        .copied()
+        .filter(|p| {
+            let dest = Path::new(p.dest_dir);
+            manifest.files.iter().any(|f| f.starts_with(dest))
+        })
+        .collect();
+    Some(detected)
+}
+
 /// Resolves platform flags without performing I/O.
 ///
 /// The caller supplies `is_tty` and a closure that runs the interactive
-/// prompt.
+/// prompt. `installed` is the set derived from `.ark/.installed.json`
+/// (`None` on fresh installs).
 ///
 /// - Positive flag (`--<flag>`) narrows to that subset.
 /// - Negative flag (`--no-<flag>`) excludes.
-/// - Both unset, TTY: run the interactive prompt.
-/// - Both unset, non-TTY: error — no silent default.
+/// - Both unset, manifest exists with non-empty platforms: keep the
+///   installed set (re-init preserves the current install).
+/// - Both unset, no manifest, TTY: run the interactive prompt.
+/// - Both unset, no manifest, non-TTY: error — no silent default.
 fn resolve_platforms_pure(
     flags: &[(&'static Platform, PlatformFlag)],
+    installed: Option<&[&'static Platform]>,
     is_tty: bool,
     interactive: impl FnOnce() -> anyhow::Result<Vec<&'static Platform>>,
 ) -> anyhow::Result<Vec<&'static Platform>> {
@@ -193,6 +223,11 @@ fn resolve_platforms_pure(
             .filter(|(_, f)| !f.off)
             .map(|(p, _)| *p)
             .collect());
+    }
+    if let Some(set) = installed
+        && !set.is_empty()
+    {
+        return Ok(set.to_vec());
     }
     if is_tty {
         return interactive();
@@ -349,7 +384,7 @@ impl ContextArgs {
 }
 
 /// Shared `-C DIR` flag used by every subcommand.
-#[derive(clap::Args)]
+#[derive(clap::Args, Clone)]
 pub(crate) struct TargetArgs {
     /// Target directory (defaults to the current working directory).
     #[arg(short = 'C', long, value_name = "DIR", global = false)]
@@ -461,8 +496,8 @@ impl Command {
         match self {
             Self::Init(a) => {
                 // `init` creates `.ark/`; no walk-up.
-                let platforms = a.resolve_platforms()?;
-                let root = a.target.resolve();
+                let root = a.target.clone().resolve();
+                let platforms = a.resolve_platforms(&root)?;
                 let mode = if a.force {
                     WriteMode::Force
                 } else {
@@ -602,10 +637,25 @@ mod tests {
 
     /// Drives `resolve_platforms_pure` with an explicit `is_tty` value.
     ///
-    /// Panics if the interactive branch is reached.
+    /// Panics if the interactive branch is reached. `installed = None`
+    /// matches a fresh install (no manifest yet).
     fn resolve(argv: &[&str], is_tty: bool) -> anyhow::Result<Vec<&'static Platform>> {
         let args = parse_init(argv);
-        resolve_platforms_pure(&args.flags(), is_tty, || {
+        resolve_platforms_pure(&args.flags(), None, is_tty, || {
+            unreachable!("test should not reach the interactive branch")
+        })
+    }
+
+    /// Drives `resolve_platforms_pure` with an explicit `installed` set.
+    ///
+    /// Panics if the interactive branch is reached.
+    fn resolve_with_installed(
+        argv: &[&str],
+        installed: &[&'static Platform],
+        is_tty: bool,
+    ) -> anyhow::Result<Vec<&'static Platform>> {
+        let args = parse_init(argv);
+        resolve_platforms_pure(&args.flags(), Some(installed), is_tty, || {
             unreachable!("test should not reach the interactive branch")
         })
     }
@@ -700,18 +750,61 @@ mod tests {
 
     /// Verifies that `resolve_platforms_pure` invokes the interactive closure.
     ///
-    /// The closure is called exactly once when no flags are set and `is_tty`
-    /// is true. Its return value is propagated unchanged.
+    /// The closure is called exactly once when no flags are set, no manifest
+    /// is supplied, and `is_tty` is true. Its return value is propagated
+    /// unchanged.
     #[test]
     fn cli_resolve_platforms_pure_invokes_interactive_when_tty_and_no_flags() {
         let args = parse_init(&["init"]);
         let mut calls = 0;
-        let resolved = resolve_platforms_pure(&args.flags(), true, || {
+        let resolved = resolve_platforms_pure(&args.flags(), None, true, || {
             calls += 1;
             Ok(PLATFORMS.to_vec())
         })
         .unwrap();
         assert_eq!(calls, 1, "interactive closure must be called exactly once");
         assert_eq!(ids(&resolved), ["claude-code", "codex", "opencode"]);
+    }
+
+    /// Manifest-derived defaults skip the prompt when no flags are passed.
+    #[test]
+    fn cli_resolve_platforms_uses_installed_set_when_no_flags() {
+        use ark_core::{CLAUDE_PLATFORM, CODEX_PLATFORM};
+        let installed = [&CLAUDE_PLATFORM, &CODEX_PLATFORM];
+        let resolved = resolve_with_installed(&["init"], &installed, true).unwrap();
+        assert_eq!(ids(&resolved), ["claude-code", "codex"]);
+    }
+
+    /// Explicit positive flag wins over the manifest.
+    #[test]
+    fn cli_resolve_platforms_positive_flag_overrides_installed() {
+        use ark_core::{CLAUDE_PLATFORM, CODEX_PLATFORM};
+        let installed = [&CLAUDE_PLATFORM, &CODEX_PLATFORM];
+        let resolved = resolve_with_installed(&["init", "--opencode"], &installed, true).unwrap();
+        assert_eq!(ids(&resolved), ["opencode"]);
+    }
+
+    /// Negative flag against the installed set still narrows by exclusion.
+    #[test]
+    fn cli_resolve_platforms_negative_flag_overrides_installed() {
+        use ark_core::{CLAUDE_PLATFORM, CODEX_PLATFORM, OPENCODE_PLATFORM};
+        let installed = [&CLAUDE_PLATFORM, &CODEX_PLATFORM, &OPENCODE_PLATFORM];
+        let resolved =
+            resolve_with_installed(&["init", "--no-opencode"], &installed, true).unwrap();
+        assert_eq!(ids(&resolved), ["claude-code", "codex"]);
+    }
+
+    /// Empty installed set falls through to the prompt branch on TTY.
+    #[test]
+    fn cli_resolve_platforms_empty_installed_falls_back_to_interactive() {
+        let args = parse_init(&["init"]);
+        let mut calls = 0;
+        let resolved = resolve_platforms_pure(&args.flags(), Some(&[]), true, || {
+            calls += 1;
+            Ok(vec![&ark_core::CLAUDE_PLATFORM])
+        })
+        .unwrap();
+        assert_eq!(calls, 1);
+        assert_eq!(ids(&resolved), ["claude-code"]);
     }
 }
