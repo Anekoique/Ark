@@ -83,6 +83,12 @@ inserts those auto-fields after your `## Session N: <title>` heading
 during `task commit`. Show the user what you wrote and let them revise
 before continuing.
 
+**Style — keep it tight.** The journal is read; brevity matters.
+
+- `### Summary`: one line, ≤ 120 chars. Lead with the user-visible effect, not the implementation. Drop "now" / "currently" / "going forward" filler.
+- `### Main Changes`: ≤ 4 rows. One line per cell, ≤ 80 chars. No nested code blocks or backtick-heavy fragments — name the area, then the change. Drop incidental rows (`tests`, `template parity`, `doc updates`, `spec` for SPEC amendments that are *consequences* of a code change) unless that *is* the change.
+- Skip the row entirely rather than padding it. Three crisp rows beat four bloated ones.
+
 If `.ark/.developer` is absent, skip this step. The journal write is
 silently skipped on installs without identity.
 

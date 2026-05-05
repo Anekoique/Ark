@@ -41,17 +41,14 @@ Re-introduce per-developer workspace journals. The deferred-slot mechanism resol
 
 ### Summary
 
-`task new --worktree` now syncs developer identity from the parent into the new worktree (prompting on TTY when missing), and `WorktreeConfig::default().post_create` ships `git submodule update --init --recursive` so submodules initialize automatically.
+New worktrees inherit the parent's `.ark/.developer` and run `git submodule update --init --recursive` by default.
 
 ### Main Changes
 
 | Area | Description |
 |------|-------------|
-| identity-sync | new `sync_identity()` step in `scaffold_inside_worktree`: `identity_resolve(parent)` → mirror; `MissingIdentity` + TTY → `identity_prompt` → write parent then worktree; non-TTY → return `MissingIdentity` so agents surface the existing remediation message |
-| post_create default | `WorktreeConfig::default().post_create` now `["git submodule update --init --recursive"]`; safe no-op without `.gitmodules`; users disable explicitly via `post_create = []` in `.ark/config.toml` |
-| template parity | `templates/ark/config.toml [worktree].post_create` matches the code default; new `worktree_template_default_matches_code` test pins parity |
-| spec | `.ark/specs/features/worktree/SPEC.md` G-1 amended (default change + corrected stale `.ark/worktree.toml` → `.ark/config.toml [worktree]`), G-13 added (identity-sync goal), NG-7 refined to permit documented-default submodule hook while keeping code submodule-agnostic |
-| tests | shared `init_repo` helpers in `new_tests.rs` / `cleanup.rs` / `list.rs` / `discovery.rs` now seed `.ark/.developer` so all existing worktree tests still pass; added `worktree_creation_mirrors_parent_identity`, `worktree_creation_fails_on_missing_identity_when_non_tty`, `worktree_post_create_default_runs_submodule_init`, `worktree_creation_succeeds_when_user_overrides_post_create_to_empty` |
+| identity-sync | copy parent's `.ark/.developer` into the worktree; prompt on TTY |
+| submodule default | default `post_create` runs `git submodule update`; set `[]` to opt out |
 
 ### Git Commits
 
@@ -70,16 +67,15 @@ Re-introduce per-developer workspace journals. The deferred-slot mechanism resol
 
 ### Summary
 
-Standard- and quick-tier tasks now seed `PLAN.md` (no `NN_` prefix); deep tier keeps `NN_PLAN.md` for the iteration loop. All locators accept both forms so legacy `00_PLAN.md` archives remain readable.
+Standard/quick tasks seed `PLAN.md`; deep keeps `NN_PLAN.md`. Locators accept both so legacy archives still resolve.
 
 ### Main Changes
 
 | Area | Description |
 |------|-------------|
-| seeding | `phase::artifact_for` is `(Phase, Tier, u32)`; standard/quick → `PLAN.md`, deep → `NN_PLAN.md`. Quick still never enters Plan phase |
-| locators | new `phase::locate_latest_plan` helper prefers `PLAN.md`, falls back to highest `NN_PLAN.md`. `phase::latest_plan_goals`, `verify_migration::latest_plan_goals`, `spec::extract::find_final_plan`, `gather::classify_artifact`, `discard::template_for` all accept both forms |
-| promote | Standard→Deep promotion renames `PLAN.md` → `00_PLAN.md` so the body is preserved when deep iteration kicks in. Doc comment updated |
-| tests | `phase::standard_design_to_plan_to_execute_to_verify` now asserts `PLAN.md` (and `!00_PLAN.md`); `phase::deep_design_to_plan_to_review` asserts `00_PLAN.md`; `promote::legal_promotion_preserves_artifacts` asserts the rename + body preservation; integration `standard_tier_archive_after_commit` asserts `PLAN.md` lands in archives |
+| seeding | tier-aware: standard/quick → `PLAN.md`, deep → `NN_PLAN.md` |
+| locators | all readers accept both forms via `locate_latest_plan` |
+| promote | Standard→Deep renames `PLAN.md` → `00_PLAN.md` to preserve the body |
 
 ### Git Commits
 
@@ -98,17 +94,40 @@ Standard- and quick-tier tasks now seed `PLAN.md` (no `NN_` prefix); deep tier k
 
 ### Summary
 
-`ark init` now reads `.ark/.installed.json` to derive the platform set when no `--<platform>` flags are passed, eliminating the prompt on every re-run and the "init requires at least one platform" error after answering `n` to all prompts on an already-installed project.
+Re-running `ark init` on an installed project skips the platform prompt; CLI flags still override.
 
 ### Main Changes
 
 | Area | Description |
 |------|-------------|
-| resolution | new `installed_platforms(&Path)` helper reads `Manifest::read` and matches each platform's `dest_dir` against `manifest.files` prefixes. `resolve_platforms_pure` gains an `installed: Option<&[&Platform]>` parameter; the manifest-derived set takes precedence over the prompt branch when no flags are passed |
-| ux | when re-running on an installed project without flags, prints one stderr line: `note: detected installed platforms (...); use --<platform> / --no-<platform> to override`. Flags still win on conflict (positive narrows, negative excludes) |
-| api | `Manifest` re-exported from `ark_core` (was already public via `state::manifest`); `TargetArgs` derives `Clone` so `dispatch` can resolve the root before passing to `resolve_platforms` |
-| tests | 4 new CLI unit tests: manifest-derived defaults skip prompt; positive flag overrides manifest; negative flag overrides manifest; empty installed set falls back to interactive |
-| smoke | verified locally: `ark init --developer Anekoique` on this repo runs without prompting, reports `claude-code, codex, opencode` detected, 27 unchanged / 2 skipped |
+| resolution | derive default platform set from `.ark/.installed.json` when no flags |
+| ux | stderr line announces the detected set; flags still win on conflict |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |
+
+## Session 5: Cap journal Main Changes prose
+
+**Date**: 2026-05-05
+**Slug**: prose-discipline
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `ee62980`
+**Closing Commit**: <PENDING:prose-discipline>
+
+### Summary
+
+Slash-command templates now require ≤ 4 short rows per session block; existing Sessions 2–4 rewritten under the new rule.
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| templates | added `Style — keep it tight` to all three `/ark:commit` siblings |
+| journal | rewrote Sessions 2–4 in `journal-1.md` under the new caps |
 
 ### Git Commits
 

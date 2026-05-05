@@ -63,6 +63,12 @@ contains exactly three agent-authored sections: `## Session N: <title>`,
 `**Slug**`, `**Branch**`, etc. — `task commit` inserts those auto-fields.
 Skip this step when identity is absent.
 
+**Style — keep it tight.** Summary: one line ≤ 120 chars, lead with the
+user-visible effect. Main Changes: ≤ 4 rows, one line per cell ≤ 80 chars,
+no nested code blocks. Drop incidental rows (`tests`, `template parity`,
+`doc updates`, downstream `spec` amendments) unless that *is* the change.
+Skip the row rather than pad it.
+
 ### 5. Run the commit
 
 ```bash

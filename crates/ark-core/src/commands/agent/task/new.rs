@@ -29,8 +29,8 @@ use crate::{
         },
         template::copy_template,
         workspace::{
-            ResolveOptions as IdentityResolveOptions, identity_resolve, identity_write,
-            identity::identity_prompt,
+            ResolveOptions as IdentityResolveOptions, identity::identity_prompt, identity_resolve,
+            identity_write,
         },
     },
     error::{Error, Result},

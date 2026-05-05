@@ -158,14 +158,17 @@ impl InitArgs {
             && !set.is_empty()
         {
             let ids: Vec<&str> = set.iter().map(|p| p.id).collect();
-            eprintln!("note: detected installed platforms ({}); use --<platform> / --no-<platform> to override",
-                ids.join(", "));
+            eprintln!(
+                "note: detected installed platforms ({}); use --<platform> / --no-<platform> to \
+                 override",
+                ids.join(", ")
+            );
         }
         let resolved = resolve_platforms_pure(
             &self.flags(),
             installed.as_deref(),
             std::io::stdin().is_terminal(),
-            || interactive_select_platforms(),
+            interactive_select_platforms,
         )?;
         if resolved.is_empty() {
             anyhow::bail!("init requires at least one platform");
