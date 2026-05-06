@@ -280,6 +280,42 @@ impl Layout {
         self.worktrees_dir().join(branch)
     }
 
+    /// Returns the trailing path component when the root is a worktree.
+    ///
+    /// Matches `<parent>/.ark/worktrees/<branch-type>/<slug>` lexically; no
+    /// filesystem access, no canonicalization. Symlinked roots and case-
+    /// insensitive volumes that produce a non-canonical [`Self::root`] are
+    /// out of scope: if the trailing components do not literally match the
+    /// expected pattern, returns `None`.
+    ///
+    /// The `<branch-type>` slot is not validated against any allowlist —
+    /// the type may have been added since the worktree was created. Callers
+    /// gate further by checking [`Self::task_dir`] existence and active-set
+    /// membership.
+    ///
+    /// Returns `None` when the root has fewer than four trailing components,
+    /// when any fixed-name component does not match, or when the slug
+    /// component fails UTF-8 conversion.
+    pub fn slug_from_worktree_root(&self) -> Option<String> {
+        use std::path::Component;
+        let mut tail: Vec<&std::ffi::OsStr> = self
+            .root
+            .components()
+            .filter_map(|c| match c {
+                Component::Normal(s) => Some(s),
+                _ => None,
+            })
+            .collect();
+        let slug = tail.pop()?;
+        let _branch_type = tail.pop()?;
+        let worktrees = tail.pop()?;
+        let ark = tail.pop()?;
+        if ark != ARK_DIR || worktrees != "worktrees" {
+            return None;
+        }
+        slug.to_str().map(str::to_owned)
+    }
+
     /// Returns the project-level Ark config path.
     pub fn config_file(&self) -> PathBuf {
         self.root.join(CONFIG_FILE)
@@ -504,5 +540,40 @@ mod tests {
 
         let err = Layout::discover_from(&nested).unwrap_err();
         assert!(matches!(err, Error::NotLoaded { .. }));
+    }
+
+    #[test]
+    fn slug_from_worktree_root_returns_some_for_canonical_path() {
+        let l = Layout::new("/project/.ark/worktrees/feat/foo");
+        assert_eq!(l.slug_from_worktree_root().as_deref(), Some("foo"));
+    }
+
+    #[test]
+    fn slug_from_worktree_root_returns_none_for_parent_root() {
+        let l = Layout::new("/project");
+        assert_eq!(l.slug_from_worktree_root(), None);
+    }
+
+    #[test]
+    fn slug_from_worktree_root_returns_none_for_short_path() {
+        let l = Layout::new("/.ark/worktrees");
+        assert_eq!(l.slug_from_worktree_root(), None);
+    }
+
+    #[test]
+    fn slug_from_worktree_root_returns_none_when_marker_dirs_dont_match() {
+        let l = Layout::new("/project/foo/bar/feat/baz");
+        assert_eq!(l.slug_from_worktree_root(), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn slug_from_worktree_root_returns_none_for_non_utf8_slug() {
+        use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+        let bad = OsString::from_vec(vec![0xFF, 0xFE]);
+        let mut p = PathBuf::from("/project/.ark/worktrees/feat");
+        p.push(&bad);
+        let l = Layout::new(p);
+        assert_eq!(l.slug_from_worktree_root(), None);
     }
 }

@@ -1,0 +1,10 @@
+id = "drop-task-slug"
+title = "drop --slug from non-resume/discard task verbs; topology-driven resolution"
+tier = "standard"
+phase = "committed"
+iteration = 2
+created_at = "2026-05-06T12:02:11.308311Z"
+updated_at = "2026-05-06T13:10:18.916963Z"
+committed_at = "2026-05-06T13:10:18.916963Z"
+start_head = "8153c3cb18cf369e9c8a5d874bf195aceaf2e0f4"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

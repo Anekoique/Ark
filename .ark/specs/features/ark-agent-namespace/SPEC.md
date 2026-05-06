@@ -119,7 +119,8 @@ Error::IllegalPhaseTransition { tier: Tier, from: Phase, to: Phase },
 Error::WrongTier              { expected: Tier, actual: Tier },
 Error::TaskNotFound           { slug: String },
 Error::TaskAlreadyExists      { slug: String },
-Error::NoCurrentTask          { path: PathBuf },
+Error::NoActiveTask           { project_root: PathBuf },
+Error::AmbiguousActiveTask    { candidates: Vec<String> },
 Error::UnknownTemplate        { name: String },
 Error::SpecSectionMissing     { plan_path: PathBuf },
 Error::NoPlanFound            { task_dir: PathBuf },
@@ -176,16 +177,16 @@ Nine subcommands, grouped under `agent`:
 | Command | Arguments |
 |---|---|
 | `ark agent task new` | `--slug <s> --title "<t>" --tier {quick\|standard\|deep}` |
-| `ark agent task plan` | `[--slug <s>]` |
-| `ark agent task review` | `[--slug <s>]` |
-| `ark agent task execute` | `[--slug <s>]` |
-| `ark agent task verify` | `[--slug <s>]` |
-| `ark agent task archive` | `[--slug <s>]` |
-| `ark agent task promote` | `[--slug <s>] --to <tier>` |
-| `ark agent spec extract` | `[--slug <s>] [--plan <path>]` |
+| `ark agent task plan` | (none) |
+| `ark agent task review` | (none) |
+| `ark agent task execute` | (none) |
+| `ark agent task verify` | (none) |
+| `ark agent task archive` | (none) |
+| `ark agent task promote` | `--to <tier>` |
+| `ark agent spec extract` | `[--plan <path>]` |
 | `ark agent spec register` | `--feature <f> --scope "<s>" --from-task <t> [--date YYYY-MM-DD]` |
 
-Every `--slug`-taking command defaults to `.ark/tasks/.current` when the flag is omitted. Missing `.current` → `Error::NoCurrentTask`.
+`--slug` is required only on `task new`, `task resume`, and `task discard` (verbs that target a specific task by name). All other verbs resolve via the topology cascade: worktree path with active-set membership → single active task → this session's focus map. Empty active set → `Error::NoActiveTask`. Multiple actives with no resolver hit → `Error::AmbiguousActiveTask`.
 
 [**Constraints**]
 

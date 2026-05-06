@@ -13,6 +13,7 @@
 | 4 | 2026-05-05 | Manifest-aware ark init | `manifest-aware-init` | `main` | <PENDING:manifest-aware-init> | `journal-1.md` |
 | 5 | 2026-05-05 | Cap journal Main Changes prose | `prose-discipline` | `main` | <PENDING:prose-discipline> | `journal-1.md` |
 | 6 | 2026-05-06 | Extend SessionStart envelope with suppressOutput and systemMessage | `session-envelope` | `main` | <PENDING:session-envelope> | `journal-1.md` |
+| 7 | 2026-05-06 | Drop --slug from non-targeted task verbs | `drop-task-slug` | `main` | <PENDING:drop-task-slug> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

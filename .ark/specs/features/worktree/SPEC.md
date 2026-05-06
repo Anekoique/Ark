@@ -23,7 +23,7 @@
 
   The parent checkout's `.ark/tasks/`, `.ark/tasks/.current`, and working tree are **never modified** by `--worktree`.
 
-- **G-4:** `task worktree cleanup [--slug <s>] [--delete-branch] [--force]` removes the worktree dir and optionally deletes the branch. The cleanup sequence:
+- **G-4:** `task worktree cleanup [--delete-branch] [--force]` removes the worktree dir and optionally deletes the branch. Slug is resolved by the topology cascade (see `task-concurrency-control` SPEC G-9). The cleanup sequence:
   1. Discover via `git worktree list --porcelain`, reading each candidate worktree's `.ark/tasks/.current` to find the slug match (C-20).
   2. If discovery returns nothing → `Error::WorktreeNotFound { slug }`. (Acts as success-on-second-cleanup per F-15.)
   3. Load `task.toml` from the discovered worktree.
@@ -370,7 +370,6 @@ enum WorktreeCommand {
 #[derive(clap::Args)]
 struct WorktreeCleanupCliArgs {
     #[command(flatten)] target: TargetArgs,
-    #[arg(long)] slug: Option<String>,
     #[arg(long = "delete-branch")] delete_branch: bool,
     #[arg(long)] force: bool,
 }

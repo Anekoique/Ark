@@ -160,3 +160,31 @@ Hook output stops dumping a JSON wall in transcripts; one-line `Ark: branch=… 
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 7: Drop --slug from non-targeted task verbs
+
+**Date**: 2026-05-06
+**Slug**: drop-task-slug
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `8153c3c`
+**Closing Commit**: <PENDING:drop-task-slug>
+
+### Summary
+
+`ark agent task plan/review/execute/verify/commit/promote/archive` resolve the slug from worktree path or active set; stale session ids no longer wedge the verb.
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| resolver | resolve_slug cascade: worktree path + active-set membership → single active → focus map |
+| error | NoCurrentTask split into NoActiveTask and AmbiguousActiveTask with accurate messages |
+| cli | --slug dropped from 7 verbs; required on resume and discard (was optional on discard) |
+| spec | three feature SPECs and both workflow.md copies updated in lockstep |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

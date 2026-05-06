@@ -9,7 +9,7 @@
 - G-6: Dead sessions are pruned transparently on the next state read (in-memory; persisted on the next mutation). A session is "dead" when its temp-dir cache file is missing or mismatched. Pruning lives in `state_file::reconcile`, called via `session::cache::cache_matches` predicate.
 - G-7: `task new` warns (does not refuse) when there are other active tasks before the new one is appended. The warn check excludes the just-created slug (added to `active` by the prior two-way reconcile pass). First task is silent; second distinct task warns.
 - G-8: Each git worktree's `.ark/` owns its own `.state.toml`. `task new --worktree` writes only to the worktree's state file. `task worktree list` and `task worktree cleanup` enumerate via each worktree's `state.tasks.active`, **not** via session focus.
-- G-9: `--slug`-less commands resolve to *this session's* focused slug. With no focus, return `Error::NoCurrentTask`.
+- G-9: `--slug`-less commands resolve via topology cascade — worktree path with active-set membership → single active task → this session's focus map. Empty active set → `Error::NoActiveTask`. Multiple actives with no resolver hit → `Error::AmbiguousActiveTask`. Both `task resume` and `task discard` REQUIRE `--slug` (no implicit target).
 - G-10: `task discard <slug>` refuses without `--force` when seeded files (PRD/PLAN/etc.) differ from their templates. Always refuses if the task is already archived.
 - G-11: `.ark/.state.toml`, `.ark/.state.toml.lock`, and any `.ark/.state.toml.tmp.*` orphan files are skipped by `unload.rs` in both walk sites. Active task state is recoverable on `load` via two-way reconcile.
 - G-12: Cross-platform parent-id via the `Ppid` trait. Production `RealPpid` delegates to a `cfg`-gated shim: Unix uses `std::os::unix::process::parent_id`; Windows uses `windows-sys`'s `CreateToolhelp32Snapshot` + `Process32FirstW`/`Process32NextW`. Failure on Windows returns the calling process's own PID (`std::process::id()`). Tests use `StubPpid(u32)` for deterministic injection.
@@ -241,6 +241,15 @@ StateLockContended { path: PathBuf },
 
 #[error("task `{slug}` has user content in {file}; pass --force to discard anyway")]
 TaskStillActive { slug: String, file: String },
+
+#[error("no active task in `{}`; run `ark agent task new` first", project_root.display())]
+NoActiveTask { project_root: PathBuf },
+
+#[error(
+    "multiple active tasks: {}; run `ark agent task resume --slug <one-of>` to focus this session",
+    candidates.join(", ")
+)]
+AmbiguousActiveTask { candidates: Vec<String> },
 ```
 
 [**API Surface**]

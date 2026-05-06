@@ -96,13 +96,21 @@ pub enum Error {
         slug: String,
     },
 
-    /// Current-task pointer is absent.
+    /// No active task is recorded for this checkout.
+    #[error("no active task in `{}`; run `ark agent task new` first", project_root.display())]
+    NoActiveTask {
+        /// Checkout root that was probed.
+        project_root: PathBuf,
+    },
+
+    /// Multiple active tasks but none was selected by the topology cascade.
     #[error(
-        "no active task set: {path} is missing; pass --slug <s> or run `ark agent task new` first"
+        "multiple active tasks: {}; run `ark agent task resume --slug <one-of>` to focus this session",
+        candidates.join(", ")
     )]
-    NoCurrentTask {
-        /// Missing `.current` file path.
-        path: PathBuf,
+    AmbiguousActiveTask {
+        /// Active task slugs in their on-disk order.
+        candidates: Vec<String>,
     },
 
     /// Requested embedded template is unknown.

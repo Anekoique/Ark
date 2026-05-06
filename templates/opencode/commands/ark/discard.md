@@ -31,8 +31,6 @@ If you (the agent) are about to run `/ark:discard` on the user's behalf without 
 ### 3. Run the op
 
 ```bash
-ark agent task discard            # uses this session's focus from .ark/.state.toml
-# or
 ark agent task discard --slug <slug>
 # or, when the user has authorized data loss:
 ark agent task discard --slug <slug> --force
