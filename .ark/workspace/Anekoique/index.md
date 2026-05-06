@@ -12,6 +12,7 @@
 | 3 | 2026-05-05 | Tier-aware PLAN naming | `tier-aware-plan-naming` | `main` | <PENDING:tier-aware-plan-naming> | `journal-1.md` |
 | 4 | 2026-05-05 | Manifest-aware ark init | `manifest-aware-init` | `main` | <PENDING:manifest-aware-init> | `journal-1.md` |
 | 5 | 2026-05-05 | Cap journal Main Changes prose | `prose-discipline` | `main` | <PENDING:prose-discipline> | `journal-1.md` |
+| 6 | 2026-05-06 | Extend SessionStart envelope with suppressOutput and systemMessage | `session-envelope` | `main` | <PENDING:session-envelope> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

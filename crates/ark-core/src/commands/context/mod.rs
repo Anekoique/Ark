@@ -118,18 +118,25 @@ pub fn context(opts: ContextOptions) -> Result<ContextSummary> {
     }
     match opts.format {
         Format::Json => {
-            let raw =
-                serde_json::to_string_pretty(&projected).expect("ProjectedContext serializes");
             let body = if matches!(opts.scope, Scope::Session) {
-                wrap_session_start_envelope(&raw)
+                let summary = summary_one_line(&projected);
+                let inner = stringify_under_cap(&mut projected, ADDITIONAL_CONTEXT_CAP);
+                wrap_session_start_envelope(&inner, &summary)
             } else {
-                raw
+                serde_json::to_string_pretty(&projected).expect("ProjectedContext serializes")
             };
             Ok(ContextSummary::Json(format!("{body}\n")))
         }
         Format::Text => Ok(ContextSummary::Text(Box::new(projected))),
     }
 }
+
+/// Maximum byte length of the stringified `additionalContext` payload.
+///
+/// Claude Code documents a 10,000-character cap on injected context;
+/// staying under 9,500 leaves headroom for the envelope's outer keys and
+/// avoids host-side mid-payload truncation.
+const ADDITIONAL_CONTEXT_CAP: usize = 9_500;
 
 /// Gathers the workspace record projection (developer + active journal +
 /// config + branch).
@@ -215,14 +222,90 @@ fn scan_developer_dir(
 ///
 /// The payload is embedded as a stringified value of `additionalContext`
 /// because the hook contract requires that field to be a string.
-fn wrap_session_start_envelope(payload: &str) -> String {
+/// `suppressOutput: true` keeps the raw stdout out of transcript mode on
+/// hosts that honor it; `systemMessage` carries a single user-visible line
+/// summarizing what was loaded. Both fields are documented siblings of
+/// `hookSpecificOutput` in Claude Code's hook contract and are accepted by
+/// Codex CLI's matching shape.
+fn wrap_session_start_envelope(payload: &str, system_message: &str) -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
             "additionalContext": payload,
-        }
+        },
+        "suppressOutput": true,
+        "systemMessage": system_message,
     }))
     .expect("envelope serializes")
+}
+
+/// Renders a `Serialize`-derived enum (e.g. `Tier`, `Phase`) as its
+/// lowercase string form by routing through `serde_json::to_value`.
+///
+/// Falls back to `?` when serde_json yields a non-string Value, which is
+/// not expected for the unit-variant enums in `model.rs` but keeps the
+/// summary line printable rather than panicking on a future refactor.
+fn json_str<T: serde::Serialize>(value: &T) -> String {
+    match serde_json::to_value(value) {
+        Ok(serde_json::Value::String(s)) => s,
+        _ => "?".to_string(),
+    }
+}
+
+/// Builds a one-line user-visible summary of `projected`.
+///
+/// Mirrors the most actionable bits of the session projection: branch,
+/// current task slug + tier + phase, active-task count, and feature-spec
+/// count. Omits noisy fields (paths, timestamps) — this line is what the
+/// host renders to the user, not what the model consumes.
+fn summary_one_line(projected: &ProjectedContext) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(4);
+    parts.push(format!("branch={}", projected.git.branch));
+    if let Some(current) = &projected.current_task {
+        parts.push(format!(
+            "current={} ({}/{})",
+            current.summary.slug,
+            json_str(&current.summary.tier),
+            json_str(&current.summary.phase),
+        ));
+    }
+    if let Some(tasks) = &projected.tasks {
+        parts.push(format!("{} active", tasks.active.len()));
+    }
+    if let Some(specs) = &projected.specs {
+        parts.push(format!("{} specs", specs.features.len()));
+    }
+    format!("Ark: {}", parts.join(" \u{b7} "))
+}
+
+/// Serializes `projected` as JSON, dropping low-value sections in priority
+/// order until the result fits within `cap` bytes.
+///
+/// Drop order: `archive` first (least actionable for an open session), then
+/// `tasks.active` past the first 5 entries (newest survive). When a drop
+/// happens, sets `truncated: Some(true)` so the model knows the snapshot is
+/// partial. Returns the serialized string regardless — callers always emit
+/// something.
+fn stringify_under_cap(projected: &mut ProjectedContext, cap: usize) -> String {
+    let initial = serde_json::to_string_pretty(projected).expect("ProjectedContext serializes");
+    if initial.len() <= cap {
+        return initial;
+    }
+
+    projected.archive = None;
+    projected.truncated = Some(true);
+
+    let after_archive =
+        serde_json::to_string_pretty(projected).expect("ProjectedContext serializes");
+    if after_archive.len() <= cap {
+        return after_archive;
+    }
+
+    if let Some(tasks) = projected.tasks.as_mut() {
+        tasks.active.truncate(5);
+    }
+
+    serde_json::to_string_pretty(projected).expect("ProjectedContext serializes")
 }
 
 #[cfg(test)]
@@ -266,7 +349,125 @@ mod tests {
         assert_eq!(parsed["schema"], 1);
         assert_eq!(parsed["scope"], "session");
 
+        // Sibling fields keep raw stdout out of transcript mode and surface
+        // a single user-visible line summarizing the load.
+        assert_eq!(outer["suppressOutput"], serde_json::Value::Bool(true));
+        let msg = outer["systemMessage"]
+            .as_str()
+            .expect("systemMessage is a string");
+        assert!(msg.starts_with("Ark: "), "msg={msg}");
+        assert!(
+            !msg.contains('\n'),
+            "systemMessage must be single-line: {msg}"
+        );
+        assert!(msg.contains("branch="), "msg={msg}");
+
+        // Empty-state default does not trigger truncation.
+        assert!(parsed.get("truncated").is_none(), "parsed={parsed}");
+
         assert!(s.ends_with('\n'));
+    }
+
+    /// `summary_one_line` includes the current-task slug/tier/phase when
+    /// present. Covers the path that the empty-state envelope test does
+    /// not exercise (the tempdir has no focused task).
+    #[test]
+    fn summary_one_line_with_current_task_includes_slug_tier_phase() {
+        use std::path::PathBuf;
+
+        use chrono::Utc;
+
+        use crate::commands::{
+            agent::state::{Phase, Tier},
+            context::model::{CurrentTask, GitState, TaskSummary, TasksState},
+        };
+
+        let summary = TaskSummary {
+            slug: "demo".to_string(),
+            title: "demo".to_string(),
+            tier: Tier::Quick,
+            phase: Phase::Execute,
+            iteration: 0,
+            path: PathBuf::from(".ark/tasks/demo"),
+            updated_at: Utc::now(),
+        };
+        let projected = ProjectedContext {
+            schema: 1,
+            scope: ScopeTag::Session,
+            generated_at: Utc::now(),
+            project_root: PathBuf::from("/tmp/proj"),
+            git: GitState {
+                branch: "main".to_string(),
+                ..GitState::default()
+            },
+            tasks: Some(TasksState::default()),
+            current_task: Some(CurrentTask {
+                slug: "demo".to_string(),
+                summary,
+                artifacts: vec![],
+                related_specs: vec![],
+            }),
+            specs: None,
+            archive: None,
+            record: None,
+            truncated: None,
+        };
+        let line = summary_one_line(&projected);
+        assert!(line.starts_with("Ark: "), "{line}");
+        assert!(line.contains("branch=main"), "{line}");
+        assert!(line.contains("current=demo (quick/execute)"), "{line}");
+        assert!(!line.contains('\n'), "{line}");
+    }
+
+    /// When the inner payload exceeds [`ADDITIONAL_CONTEXT_CAP`], the
+    /// envelope still emits valid JSON, the inner stringified projection
+    /// fits under the cap, and `truncated: true` is set so downstream
+    /// readers know they're seeing a partial snapshot.
+    #[test]
+    fn context_session_json_trims_oversized_payload() {
+        let tmp = arked_tempdir();
+        // Seed an archive directory full of synthetic entries to push the
+        // raw payload over the cap. ARCHIVE_CAP is 5, so 5 directories with
+        // long titles in their task.toml is enough.
+        let archive_root = tmp.path().join(".ark/tasks/archive/2026-05");
+        archive_root.ensure_dir().unwrap();
+        for i in 0..5 {
+            let dir = archive_root.join(format!("synthetic-task-{i:02}"));
+            dir.ensure_dir().unwrap();
+            let title = "x".repeat(2_500); // 5 * 2_500 bytes ≈ pushes past 9,500
+            let task_toml = format!(
+                r#"id = "synthetic-task-{i:02}"
+title = "{title}"
+tier = "quick"
+phase = "archived"
+iteration = 0
+created_at = "2026-05-01T00:00:00Z"
+updated_at = "2026-05-01T00:00:00Z"
+archived_at = "2026-05-01T00:00:00Z"
+"#
+            );
+            std::fs::write(dir.join("task.toml"), task_toml).unwrap();
+        }
+
+        let opts = ContextOptions::new(tmp.path()).with_format(Format::Json);
+        let summary = context(opts).unwrap();
+        let s = format!("{summary}");
+
+        let outer: serde_json::Value = serde_json::from_str(&s).unwrap();
+        let inner = outer["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap();
+        assert!(
+            inner.len() <= ADDITIONAL_CONTEXT_CAP,
+            "inner payload exceeds cap: {} > {}",
+            inner.len(),
+            ADDITIONAL_CONTEXT_CAP
+        );
+
+        let parsed: serde_json::Value = serde_json::from_str(inner).unwrap();
+        assert_eq!(parsed["truncated"], true);
+        // Archive is the first thing we drop.
+        assert!(parsed.get("archive").is_none(), "archive should be dropped");
     }
 
     #[test]

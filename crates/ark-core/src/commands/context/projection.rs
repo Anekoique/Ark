@@ -112,6 +112,11 @@ pub struct ProjectedContext {
     /// Workspace record context, when `Scope::Record` is selected.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record: Option<RecordProjection>,
+    /// `Some(true)` when session-envelope wrapping had to drop fields to fit
+    /// the host-side context cap (Claude Code documents 10K chars). Absent
+    /// otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<bool>,
 }
 
 /// Projects `ctx` per `scope`.
@@ -139,6 +144,7 @@ pub fn project(ctx: Context, scope: Scope) -> ProjectedContext {
             specs: Some(specs),
             archive: Some(archive),
             record: None,
+            truncated: None,
         },
         Scope::Phase(phase) => {
             let mut projected = ProjectedContext {
@@ -152,6 +158,7 @@ pub fn project(ctx: Context, scope: Scope) -> ProjectedContext {
                 specs: None,
                 archive: None,
                 record: None,
+                truncated: None,
             };
             apply_phase_filter(&mut projected, phase, specs, archive);
             projected
@@ -170,6 +177,7 @@ pub fn project(ctx: Context, scope: Scope) -> ProjectedContext {
             // the projector is pure (no I/O) and `Record` requires reading
             // the workspace tree.
             record: Some(RecordProjection::default()),
+            truncated: None,
         },
     }
 }

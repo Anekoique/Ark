@@ -134,3 +134,29 @@ Slash-command templates now require ≤ 4 short rows per session block; existing
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 6: Extend SessionStart envelope with suppressOutput and systemMessage
+
+**Date**: 2026-05-06
+**Slug**: session-envelope
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `162a509`
+**Closing Commit**: <PENDING:session-envelope>
+
+### Summary
+
+Hook output stops dumping a JSON wall in transcripts; one-line `Ark: branch=… · N active · M specs` shows instead.
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| context | wrap_session_start_envelope adds suppressOutput=true and systemMessage |
+| context | trim additionalContext under 9,500 chars; sets truncated=true on drop |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

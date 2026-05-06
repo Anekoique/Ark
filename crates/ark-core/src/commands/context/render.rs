@@ -231,6 +231,7 @@ mod tests {
             specs: Some(SpecsState::default()),
             archive: Some(ArchiveState::default()),
             record: None,
+            truncated: None,
         }
     }
 
