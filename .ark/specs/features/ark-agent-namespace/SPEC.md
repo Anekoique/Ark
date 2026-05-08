@@ -1,71 +1,61 @@
 [**Goals**]
 
-- G-1: Provide a hidden `ark agent` subcommand group — not listed in `ark --help`, but discoverable via `ark agent --help` — that documents itself as non-semver-stable.
-- G-2: Expose explicit per-phase transition subcommands (`task plan`, `task review`, `task execute`, `task verify`, `task archive`) that enforce legal transitions per tier and reject illegal ones with a named error.
-- G-3: Package task-directory scaffolding (`task new`), tier change (`task promote`), and terminal archival (`task archive` — which on deep tier also extracts and registers the feature SPEC) as CLI commands; rare operations (iteration, task reopening) are done by hand-editing `task.toml`.
-- G-4: Package feature-SPEC operations: `spec extract` (final PLAN's `## Spec` → `specs/features/<slug>/SPEC.md`, appending CHANGELOG on overwrite) and `spec register` (upsert row in `specs/features/INDEX.md`'s managed block). `spec extract` copies the latest `## Spec` verbatim — no merge across iterations; the PLAN must keep `## Spec` self-contained (`workflow.md` §4 PLAN rule).
-- G-5: `task archive` internally invokes SPEC extract + register when `task.toml.tier == "deep"`; the agent calls one command, not three.
-- G-6: Every subcommand writes to disk, prints a one-line `impl Display` summary, and does not pipe structured data to siblings.
-- G-7: Archival is user-invoked via the `/ark:archive` slash command. `/ark:design` and `/ark:quick` stop at VERIFY (or EXECUTE for quick tier) and never archive automatically.
-- G-8: Update the shipped slash commands and workflow doc to reference `ark agent` commands in place of raw `mkdir`/`cp`/`echo`/manual-TOML recipes, kept in lockstep across both embedded templates and the live repo's copies.
+- G-1: Hidden `ark agent` subcommand group, not in `ark --help`, not semver-stable.
+- G-2: Per-phase task verbs (`plan` / `review` / `execute` / `verify` / `archive`) enforce legal transitions per tier.
+- G-3: Structural ops (`task new` / `task promote` / `task archive`) packaged as CLI commands; rare ops are hand-edits.
+- G-4: Feature-SPEC ops (`spec extract` / `spec register`) promote the final PLAN's `## Spec` verbatim on deep-tier archive.
+- G-5: Every subcommand prints a one-line `Display` summary; no structured-data piping between siblings.
 
-- NG-1: No identity / multi-developer subcommands.
-- NG-2: No git or GitHub operations. The agent uses `git`/`gh` directly.
-- NG-3: No content-generating commands. Content (PRD prose, PLAN sections, REVIEW verdicts) is the agent's judgment; `ark agent` owns only structural mutation.
-- NG-4: No generic `ark agent set <k>=<v>` TOML editor. Every mutation is a named command.
-- NG-5: No consistency-check command. Reviewer judgment, not mechanical check.
-- NG-6: No public-API stability promise. Callers are the shipped slash commands and workflow doc; end users prefer those.
-- NG-7: No CLI wrappers for operations that are genuinely rare and safe to hand-edit: iteration bump, task reopening, template copying.
+[**Non-goals**]
+
+- NG-1: No content-generating commands; structural mutation only.
+- NG-2: No public-API stability promise on the `agent` namespace.
+- NG-3: No CLI wrappers for genuinely rare hand-edits (iteration bump, reopen).
 
 [**Architecture**]
 
 ```
 crates/
-├── ark-cli/src/main.rs                      — adds `Agent(AgentArgs)` hidden subcommand
+├── ark-cli/src/main.rs                  (adds Agent(AgentArgs) hidden subcommand)
 └── ark-core/src/
-    ├── lib.rs                                — re-exports agent public API
-    ├── error.rs                              — new variants (see Data Structure)
-    ├── io/
-    │   └── path_ext.rs                       — adds read_text, list_dir, rename_to
-    ├── templates.rs                          — unchanged
-    ├── layout.rs                             — adds tasks_dir, tasks_archive_dir,
-    │                                           tasks_current, task_dir,
-    │                                           specs_features_dir, specs_feature_dir,
-    │                                           specs_features_index, ark_templates_dir
-    └── commands/
-        └── agent/                            — the namespace module
-            ├── mod.rs                        — pub mod task/spec/template;
-            │                                   pub use state::{Phase, Status, Tier, TaskToml}
-            ├── state.rs                      — TaskToml load/save + legal-transition table
-            ├── task/
-            │   ├── mod.rs
-            │   ├── new.rs                    — scaffold task dir + PRD + task.toml + .current
-            │   ├── phase.rs                  — plan/review/execute/verify, each guarded;
-            │   │                               seeds NN_PLAN / NN_REVIEW / VERIFY templates
-            │   ├── promote.rs                — tier change with legality guard; no artifact rewrite
-            │   └── archive.rs                — move dir; on deep tier, explicitly calls
-            │                                   super::spec::{extract, register}
-            ├── spec/
-            │   ├── mod.rs
-            │   ├── extract.rs                — parse final PLAN's `## Spec` → SPEC.md
-            │   └── register.rs               — managed-block row upsert
-            └── template.rs                   — (internal) copy_template helper
+    ├── error.rs                         (new error variants — see Data Structure)
+    ├── layout.rs                        (tasks_dir, tasks_archive_dir, tasks_current,
+    │                                      task_dir, specs_features_dir, specs_feature_dir,
+    │                                      specs_features_index, ark_templates_dir)
+    ├── io/path_ext.rs                   (read_text, list_dir, rename_to)
+    └── commands/agent/
+        ├── mod.rs                       (pub mod task/spec/template;
+        │                                  pub use state::{Phase, Status, Tier, TaskToml})
+        ├── state.rs                     (TaskToml load/save + legal-transition table)
+        ├── task/
+        │   ├── mod.rs
+        │   ├── new.rs                   (scaffold task dir + PRD + task.toml + .current)
+        │   ├── phase.rs                 (plan/review/execute/verify; each guarded;
+        │   │                              seeds NN_PLAN / NN_REVIEW / VERIFY templates)
+        │   ├── promote.rs               (tier change with legality guard; no artifact rewrite)
+        │   └── archive.rs               (move dir; on deep tier, calls super::spec::*)
+        ├── spec/
+        │   ├── mod.rs
+        │   ├── extract.rs               (parse final PLAN's `## Spec` → SPEC.md;
+        │   │                              append CHANGELOG on overwrite)
+        │   └── register.rs              (managed-block row upsert in features/INDEX.md)
+        └── template.rs                  (internal copy_template helper; no CLI wrapper)
 ```
 
-**Module coupling.** `task::archive` imports `super::spec::{extract, register}` explicitly. `commands/agent/mod.rs` does NOT `pub use` peer modules — only `state` is re-exported for its types. Dependency direction is one-way: `task → spec → state`; `template` is a leaf. This avoids surprising visibility graphs.
+Module coupling: `task::archive` imports `super::spec::{extract, register}` directly. `commands/agent/mod.rs` does NOT `pub use` peer modules — only `state` is re-exported for its types. Dependency direction: `task → spec → state`; `template` is a leaf. `task::new`, `task::phase`, and `task::verify` use `template::copy_template` (`pub(crate)`).
 
-**CLI wrapper omitted for `template`.** `copy_template` is `pub(crate)` inside the agent module and used by `task_new` and `task_plan`/`task_review`/`task_verify` to seed artifacts. There is no `ark agent template copy` CLI — copying an embedded file is something the agent can do equally well with `cp`.
-
-Internal call graph for `task archive` (deep tier):
+Call graph for `task archive` (deep tier — SPEC promotion before rename so that failure leaves the task dir intact):
 
 ```
 task::archive::task_archive(opts)
   ├── TaskToml::load(task_dir)
   ├── check_transition(tier, phase, Archived)
-  ├── if tier == Deep:                        (side effects before rename so that
-  │     ├── spec::extract::spec_extract(…)     failure leaves the task dir intact)
-  │     └── spec::register::spec_register(…)
-  ├── toml.phase = Archived; toml.archived_at = now; toml.save(task_dir)
+  ├── if tier == Deep:
+  │     ├── spec::extract::spec_extract(...)        → writes specs/features/<slug>/SPEC.md
+  │     └── spec::register::spec_register(...)      → upserts row in features/INDEX.md
+  ├── toml.phase = Archived
+  ├── toml.archived_at = now
+  ├── toml.save(task_dir)
   ├── PathExt::rename_to → tasks/archive/YYYY-MM/<slug>/
   └── remove .ark/tasks/.current if it pointed at <slug>
 ```
@@ -74,7 +64,6 @@ task::archive::task_archive(opts)
 
 ```rust
 // ark-core/src/commands/agent/state.rs
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Tier { Quick, Standard, Deep }
@@ -84,7 +73,6 @@ pub enum Tier { Quick, Standard, Deep }
 pub enum Phase { Design, Plan, Review, Execute, Verify, Archived }
 
 /// Derived from `Phase`; not persisted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status { InProgress, Completed }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,18 +91,15 @@ pub struct TaskToml {
 }
 
 impl TaskToml {
-    pub fn status(&self) -> Status { /* Archived => Completed else InProgress */ }
+    pub fn status(&self) -> Status;       // Archived → Completed; else InProgress
     pub fn load(task_dir: &Path) -> Result<Self>;
     pub fn save(&self, task_dir: &Path) -> Result<()>;
 }
 
 pub fn can_transition(tier: Tier, from: Phase, to: Phase) -> bool;
 pub fn check_transition(tier: Tier, from: Phase, to: Phase) -> Result<()>;
-```
 
-Error variants added to `ark-core/src/error.rs`:
-
-```rust
+// ark-core/src/error.rs (additions)
 Error::IllegalPhaseTransition { tier: Tier, from: Phase, to: Phase },
 Error::WrongTier              { expected: Tier, actual: Tier },
 Error::TaskNotFound           { slug: String },
@@ -127,21 +112,19 @@ Error::NoPlanFound            { task_dir: PathBuf },
 Error::TaskTomlCorrupt        { path: PathBuf, source: toml::de::Error },
 Error::InvalidSpecField       { field: String, reason: &'static str },
 Error::ManagedBlockCorrupt    { path: PathBuf, marker: String },
-```
 
-`PathExt` additions (`ark-core/src/io/path_ext.rs`):
-
-```rust
-fn read_text(&self) -> Result<String>;                     // UTF-8 text; errors on missing
-fn list_dir(&self) -> Result<fs::ReadDir>;                 // named to avoid `Path::read_dir` inherent-method shadowing
-fn rename_to(&self, dest: impl AsRef<Path>) -> Result<()>; // rename; fails loud on cross-device
+// ark-core/src/io/path_ext.rs (additions)
+trait PathExt {
+    fn read_text(&self) -> Result<String>;                             // UTF-8; errors on missing
+    fn list_dir(&self) -> Result<fs::ReadDir>;                         // avoids inherent-method shadow
+    fn rename_to(&self, dest: impl AsRef<Path>) -> Result<()>;         // fails loud on cross-device
+}
 ```
 
 [**API Surface**]
 
-Library re-exports from `ark-core/src/lib.rs`:
-
 ```rust
+// Library re-exports from ark-core/src/lib.rs
 pub use commands::agent::{
     Phase, Status, TaskToml, Tier,
     spec::{
@@ -154,53 +137,57 @@ pub use commands::agent::{
         TaskNewOptions, TaskNewSummary,
         TaskPhaseOptions, TaskPhaseSummary,
         TaskPromoteOptions, TaskPromoteSummary,
-        task_archive, task_execute, task_new, task_plan, task_promote, task_review, task_verify,
+        task_archive, task_execute, task_new, task_plan,
+        task_promote, task_review, task_verify,
     },
 };
-```
 
-CLI shape (in `ark-cli/src/main.rs`):
-
-```rust
+// CLI shape (ark-cli/src/main.rs)
 #[derive(Subcommand)]
 enum Command {
     Init(...), Load(...), Unload(...), Remove(...),
     /// `hide = true` hides the variant from `ark --help`;
-    /// `ark agent --help` still renders its children and about-text.
+    /// `ark agent --help` still renders its children.
     #[command(hide = true)]
     Agent(AgentArgs),
 }
 ```
 
-Nine subcommands, grouped under `agent`:
+Subcommands under `ark agent`:
 
-| Command | Arguments |
-|---|---|
-| `ark agent task new` | `--slug <s> --title "<t>" --tier {quick\|standard\|deep}` |
-| `ark agent task plan` | (none) |
-| `ark agent task review` | (none) |
-| `ark agent task execute` | (none) |
-| `ark agent task verify` | (none) |
-| `ark agent task archive` | (none) |
-| `ark agent task promote` | `--to <tier>` |
-| `ark agent spec extract` | `[--plan <path>]` |
-| `ark agent spec register` | `--feature <f> --scope "<s>" --from-task <t> [--date YYYY-MM-DD]` |
-
-`--slug` is required only on `task new`, `task resume`, and `task discard` (verbs that target a specific task by name). All other verbs resolve via the topology cascade: worktree path with active-set membership → single active task → this session's focus map. Empty active set → `Error::NoActiveTask`. Multiple actives with no resolver hit → `Error::AmbiguousActiveTask`.
+```
+ark agent task new       --slug <s> --title "<t>" --tier <quick|standard|deep>
+ark agent task plan
+ark agent task review
+ark agent task execute
+ark agent task verify
+ark agent task archive
+ark agent task promote   --to <tier>
+ark agent task resume    --slug <s>
+ark agent task discard   --slug <s> [--force]
+ark agent spec extract   [--plan <path>]
+ark agent spec register  --feature <f> --scope "<s>" --from-task <t> [--date YYYY-MM-DD]
+```
 
 [**Constraints**]
 
-- C-1: `ark --help` MUST NOT list `agent`. Verified by the CLI snapshot test.
-- C-2: `ark agent --help` MUST include the string "Not covered by semver".
-- C-3: Every `ark agent` subcommand's output goes through `Display`-returning summary types; no ad-hoc `println!` in subcommand bodies.
-- C-4: All filesystem access in `commands/agent/` routes through `io::PathExt` (no bare `std::fs::*`).
-- C-5: All `.ark/`-relative path composition routes through `layout::Layout` helpers.
-- C-6: `task.toml` parsing/writing uses the `toml` crate. Corrupt files produce `Error::TaskTomlCorrupt` with source error chained.
-- C-7: `spec register` uses `io::update_managed_block` with the marker `ARK:FEATURES`.
-- C-8: `task archive`'s directory move uses `PathExt::rename_to` (rename semantics); fails loud on cross-device moves — no copy+delete fallback.
-- C-9: Illegal phase transitions produce `Error::IllegalPhaseTransition`. Deep-only operations invoked with the wrong tier produce `Error::WrongTier`. No silent success.
-- C-10: `ark agent` subcommands depend on each other via direct function calls only. MUST NOT shell out to `ark` itself.
-- C-11: **`## Spec` section-scan predicate.** Start line matches when `line.starts_with("## Spec")` AND (`line.len() == 7` OR `line.as_bytes()[7] == b' '`) — accepts `"## Spec"` and `"## Spec \`…\`"` but rejects `"## Speculation"`. End boundary is the first subsequent line where `line.starts_with("## ")` OR `line == "##"` — matches any H2 but NOT `### subheadings`. EOF also terminates.
-- C-12: `spec register`'s `--feature`, `--scope`, and `--from-task` args are trimmed then rejected if empty, containing `|`, or containing `\n`/`\r`. Violation → `Error::InvalidSpecField`.
-- C-13: `update_managed_block` refuses to write when an orphan START marker is present (START without matching END), returning `Error::ManagedBlockCorrupt`. Prevents silent corruption that would manifest on subsequent reads.
-- C-14: Archival is always user-invoked via `/ark:archive`. Slash commands `/ark:design` and `/ark:quick` stop at VERIFY / EXECUTE and tell the user to run `/ark:archive`; they do not archive automatically.
+- C-1: `ark --help` does not list `agent`.
+- C-2: `ark agent --help` includes the string "Not covered by semver".
+- C-3: Every subcommand's output goes through a `Display`-returning summary; no ad-hoc `println!`.
+- C-4: All filesystem access in `commands/agent/` routes through `io::PathExt`.
+- C-5: All `.ark/`-relative path composition routes through `layout::Layout`.
+- C-6: `task.toml` parsing/writing uses the `toml` crate; corrupt files produce `Error::TaskTomlCorrupt`.
+- C-7: `spec register` uses `io::update_managed_block` with marker `ARK:FEATURES`.
+- C-8: `task archive` directory move uses `PathExt::rename_to`; fails loud on cross-device.
+- C-9: Illegal phase transitions return `Error::IllegalPhaseTransition`; deep-only ops on wrong tier return `Error::WrongTier`.
+- C-10: `ark agent` subcommands depend on each other via direct calls only; never shell out to `ark`.
+- C-11: `## Spec` section-scan: start matches `line == "## Spec"` or `line.starts_with("## Spec ")`; end matches the next `^## ` H2 or EOF; rejects `## Speculation`.
+- C-12: `spec register` arg validation rejects empty strings or strings containing `|`, `\n`, `\r` → `Error::InvalidSpecField`.
+- C-13: `update_managed_block` refuses to write on orphan START marker → `Error::ManagedBlockCorrupt`.
+- C-14: `--slug` is required only on `task new`, `task resume`, `task discard`. Other verbs resolve via topology cascade (worktree → single active → session focus). Empty active set → `Error::NoActiveTask`. Multiple actives unresolved → `Error::AmbiguousActiveTask`.
+- C-15: Archival is user-invoked via `/ark:archive`; `/ark:design` and `/ark:quick` never archive automatically.
+
+[**CHANGELOG**]
+
+- 2026-05-06 `drop-task-slug`: `--slug` confined to `task new` / `resume` / `discard`; other verbs resolve via topology cascade. Added `Error::NoActiveTask` and `Error::AmbiguousActiveTask`.
+- 2026-05-08 `doc-tighten`: rewritten to match tightened SPEC contract; semantic content preserved.

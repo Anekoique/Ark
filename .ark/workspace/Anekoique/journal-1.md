@@ -188,3 +188,31 @@ Hook output stops dumping a JSON wall in transcripts; one-line `Ark: branch=… 
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 8: tight docs
+
+**Date**: 2026-05-08
+**Slug**: doc-tighten
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `aac0f97`
+**Closing Commit**: <PENDING:doc-tighten>
+
+### Summary
+
+Restructured commands, workflow.md, and templates into a CLI-driven contract; tightened all 9 feature SPECs to a uniform shape.
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| commands & skills | Tabular Step N: format with [AI]/[USER] markers and Failure Modes tables across Claude / Codex / OpenCode |
+| workflow.md | CLI-driven (Trellis pattern): Quick Start → Lifecycle anchored to ark calls; no narration tables |
+| templates | PRD/PLAN/REVIEW/VERIFY/SPEC enforce schema markers + Goal/Constraint length caps with Good/Bad examples |
+| feature SPECs | All 9 rewritten — Goals 5–6 verb-led, Non-goals 3, Constraints scoped; Architecture/API surface restored |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

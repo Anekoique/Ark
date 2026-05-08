@@ -3,38 +3,41 @@ name: ark-resume
 description: Switch this session's focused task to an existing active slug. Idempotent. Use when the user wants to bounce between multiple active tasks in the same checkout.
 ---
 
-# `ark-resume`
+# `ark-resume <task description>`
 
-Claim an existing active task as **this session's focused task**. After this, slug-less commands (e.g. `ark-archive`) resolve to the resumed slug.
+Claim an existing active task as **this session's focused task**. After this, `--slug`-less commands like `ark-commit` resolve to the resumed slug.
 
 ## Preconditions
 
 - `.ark/` is initialized.
-- The slug exists in `.ark/.state.toml`'s `tasks.active` (i.e. the task was created with `ark-quick` or `ark-design` and has not been archived or discarded).
+- The slug exists in `.ark/.state.toml`'s `tasks.active` (created via `ark-quick` or `ark-design`, not yet archived/discarded).
 
 ## Steps
 
-### 1. Resolve the slug
+### Step 1: Resolve the slug `[AI]` `[USER]`
 
-Parse the user request. The slug is required — there is no default for `ark-resume`. If the user did not name a task, ask which active task to resume; show the list from `ark context --scope session --format json`.
+Slug is required — no default. If `<task description>` is empty, ask the user which active task to resume. List active tasks via `ark context --scope session --format json`.
 
-### 2. Run the op
+### Step 2: Run the op `[AI]`
 
 ```bash
 ark agent task resume --slug <slug>
 ```
 
-This single command:
-- Validates the slug.
-- Refuses with `TaskNotFound` when the slug is not in `tasks.active`.
-- Sets this session's `focus` to the slug in `.ark/.state.toml`.
-- Idempotent: re-resuming the slug already focused by this session is a no-op.
+Validates the slug; sets this session's `focus` in `.ark/.state.toml`. Idempotent — re-resuming the slug already focused by this session is a no-op.
 
-### 3. Report to user
+### Step 3: Report `[AI]`
 
-Confirm the new focus in one line. Mention any next step that depends on focus (e.g. "now `ark-archive` will close out `<slug>`").
+Confirm the new focus in one line. Mention any next step that depends on focus (e.g. *"now `ark-commit` will close out `<slug>`"*).
 
-## Failure modes
+## Failure Modes
 
-- `TaskNotFound` → the slug is not active. Either it was archived/discarded already, or the user typed it wrong. Show the active set from `ark context` and ask.
-- `InvalidTaskField` → the slug failed validation (path traversal, whitespace, non-ASCII). Reject with the validator's message.
+| Code | Cause | Recovery |
+|------|-------|----------|
+| `TaskNotFound` | slug not in `tasks.active` (archived/discarded or typo) | Show active set via `ark context`; ask the user |
+| `InvalidTaskField` | slug failed validation (path traversal, whitespace, non-ASCII) | Reject with the validator's message |
+
+## See Also
+
+- `workflow.md` §8 (state & multi-session)
+- `ark-discard` — remove an unarchived task

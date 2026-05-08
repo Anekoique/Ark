@@ -14,6 +14,7 @@
 | 5 | 2026-05-05 | Cap journal Main Changes prose | `prose-discipline` | `main` | <PENDING:prose-discipline> | `journal-1.md` |
 | 6 | 2026-05-06 | Extend SessionStart envelope with suppressOutput and systemMessage | `session-envelope` | `main` | <PENDING:session-envelope> | `journal-1.md` |
 | 7 | 2026-05-06 | Drop --slug from non-targeted task verbs | `drop-task-slug` | `main` | <PENDING:drop-task-slug> | `journal-1.md` |
+| 8 | 2026-05-08 | tight docs | `doc-tighten` | `main` | <PENDING:doc-tighten> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 
