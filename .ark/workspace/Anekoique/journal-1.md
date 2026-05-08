@@ -216,3 +216,31 @@ Restructured commands, workflow.md, and templates into a CLI-driven contract; ti
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 9: Brownfield SPEC import via `/ark:extract-spec`
+
+**Date**: 2026-05-08
+**Slug**: extract-spec-cmd
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `e169239`
+**Closing Commit**: <PENDING:extract-spec-cmd>
+
+### Summary
+
+Brownfield projects can author a feature SPEC from an existing implementation through a confirm-gated discover→synthesize→import flow.
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| CLI | `ark agent spec import --feature/--scope/--from-file/--from-commit` writes SPEC + INDEX row in one call |
+| sharing | `upsert_index_row` and `sanitize_table_field` factored out of `register.rs` so import and register share validation |
+| provenance | First CHANGELOG entry stamps `extracted from <short-sha>`; INDEX row uses `from-task = "extracted"` sentinel |
+| skill | `/ark:extract-spec <name> [hint]` shipped across Claude command, OpenCode command, Codex skill |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

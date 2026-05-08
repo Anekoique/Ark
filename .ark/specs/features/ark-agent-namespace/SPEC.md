@@ -191,3 +191,4 @@ ark agent spec register  --feature <f> --scope "<s>" --from-task <t> [--date YYY
 
 - 2026-05-06 `drop-task-slug`: `--slug` confined to `task new` / `resume` / `discard`; other verbs resolve via topology cascade. Added `Error::NoActiveTask` and `Error::AmbiguousActiveTask`.
 - 2026-05-08 `doc-tighten`: rewritten to match tightened SPEC contract; semantic content preserved.
+- 2026-05-08 `extract-spec-cmd`: added `ark agent spec import --feature <s> --scope "<s>" --from-file <p> --from-commit <sha>` for brownfield SPEC authoring. Shares `upsert_index_row` with `spec register`; INDEX rows use `from-task = "extracted"` sentinel. Added `Error::SpecAlreadyExists`.

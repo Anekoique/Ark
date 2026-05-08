@@ -127,6 +127,15 @@ pub enum Error {
         plan_path: PathBuf,
     },
 
+    /// Feature SPEC already exists at the target path.
+    #[error("feature SPEC already exists for `{feature}` at {path}")]
+    SpecAlreadyExists {
+        /// Feature slug.
+        feature: String,
+        /// Existing SPEC path.
+        path: PathBuf,
+    },
+
     /// Task directory has no `NN_PLAN.md` files.
     #[error("no `NN_PLAN.md` found in {task_dir}")]
     NoPlanFound {

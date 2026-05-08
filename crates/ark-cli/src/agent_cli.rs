@@ -5,12 +5,13 @@
 use std::path::{Path, PathBuf};
 
 use ark_core::{
-    Layout, Ppid, RealPpid, SpecExtractOptions, SpecRegisterOptions, TaskArchiveMoveOptions,
-    TaskCommitOptions, TaskDiscardOptions, TaskNewOptions, TaskNewWorktree, TaskPhaseOptions,
-    TaskPromoteOptions, TaskResumeOptions, TaskToml, Tier, WorktreeCleanupOptions,
-    WorktreeListOptions, load_state, lookup_session_id, spec_extract, spec_register,
-    task_archive_move, task_commit, task_discard, task_execute, task_new, task_plan, task_promote,
-    task_resume, task_review, task_verify, worktree_cleanup, worktree_list,
+    Layout, Ppid, RealPpid, SpecExtractOptions, SpecImportOptions, SpecRegisterOptions,
+    TaskArchiveMoveOptions, TaskCommitOptions, TaskDiscardOptions, TaskNewOptions, TaskNewWorktree,
+    TaskPhaseOptions, TaskPromoteOptions, TaskResumeOptions, TaskToml, Tier,
+    WorktreeCleanupOptions, WorktreeListOptions, load_state, lookup_session_id, spec_extract,
+    spec_import, spec_register, task_archive_move, task_commit, task_discard, task_execute,
+    task_new, task_plan, task_promote, task_resume, task_review, task_verify, worktree_cleanup,
+    worktree_list,
 };
 use chrono::NaiveDate;
 use clap::Subcommand;
@@ -260,6 +261,13 @@ struct SpecArgs {
 enum SpecCommand {
     /// Extract the final PLAN's `## Spec` section into `specs/features/<slug>/SPEC.md`.
     Extract(SpecExtractCliArgs),
+    /// Import a feature SPEC authored from an existing codebase.
+    ///
+    /// Brownfield counterpart to `spec extract`: the SPEC body is authored
+    /// externally (typically by `/ark:extract-spec`) and imported as
+    /// `specs/features/<feature>/SPEC.md` with a provenance CHANGELOG entry
+    /// and a `from-task = "extracted"` row in the features INDEX.
+    Import(SpecImportCliArgs),
     /// Upsert a row in specs/features/INDEX.md.
     Register(SpecRegisterCliArgs),
 }
@@ -271,6 +279,32 @@ struct SpecExtractCliArgs {
     /// Optional explicit PLAN path. Default: highest-NN `NN_PLAN.md`.
     #[arg(long)]
     plan: Option<PathBuf>,
+}
+
+#[derive(clap::Args)]
+struct SpecImportCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Feature slug; doubles as `specs/features/<feature>/` directory name.
+    #[arg(long)]
+    feature: String,
+    /// One-line scope rendered into the features INDEX row.
+    #[arg(long)]
+    scope: String,
+    /// Path to the authored SPEC body (without provenance CHANGELOG entry).
+    #[arg(long = "from-file")]
+    from_file: PathBuf,
+    /// Short SHA recorded in the provenance CHANGELOG entry.
+    ///
+    /// Required: the slash command resolves it via `git rev-parse --short HEAD`
+    /// at invocation time and passes it through. Kept explicit so the SPEC
+    /// records the SHA the user *confirmed* against, not whatever HEAD points
+    /// at when the CLI happens to run.
+    #[arg(long = "from-commit")]
+    from_commit: String,
+    /// Override the registration date (YYYY-MM-DD). Default: today UTC.
+    #[arg(long)]
+    date: Option<String>,
 }
 
 #[derive(clap::Args)]
@@ -488,6 +522,22 @@ impl SpecCommand {
                     slug,
                     plan_override: a.plan,
                     task_dir_override: None,
+                })?);
+            }
+            Self::Import(a) => {
+                let root = a.target.resolve();
+                let date = match a.date {
+                    Some(s) => NaiveDate::parse_from_str(&s, "%Y-%m-%d")
+                        .map_err(|e| anyhow::anyhow!("invalid --date `{s}`: {e}"))?,
+                    None => chrono::Utc::now().date_naive(),
+                };
+                render(spec_import(SpecImportOptions {
+                    project_root: root,
+                    feature: a.feature,
+                    scope: a.scope,
+                    from_file: a.from_file,
+                    from_commit: a.from_commit,
+                    date,
                 })?);
             }
             Self::Register(a) => {

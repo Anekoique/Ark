@@ -5,7 +5,10 @@
 //! `feature` and `scope` are trimmed, then rejected if empty or containing
 //! `|` (markdown table separator) or any newline character.
 
-use std::{fmt, path::PathBuf};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+};
 
 use chrono::NaiveDate;
 
@@ -52,20 +55,11 @@ impl fmt::Display for SpecRegisterSummary {
 
 /// Registers or updates one feature row in the feature index.
 pub fn spec_register(opts: SpecRegisterOptions) -> Result<SpecRegisterSummary> {
-    let feature = sanitize_field("feature", &opts.feature)?;
-    let scope = sanitize_field("scope", &opts.scope)?;
-    let from_task = sanitize_field("from_task", &opts.from_task)?;
+    let feature = sanitize_table_field("feature", &opts.feature)?;
+    let scope = sanitize_table_field("scope", &opts.scope)?;
+    let from_task = sanitize_table_field("from_task", &opts.from_task)?;
 
-    let layout = Layout::new(&opts.project_root);
-    let index_path = layout.specs_features_index();
-    if let Some(parent) = index_path.parent() {
-        parent.ensure_dir()?;
-    }
-
-    let existing_body = read_managed_block(&index_path, FEATURES_MARKER)?.unwrap_or_default();
-    let (new_body, was_update) =
-        upsert_row(&existing_body, &feature, &scope, &from_task, opts.date);
-    update_managed_block(&index_path, FEATURES_MARKER, &new_body)?;
+    let was_update = upsert_index_row(&opts.project_root, &feature, &scope, &from_task, opts.date)?;
 
     Ok(SpecRegisterSummary {
         feature: opts.feature,
@@ -73,11 +67,36 @@ pub fn spec_register(opts: SpecRegisterOptions) -> Result<SpecRegisterSummary> {
     })
 }
 
+/// Upserts a feature row in `specs/features/INDEX.md`.
+///
+/// Shared between `spec_register` (deep-tier promotion) and `spec_import`
+/// (brownfield extraction). Inputs are assumed pre-sanitized.
+pub(crate) fn upsert_index_row(
+    project_root: &Path,
+    feature: &str,
+    scope: &str,
+    from_task: &str,
+    date: NaiveDate,
+) -> Result<bool> {
+    let layout = Layout::new(project_root);
+    let index_path = layout.specs_features_index();
+    if let Some(parent) = index_path.parent() {
+        parent.ensure_dir()?;
+    }
+
+    let existing_body = read_managed_block(&index_path, FEATURES_MARKER)?.unwrap_or_default();
+    let (new_body, was_update) = upsert_row(&existing_body, feature, scope, from_task, date);
+    update_managed_block(&index_path, FEATURES_MARKER, &new_body)?;
+
+    Ok(was_update)
+}
+
 /// Sanitizes a markdown table field.
 ///
 /// Rejects empty, pipe, and newline values because all would corrupt the
-/// markdown table row.
-fn sanitize_field(name: &'static str, raw: &str) -> Result<String> {
+/// markdown table row. Shared with `spec_import` so both verbs apply the
+/// same boundary validation.
+pub(crate) fn sanitize_table_field(name: &'static str, raw: &str) -> Result<String> {
     let trimmed = raw.trim();
     let reason = if trimmed.is_empty() {
         "must not be empty"

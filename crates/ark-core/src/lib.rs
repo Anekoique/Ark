@@ -28,8 +28,8 @@ pub use commands::{
     agent::{
         Phase, Status, TaskToml, Tier,
         spec::{
-            SpecExtractOptions, SpecExtractSummary, SpecRegisterOptions, SpecRegisterSummary,
-            spec_extract, spec_register,
+            SpecExtractOptions, SpecExtractSummary, SpecImportOptions, SpecImportSummary,
+            SpecRegisterOptions, SpecRegisterSummary, spec_extract, spec_import, spec_register,
         },
         task::{
             TaskArchiveMoveOptions, TaskArchiveMoveSummary, TaskCommitOptions, TaskCommitSummary,
