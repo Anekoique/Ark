@@ -22,7 +22,6 @@ use crate::{
     error::Result,
     io::{PathExt, git, read_managed_block},
     layout::{FEATURES_MARKER, Layout},
-    session::{cache::lookup_session_id, ppid::RealPpid},
     state::load_state,
 };
 
@@ -313,14 +312,10 @@ fn normalize_spec_cell(raw: &str) -> (String, String) {
 }
 
 fn gather_current_task(layout: &Layout, tasks: &TasksState) -> Result<Option<CurrentTask>> {
-    // Read-only path: never create a session cache file. A session that has
-    // not registered focus via `task new` / `task resume` reports `None`.
-    let ppid = RealPpid::new();
-    let Some(id) = lookup_session_id(layout, &ppid)? else {
-        return Ok(None);
-    };
-    let state = load_state(layout, &ppid)?;
-    let Some(slug) = state.sessions.get(id.as_str()).map(|s| s.focus.clone()) else {
+    // Per-checkout focus is the only source of truth. A checkout that has
+    // never had `task new` / `task resume` reports `None`.
+    let state = load_state(layout)?;
+    let Some(slug) = state.focus.clone() else {
         return Ok(None);
     };
     let task_dir = layout.task_dir(&slug);
@@ -473,23 +468,11 @@ mod tests {
         )
     }
 
-    /// Registers `slug` as this test's session focus by writing a state file
-    /// directly. Mirrors what `task new` would do.
+    /// Registers `slug` as this checkout's focus. Mirrors what `task new` does.
     fn register_focus(layout: &Layout, slug: &str) {
-        use crate::{
-            session::ppid::{Ppid, RealPpid},
-            state::{Session, state_mutate},
-        };
-        let ppid = RealPpid::new();
-        let id = crate::session::cache::resolve_session_id(layout, &ppid).unwrap();
-        state_mutate(layout, &ppid, |state| {
-            state.sessions.insert(
-                id.as_str().to_string(),
-                Session {
-                    focus: slug.to_string(),
-                    pid: ppid.parent_id(),
-                },
-            );
+        use crate::state::state_mutate;
+        state_mutate(layout, |state| {
+            state.focus = Some(slug.to_string());
             Ok(())
         })
         .unwrap();

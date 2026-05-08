@@ -55,7 +55,7 @@ fn creates_task_dir_prd_toml_and_current() {
     assert!(task_dir.join("PRD.md").is_file());
     assert!(task_dir.join("task.toml").is_file());
     let layout = Layout::new(tmp.path());
-    let state = crate::state::load_state(&layout, &crate::session::ppid::RealPpid::new()).unwrap();
+    let state = crate::state::load_state(&layout).unwrap();
     assert!(state.tasks.active.iter().any(|s| s == "demo"));
     assert_eq!(summary.slug, "demo");
     assert_eq!(summary.tier, Tier::Standard);
@@ -163,8 +163,7 @@ fn worktree_happy_path() {
     assert!(wt_task_dir.join("PRD.md").is_file());
     assert!(wt_task_dir.join("task.toml").is_file());
     let wt_layout = Layout::new(&wt);
-    let wt_state =
-        crate::state::load_state(&wt_layout, &crate::session::ppid::RealPpid::new()).unwrap();
+    let wt_state = crate::state::load_state(&wt_layout).unwrap();
     assert!(wt_state.tasks.active.iter().any(|s| s == "foo"));
 
     let toml = TaskToml::load(&wt_task_dir).unwrap();

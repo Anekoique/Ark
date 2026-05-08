@@ -45,6 +45,7 @@ use crate::{
     error::{Error, Result},
     io::{PathExt, git::run_git},
     layout::Layout,
+    state::state_mutate,
 };
 
 /// Options accepted by [`task_commit`].
@@ -215,6 +216,7 @@ pub fn task_commit(opts: TaskCommitOptions) -> Result<TaskCommitSummary> {
     if opts.no_commit {
         // Phase + (deep) SPEC are persisted; user owns the follow-up commit.
         guard.commit();
+        clear_focus_if_matches(&layout, &opts.slug)?;
         return Ok(TaskCommitSummary {
             slug: opts.slug,
             tier: prev_toml.tier,
@@ -261,6 +263,7 @@ pub fn task_commit(opts: TaskCommitOptions) -> Result<TaskCommitSummary> {
         .filter(|s| !s.is_empty());
 
     guard.commit();
+    clear_focus_if_matches(&layout, &opts.slug)?;
 
     Ok(TaskCommitSummary {
         slug: opts.slug,
@@ -268,6 +271,18 @@ pub fn task_commit(opts: TaskCommitOptions) -> Result<TaskCommitSummary> {
         head_sha,
         deep_spec_promoted: deep,
         pending_verify: pending,
+    })
+}
+
+/// Clears `state.focus` iff it points at `slug`. Leaves `tasks.active` alone:
+/// commit promotes the task to `Committed` but it remains active until
+/// `ark archive` runs.
+fn clear_focus_if_matches(layout: &Layout, slug: &str) -> Result<()> {
+    state_mutate(layout, |state| {
+        if state.focus.as_deref() == Some(slug) {
+            state.focus = None;
+        }
+        Ok(())
     })
 }
 
@@ -969,6 +984,13 @@ mod e2e {
             .stdout;
         assert!(head_files.contains(".ark/tasks/qd/task.toml"));
         assert!(head_files.contains("src/foo.rs"));
+
+        // Focus is released on commit so the next non-targeted verb errors
+        // cleanly instead of resolving to a closed task.
+        let state = crate::state::load_state(&Layout::new(tmp.path())).unwrap();
+        assert!(state.focus.is_none(), "task_commit must clear focus");
+        // Slug stays in active until `ark archive` runs.
+        assert!(state.tasks.active.iter().any(|s| s == "qd"));
     }
 
     /// Unstaged user files outside Ark's purview survive the closing commit.
@@ -1071,6 +1093,12 @@ mod e2e {
         let toml = TaskToml::load(&layout.task_dir("qd")).unwrap();
         assert_eq!(toml.phase, Phase::Committed);
         assert!(toml.committed_at.is_some());
+
+        // --no-commit also releases focus: the phase transition is what
+        // matters; the user owns the follow-up commit but no longer needs
+        // focus bound.
+        let state = crate::state::load_state(&layout).unwrap();
+        assert!(state.focus.is_none(), "--no-commit must also clear focus");
     }
 
     /// Pre-commit hook rejects → rollback restores `task.toml`; the user's

@@ -22,7 +22,7 @@ pub fn synthesize_from_legacy(layout: &Layout) -> Result<StateFile> {
     let active = read_legacy_current(layout)?.into_iter().collect();
     Ok(StateFile {
         tasks: Tasks { active },
-        sessions: Default::default(),
+        focus: None,
     })
 }
 

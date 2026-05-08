@@ -5,13 +5,12 @@
 use std::path::{Path, PathBuf};
 
 use ark_core::{
-    Layout, Ppid, RealPpid, SpecExtractOptions, SpecImportOptions, SpecRegisterOptions,
-    TaskArchiveMoveOptions, TaskCommitOptions, TaskDiscardOptions, TaskNewOptions, TaskNewWorktree,
-    TaskPhaseOptions, TaskPromoteOptions, TaskResumeOptions, TaskToml, Tier,
-    WorktreeCleanupOptions, WorktreeListOptions, load_state, lookup_session_id, spec_extract,
-    spec_import, spec_register, task_archive_move, task_commit, task_discard, task_execute,
-    task_new, task_plan, task_promote, task_resume, task_review, task_verify, worktree_cleanup,
-    worktree_list,
+    Layout, SpecExtractOptions, SpecImportOptions, SpecRegisterOptions, TaskArchiveMoveOptions,
+    TaskCommitOptions, TaskDiscardOptions, TaskNewOptions, TaskNewWorktree, TaskPhaseOptions,
+    TaskPromoteOptions, TaskResumeOptions, TaskToml, Tier, WorktreeCleanupOptions,
+    WorktreeListOptions, load_state, spec_extract, spec_import, spec_register, task_archive_move,
+    task_commit, task_discard, task_execute, task_new, task_plan, task_promote, task_resume,
+    task_review, task_verify, worktree_cleanup, worktree_list,
 };
 use chrono::NaiveDate;
 use clap::Subcommand;
@@ -426,13 +425,13 @@ impl TaskCommand {
                     worktree,
                 })?);
             }
-            Self::Plan(a) => run_phase(a, &RealPpid::new(), task_plan)?,
-            Self::Review(a) => run_phase(a, &RealPpid::new(), task_review)?,
-            Self::Execute(a) => run_phase(a, &RealPpid::new(), task_execute)?,
-            Self::Verify(a) => run_phase(a, &RealPpid::new(), task_verify)?,
+            Self::Plan(a) => run_phase(a, task_plan)?,
+            Self::Review(a) => run_phase(a, task_review)?,
+            Self::Execute(a) => run_phase(a, task_execute)?,
+            Self::Verify(a) => run_phase(a, task_verify)?,
             Self::Commit(a) => {
                 let root = a.target.resolve();
-                let slug = resolve_slug(&root, &RealPpid::new())?;
+                let slug = resolve_slug(&root)?;
                 render(task_commit(TaskCommitOptions {
                     project_root: root,
                     slug,
@@ -442,7 +441,7 @@ impl TaskCommand {
             }
             Self::Archive(a) => {
                 let root = a.target.resolve();
-                let slug = resolve_slug(&root, &RealPpid::new())?;
+                let slug = resolve_slug(&root)?;
                 let archive_month = match a.month {
                     Some(m) => m,
                     None => derive_archive_month(&root, &slug)?,
@@ -470,7 +469,7 @@ impl TaskCommand {
             }
             Self::Promote(a) => {
                 let root = a.target.resolve();
-                let slug = resolve_slug(&root, &RealPpid::new())?;
+                let slug = resolve_slug(&root)?;
                 render(task_promote(TaskPromoteOptions {
                     project_root: root,
                     slug,
@@ -480,7 +479,7 @@ impl TaskCommand {
             Self::Worktree(a) => match a.command {
                 WorktreeSubcommand::Cleanup(c) => {
                     let root = c.target.resolve();
-                    let slug = resolve_slug(&root, &RealPpid::new())?;
+                    let slug = resolve_slug(&root)?;
                     render(worktree_cleanup(WorktreeCleanupOptions {
                         project_root: root,
                         slug,
@@ -498,12 +497,12 @@ impl TaskCommand {
     }
 }
 
-fn run_phase<F>(a: TaskSlugArgs, ppid: &dyn Ppid, f: F) -> anyhow::Result<()>
+fn run_phase<F>(a: TaskSlugArgs, f: F) -> anyhow::Result<()>
 where
     F: FnOnce(TaskPhaseOptions) -> ark_core::Result<ark_core::TaskPhaseSummary>,
 {
     let root = a.target.resolve();
-    let slug = resolve_slug(&root, ppid)?;
+    let slug = resolve_slug(&root)?;
     render(f(TaskPhaseOptions {
         project_root: root,
         slug,
@@ -516,7 +515,7 @@ impl SpecCommand {
         match self {
             Self::Extract(a) => {
                 let root = a.target.resolve();
-                let slug = resolve_slug(&root, &RealPpid::new())?;
+                let slug = resolve_slug(&root)?;
                 render(spec_extract(SpecExtractOptions {
                     project_root: root,
                     slug,
@@ -560,54 +559,26 @@ impl SpecCommand {
     }
 }
 
-/// Resolves the active task slug by topology, then state, then session focus.
+/// Resolves the focused task slug from `.ark/.state.toml`.
 ///
-/// Order:
-/// 1. Worktree path: when `root` is `<parent>/.ark/worktrees/<branch-type>/<slug>`,
-///    the trailing component names the slug. Confirmed by both the on-disk task
-///    directory and the active set (the latter prevents resolution to archived
-///    or hand-recreated remnants).
-/// 2. Single active task: an unambiguous match.
-/// 3. Session focus: the per-session pointer in `.ark/.state.toml`. The cache
-///    file lookup is best-effort — IO failures fall through to ambiguity rather
-///    than aborting the verb.
+/// Per-checkout focus is the only resolver: `task new` and `task resume`
+/// bind it; `task archive` and `task discard` clear it. There is no
+/// topology cascade — verbs that need a slug error cleanly when no focus
+/// is bound, telling the user to run `task new` or `task resume`.
 ///
 /// # Errors
 ///
-/// Returns [`ark_core::Error::NoActiveTask`] when the active set is empty,
-/// or [`ark_core::Error::AmbiguousActiveTask`] when multiple actives are
-/// present and no resolver branch hits.
-fn resolve_slug(root: &Path, ppid: &dyn Ppid) -> anyhow::Result<String> {
+/// Returns [`ark_core::Error::NoFocus`] when `state.focus` is `None`.
+fn resolve_slug(root: &Path) -> anyhow::Result<String> {
     let layout = Layout::new(root);
-    let state = load_state(&layout, ppid)?;
-
-    if let Some(slug) = layout.slug_from_worktree_root()
-        && layout.task_dir(&slug).is_dir()
-        && state.tasks.active.contains(&slug)
-    {
-        return Ok(slug);
-    }
-
-    match state.tasks.active.as_slice() {
-        [] => Err(ark_core::Error::NoActiveTask {
+    let state = load_state(&layout)?;
+    state.focus.clone().ok_or_else(|| {
+        ark_core::Error::NoFocus {
             project_root: root.to_path_buf(),
+            candidates: state.tasks.active.clone(),
         }
-        .into()),
-        [one] => Ok(one.clone()),
-        many => {
-            if let Some(id) = lookup_session_id(&layout, ppid).ok().flatten()
-                && let Some(focus) = state.sessions.get(id.as_str()).map(|s| s.focus.clone())
-                && !focus.is_empty()
-                && many.iter().any(|s| s == &focus)
-            {
-                return Ok(focus);
-            }
-            Err(ark_core::Error::AmbiguousActiveTask {
-                candidates: many.to_vec(),
-            }
-            .into())
-        }
-    }
+        .into()
+    })
 }
 
 /// Reads the slug's `task.toml` and returns its `committed_at` month as `YYYY-MM`.
@@ -630,27 +601,9 @@ fn derive_archive_month(root: &Path, slug: &str) -> anyhow::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU32, Ordering};
-
-    use ark_core::{PathExt, StubPpid, cache_file_path};
+    use ark_core::PathExt;
 
     use super::*;
-
-    /// Returns a per-test ppid that does not collide with other tests in this
-    /// process. Mirrors `crates/ark-core/src/session/cache.rs::tests::unique_test_ppid`.
-    fn unique_test_ppid() -> u32 {
-        static COUNTER: AtomicU32 = AtomicU32::new(0);
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        (std::process::id() << 8) ^ (n + 1) ^ 0xc3c3_c3c3
-    }
-
-    /// Test guard that releases the cache file at `path` on drop.
-    struct CacheGuard(PathBuf);
-    impl Drop for CacheGuard {
-        fn drop(&mut self) {
-            let _ = self.0.remove_if_exists();
-        }
-    }
 
     fn write_state(layout: &Layout, body: &str) {
         layout.ark_dir().ensure_dir().unwrap();
@@ -667,123 +620,72 @@ mod tests {
         std::fs::write(dir.join("task.toml"), toml).unwrap();
     }
 
+    /// Verifies that `resolve_slug` returns `state.focus` when set.
     #[test]
-    fn resolve_slug_finds_slug_from_worktree_path() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().join(".ark/worktrees/feat/foo");
-        let layout = Layout::new(&root);
-        make_task_dir(&layout, "foo");
-        write_state(&layout, "[tasks]\nactive = [\"foo\"]\n");
-        let ppid = StubPpid(unique_test_ppid());
-        assert_eq!(resolve_slug(&root, &ppid).unwrap(), "foo");
-    }
-
-    #[test]
-    fn resolve_slug_falls_through_when_worktree_slug_not_in_active() {
-        // The worktree path's trailing component (`foo`) has an empty dir
-        // (no task.toml), so reconcile sees only `bar` as active.
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().join(".ark/worktrees/feat/foo");
-        let layout = Layout::new(&root);
-        layout.task_dir("foo").ensure_dir().unwrap();
-        make_task_dir(&layout, "bar");
-        write_state(&layout, "[tasks]\nactive = [\"bar\"]\n");
-        let ppid = StubPpid(unique_test_ppid());
-        assert_eq!(resolve_slug(&root, &ppid).unwrap(), "bar");
-    }
-
-    #[test]
-    fn resolve_slug_falls_through_when_worktree_slug_has_no_task_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().join(".ark/worktrees/feat/ghost");
-        let layout = Layout::new(&root);
-        layout.ark_dir().ensure_dir().unwrap();
-        write_state(&layout, "[tasks]\nactive = []\n");
-        let ppid = StubPpid(unique_test_ppid());
-        let err = resolve_slug(&root, &ppid).unwrap_err();
-        let downcast = err.downcast_ref::<ark_core::Error>().unwrap();
-        assert!(matches!(downcast, ark_core::Error::NoActiveTask { .. }));
-    }
-
-    #[test]
-    fn resolve_slug_returns_only_active_when_one() {
+    fn resolve_slug_returns_focus_when_set() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_path_buf();
         let layout = Layout::new(&root);
-        make_task_dir(&layout, "only");
-        write_state(&layout, "[tasks]\nactive = [\"only\"]\n");
-        let ppid = StubPpid(unique_test_ppid());
-        assert_eq!(resolve_slug(&root, &ppid).unwrap(), "only");
+        make_task_dir(&layout, "alpha");
+        make_task_dir(&layout, "beta");
+        write_state(
+            &layout,
+            "focus = \"beta\"\n\n[tasks]\nactive = [\"alpha\", \"beta\"]\n",
+        );
+        assert_eq!(resolve_slug(&root).unwrap(), "beta");
     }
 
+    /// Verifies that `resolve_slug` errors with `NoFocus` when `state.focus` is None.
     #[test]
-    fn resolve_slug_errors_no_active_when_state_empty() {
+    fn resolve_slug_errors_no_focus_when_unset() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_path_buf();
         let layout = Layout::new(&root);
-        write_state(&layout, "[tasks]\nactive = []\n");
-        let ppid = StubPpid(unique_test_ppid());
-        let err = resolve_slug(&root, &ppid).unwrap_err();
-        let downcast = err.downcast_ref::<ark_core::Error>().unwrap();
-        assert!(matches!(downcast, ark_core::Error::NoActiveTask { .. }));
-    }
-
-    #[test]
-    fn resolve_slug_errors_ambiguous_with_no_session_focus() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().to_path_buf();
-        let layout = Layout::new(&root);
-        make_task_dir(&layout, "a");
-        make_task_dir(&layout, "b");
-        write_state(&layout, "[tasks]\nactive = [\"a\", \"b\"]\n");
-        let ppid = StubPpid(unique_test_ppid());
-        let err = resolve_slug(&root, &ppid).unwrap_err();
+        make_task_dir(&layout, "alpha");
+        write_state(&layout, "[tasks]\nactive = [\"alpha\"]\n");
+        let err = resolve_slug(&root).unwrap_err();
         let downcast = err.downcast_ref::<ark_core::Error>().unwrap();
         match downcast {
-            ark_core::Error::AmbiguousActiveTask { candidates } => {
-                assert_eq!(candidates, &vec!["a".to_string(), "b".to_string()]);
+            ark_core::Error::NoFocus { candidates, .. } => {
+                assert_eq!(candidates, &vec!["alpha".to_string()]);
             }
-            other => panic!("expected AmbiguousActiveTask, got {other:?}"),
+            other => panic!("expected NoFocus, got {other:?}"),
         }
     }
 
+    /// Verifies that `resolve_slug` reports an empty active set when nothing
+    /// is on disk and no focus is set.
     #[test]
-    fn resolve_slug_uses_session_focus_when_ambiguous() {
+    fn resolve_slug_errors_no_focus_with_empty_active() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_path_buf();
         let layout = Layout::new(&root);
-        make_task_dir(&layout, "a");
-        make_task_dir(&layout, "b");
-        let pid = unique_test_ppid();
-        let cache_path = cache_file_path(&layout, pid);
-        let _guard = CacheGuard(cache_path.clone());
-        let uuid = "0abd4021cbbd4b8b8a11b06679daf950";
-        cache_path.write_bytes(uuid.as_bytes()).unwrap();
-        write_state(
-            &layout,
-            &format!(
-                "[tasks]\nactive = [\"a\", \"b\"]\n\n[sessions.{uuid}]\nfocus = \"a\"\npid = \
-                 {pid}\n",
-            ),
-        );
-        let ppid = StubPpid(pid);
-        assert_eq!(resolve_slug(&root, &ppid).unwrap(), "a");
+        write_state(&layout, "[tasks]\nactive = []\n");
+        let err = resolve_slug(&root).unwrap_err();
+        let downcast = err.downcast_ref::<ark_core::Error>().unwrap();
+        match downcast {
+            ark_core::Error::NoFocus { candidates, .. } => {
+                assert!(candidates.is_empty());
+            }
+            other => panic!("expected NoFocus, got {other:?}"),
+        }
     }
 
+    /// Verifies that legacy `[sessions.*]` blocks in `.state.toml` are
+    /// silently ignored on read; focus resolution still works from the
+    /// top-level `focus` field.
     #[test]
-    fn resolve_slug_regression_pr_repro() {
+    fn resolve_slug_ignores_legacy_sessions_table() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().join(".ark/worktrees/feat/b");
+        let root = tmp.path().to_path_buf();
         let layout = Layout::new(&root);
-        make_task_dir(&layout, "a");
-        make_task_dir(&layout, "b");
-        // Stale session: UUID never matches lookup_session_id's output for our ppid.
+        make_task_dir(&layout, "alpha");
         write_state(
             &layout,
-            "[tasks]\nactive = [\"a\", \
-             \"b\"]\n\n[sessions.deadbeefdeadbeefdeadbeefdeadbeef]\nfocus = \"a\"\npid = 87360\n",
+            "focus = \"alpha\"\n\n[tasks]\nactive = \
+             [\"alpha\"]\n\n[sessions.deadbeefdeadbeefdeadbeefdeadbeef]\nfocus = \"alpha\"\npid = \
+             99999\n",
         );
-        let ppid = StubPpid(unique_test_ppid());
-        assert_eq!(resolve_slug(&root, &ppid).unwrap(), "b");
+        assert_eq!(resolve_slug(&root).unwrap(), "alpha");
     }
 }

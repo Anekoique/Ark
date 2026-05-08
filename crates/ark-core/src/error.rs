@@ -96,20 +96,17 @@ pub enum Error {
         slug: String,
     },
 
-    /// No active task is recorded for this checkout.
-    #[error("no active task in `{}`; run `ark agent task new` first", project_root.display())]
-    NoActiveTask {
+    /// This checkout has no focused task. Run `task new` or `task resume` to bind.
+    #[error(
+        "no focus set in `{}`; run `ark agent task new` or `task resume --slug <one-of>` to bind \
+         this checkout (active: {})",
+        project_root.display(),
+        if candidates.is_empty() { "<none>".to_string() } else { candidates.join(", ") },
+    )]
+    NoFocus {
         /// Checkout root that was probed.
         project_root: PathBuf,
-    },
-
-    /// Multiple active tasks but none was selected by the topology cascade.
-    #[error(
-        "multiple active tasks: {}; run `ark agent task resume --slug <one-of>` to focus this session",
-        candidates.join(", ")
-    )]
-    AmbiguousActiveTask {
-        /// Active task slugs in their on-disk order.
+        /// Active task slugs available for `task resume`.
         candidates: Vec<String>,
     },
 

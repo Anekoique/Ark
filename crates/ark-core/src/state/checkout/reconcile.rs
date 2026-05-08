@@ -2,13 +2,12 @@
 //!
 //! [`reconcile_against_disk`] runs a single fixed-order pass: enumerate task
 //! dirs, add any non-archived slug missing from `tasks.active`, drop active
-//! entries whose `task.toml` is missing or archived, sort and dedupe, drop
-//! orphan session focuses, then prune sessions whose temp-dir cache file is
-//! missing or mismatched.
+//! entries whose `task.toml` is missing or archived, sort and dedupe, and
+//! finally clear `state.focus` if it points outside the active set.
 //!
 //! Add precedes drop so a brief inconsistent intermediate state never
-//! collapses an active slug. Session pruning runs last so newly-orphaned
-//! sessions (from the orphan-focus pass) get pruned in the same call.
+//! collapses an active slug. Focus invalidation runs last so a slug
+//! removed in the drop pass also clears any stale focus pointing at it.
 
 use std::collections::BTreeSet;
 
@@ -17,11 +16,10 @@ use crate::{
     error::Result,
     io::PathExt,
     layout::Layout,
-    session::cache::cache_matches,
     state::checkout::model::StateFile,
 };
 
-/// Runs the full two-way reconcile pass.
+/// Runs the full reconcile pass.
 pub fn reconcile_against_disk(layout: &Layout, state: &mut StateFile) -> Result<()> {
     let on_disk = enumerate_active_task_slugs(layout)?;
 
@@ -39,27 +37,14 @@ pub fn reconcile_against_disk(layout: &Layout, state: &mut StateFile) -> Result<
     state.tasks.active.sort();
     state.tasks.active.dedup();
 
-    // 4. Drop sessions whose focused slug is no longer active.
-    let active: BTreeSet<&String> = state.tasks.active.iter().collect();
-    state
-        .sessions
-        .retain(|_, sess| active.contains(&sess.focus));
-
-    // 5. Prune sessions whose temp-dir cache file is missing or mismatched.
-    prune_dead_sessions(layout, state);
+    // 4. Clear focus when it points outside the active set.
+    if let Some(focus) = state.focus.as_ref()
+        && !state.tasks.active.iter().any(|s| s == focus)
+    {
+        state.focus = None;
+    }
 
     Ok(())
-}
-
-/// Drops `[sessions.*]` entries whose cache file no longer matches.
-///
-/// Pure in-memory mutation; persistence is `state_mutate`'s job. Exposed as
-/// a free function so callers (notably `reconcile_against_disk`) can run it
-/// at the end of a reconcile pass without owning the cache logic itself.
-pub fn prune_dead_sessions(layout: &Layout, state: &mut StateFile) {
-    state
-        .sessions
-        .retain(|uuid, sess| cache_matches(layout, sess.pid, uuid));
 }
 
 /// Returns the set of slugs whose task directory exists with non-archived phase.
@@ -104,11 +89,7 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
-    use crate::{
-        commands::agent::state::Tier,
-        session::{cache::resolve_session_id, ppid::StubPpid},
-        state::checkout::model::Session,
-    };
+    use crate::commands::agent::state::Tier;
 
     fn layout_for(tmp: &tempfile::TempDir) -> Layout {
         Layout::new(tmp.path())
@@ -171,21 +152,31 @@ mod tests {
         assert_eq!(state.tasks.active, vec!["fresh"]);
     }
 
-    /// Verifies that reconcile drops a session whose focused slug is no longer active.
+    /// Verifies that reconcile clears focus when its target is no longer active.
     #[test]
-    fn drops_session_whose_focus_no_longer_active() {
+    fn clears_focus_when_focus_no_longer_active() {
         let tmp = tempfile::tempdir().unwrap();
         let layout = layout_for(&tmp);
-        let mut state = StateFile::default();
-        state.sessions.insert(
-            "deadbeef".into(),
-            Session {
-                focus: "ghost".into(),
-                pid: 1,
-            },
-        );
+        let mut state = StateFile {
+            focus: Some("ghost".into()),
+            ..StateFile::default()
+        };
         reconcile_against_disk(&layout, &mut state).unwrap();
-        assert!(state.sessions.is_empty());
+        assert!(state.focus.is_none());
+    }
+
+    /// Verifies that reconcile preserves focus when the focused slug is active.
+    #[test]
+    fn preserves_focus_when_focus_is_active() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = layout_for(&tmp);
+        write_task(&layout, "live", Phase::Design);
+        let mut state = StateFile {
+            focus: Some("live".into()),
+            ..StateFile::default()
+        };
+        reconcile_against_disk(&layout, &mut state).unwrap();
+        assert_eq!(state.focus.as_deref(), Some("live"));
     }
 
     /// Verifies that reconcile is idempotent: calling it twice changes nothing further.
@@ -200,7 +191,7 @@ mod tests {
         let after_one = state.clone();
         reconcile_against_disk(&layout, &mut state).unwrap();
         assert_eq!(after_one.tasks.active, state.tasks.active);
-        assert_eq!(after_one.sessions.len(), state.sessions.len());
+        assert_eq!(after_one.focus, state.focus);
     }
 
     /// Verifies that reconcile recovers `active` when the state file is empty
@@ -260,41 +251,5 @@ mod tests {
         let mut state = StateFile::default();
         reconcile_against_disk(&layout, &mut state).unwrap();
         assert_eq!(state.tasks.active, vec!["active"]);
-    }
-
-    /// Verifies that prune_dead_sessions runs as the final reconcile step.
-    #[test]
-    fn prune_dead_sessions_runs_after_orphan_drop() {
-        let tmp = tempfile::tempdir().unwrap();
-        let layout = layout_for(&tmp);
-        write_task(&layout, "live", Phase::Design);
-
-        // Register a session via the cache so it would survive prune.
-        let live_ppid = StubPpid(99_001);
-        let id = resolve_session_id(&layout, &live_ppid).unwrap();
-        let mut state = StateFile::default();
-        state.tasks.active.push("live".into());
-        state.sessions.insert(
-            id.as_str().to_string(),
-            Session {
-                focus: "live".into(),
-                pid: 99_001,
-            },
-        );
-        // Plant an orphan: focus on a slug that does not exist.
-        state.sessions.insert(
-            "orphan-uuid".into(),
-            Session {
-                focus: "ghost".into(),
-                pid: 99_002,
-            },
-        );
-
-        reconcile_against_disk(&layout, &mut state).unwrap();
-        // Orphan dropped at step 4; live retained because cache_matches at step 5.
-        assert_eq!(state.sessions.len(), 1);
-        assert!(state.sessions.contains_key(id.as_str()));
-
-        crate::session::cache::release_session_id(&layout, &live_ppid, &id).unwrap();
     }
 }

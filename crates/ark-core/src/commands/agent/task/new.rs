@@ -2,9 +2,8 @@
 //!
 //! Creates `.ark/tasks/<slug>/`, seeds `PRD.md` from the embedded template,
 //! writes `task.toml` with phase=Design + iteration=0, then registers the
-//! slug in `.ark/.state.toml` as both an active task and this session's
-//! focus. Warns to stderr when other active tasks already exist (does not
-//! refuse). Refuses to overwrite an existing task directory.
+//! slug in `.ark/.state.toml` as both an active task and the focus of this
+//! checkout. Refuses to overwrite an existing task directory.
 //!
 //! When `opts.worktree.is_some()`, creation uses the worktree-first protocol.
 //!
@@ -39,11 +38,7 @@ use crate::{
         git::{run_git, run_shell},
     },
     layout::Layout,
-    session::{
-        cache::resolve_session_id,
-        ppid::{Ppid, RealPpid},
-    },
-    state::{Session, state_mutate},
+    state::state_mutate,
 };
 
 /// Options for creating a new Ark task.
@@ -83,11 +78,14 @@ pub struct TaskNewSummary {
     pub task_dir: PathBuf,
     /// Worktree details when the task was created with `--worktree`.
     pub worktree: Option<TaskNewWorktreeSummary>,
-    /// Slugs of tasks that were already active before this one was created.
+    /// Slug whose focus was overwritten by this `task new`, if any.
     ///
-    /// The CLI surfaces this as a multi-task warning so the user sees that
-    /// other in-flight tasks remain. Empty when this is the only active task.
-    pub other_active: Vec<String>,
+    /// Populated when the checkout had `state.focus = Some(other)` *before*
+    /// this call and `other != self.slug`. The CLI surfaces this as a
+    /// stderr-rendered warning suggesting `--worktree` for parallel work.
+    /// `None` when the checkout had no prior focus, or when the prior focus
+    /// already matched the new slug.
+    pub overwrote_focus: Option<String>,
 }
 
 /// Summary of worktree state created for a new task.
@@ -119,12 +117,12 @@ impl fmt::Display for TaskNewSummary {
                 wt.base_branch
             )?;
         }
-        if !self.other_active.is_empty() {
+        if let Some(prev) = &self.overwrote_focus {
             write!(
                 f,
-                "\nwarn: {} other active task(s); switch focus with `ark agent task resume --slug \
-                 <slug>`",
-                self.other_active.len(),
+                "\nwarn: focus rebound from `{prev}` to `{}`. Run `ark agent task resume --slug \
+                 {prev}` to restore, or pass `--worktree` to keep both bound in parallel.",
+                self.slug
             )?;
         }
         Ok(())
@@ -133,22 +131,17 @@ impl fmt::Display for TaskNewSummary {
 
 /// Creates a new task directory and optional task worktree.
 pub fn task_new(opts: TaskNewOptions) -> Result<TaskNewSummary> {
-    task_new_with_ppid(opts, &RealPpid::new())
-}
-
-/// Test seam for [`task_new`]: same flow with an injectable parent-id provider.
-pub(crate) fn task_new_with_ppid(opts: TaskNewOptions, ppid: &dyn Ppid) -> Result<TaskNewSummary> {
     validate_slug(&opts.slug)?;
     validate_title(&opts.title)?;
 
     match opts.worktree.clone() {
-        Some(wt) => task_new_with_worktree(opts, wt, ppid),
-        None => task_new_no_worktree(opts, ppid),
+        Some(wt) => task_new_with_worktree(opts, wt),
+        None => task_new_no_worktree(opts),
     }
 }
 
 /// Scaffolds the task directory on the parent checkout, without worktree creation.
-fn task_new_no_worktree(opts: TaskNewOptions, ppid: &dyn Ppid) -> Result<TaskNewSummary> {
+fn task_new_no_worktree(opts: TaskNewOptions) -> Result<TaskNewSummary> {
     let layout = Layout::new(&opts.project_root);
     let task_dir = layout.task_dir(&opts.slug);
 
@@ -160,23 +153,19 @@ fn task_new_no_worktree(opts: TaskNewOptions, ppid: &dyn Ppid) -> Result<TaskNew
     copy_template("PRD", &task_dir.join("PRD.md"))?;
     build_task_toml(&opts).save(&task_dir)?;
 
-    let other_active = register_focus(&layout, ppid, &opts.slug)?;
+    let overwrote_focus = register_focus(&layout, &opts.slug)?;
 
     Ok(TaskNewSummary {
         slug: opts.slug,
         tier: opts.tier,
         task_dir,
         worktree: None,
-        other_active,
+        overwrote_focus,
     })
 }
 
 /// Runs the worktree-first creation flow.
-fn task_new_with_worktree(
-    opts: TaskNewOptions,
-    wt: TaskNewWorktree,
-    ppid: &dyn Ppid,
-) -> Result<TaskNewSummary> {
+fn task_new_with_worktree(opts: TaskNewOptions, wt: TaskNewWorktree) -> Result<TaskNewSummary> {
     let layout = Layout::new(&opts.project_root);
 
     // Reject when invoked from inside an existing `.ark/worktrees/<branch>/` tree.
@@ -260,7 +249,7 @@ fn task_new_with_worktree(
         ));
     }
 
-    scaffold_inside_worktree(&opts, &cfg, &worktree_path, &branch, &base_branch, ppid)
+    scaffold_inside_worktree(&opts, &cfg, &worktree_path, &branch, &base_branch)
         .inspect_err(|_| rollback_worktree(layout.root(), &worktree_path, &branch))
 }
 
@@ -270,7 +259,6 @@ fn scaffold_inside_worktree(
     worktree_path: &Path,
     branch: &str,
     base_branch: &str,
-    ppid: &dyn Ppid,
 ) -> Result<TaskNewSummary> {
     let project_root = &opts.project_root;
     let wt_layout = Layout::new(worktree_path);
@@ -290,7 +278,7 @@ fn scaffold_inside_worktree(
     toml.base_branch = Some(base_branch.to_string());
     toml.save(&task_dir)?;
 
-    let other_active = register_focus(&wt_layout, ppid, &opts.slug)?;
+    let overwrote_focus = register_focus(&wt_layout, &opts.slug)?;
 
     // Mirror parent identity into the worktree (prompts on TTY when missing).
     sync_identity(project_root, worktree_path)?;
@@ -328,7 +316,7 @@ fn scaffold_inside_worktree(
             worktree_path: worktree_path.to_path_buf(),
             base_branch: base_branch.to_string(),
         }),
-        other_active,
+        overwrote_focus,
     })
 }
 
@@ -453,36 +441,25 @@ fn git_error(path: &Path, action: &str, stderr: &str) -> Error {
     }
 }
 
-/// Records `slug` as both an active task and this session's focus.
+/// Records `slug` as an active task and this checkout's focus.
 ///
-/// Returns the slugs of other tasks already active before this call, so the
-/// caller can surface a multi-task warning through its summary. The "other"
-/// filter excludes `slug` itself because reconcile may have already added
-/// the just-created task directory to `state.tasks.active`.
-fn register_focus(layout: &Layout, ppid: &dyn Ppid, slug: &str) -> Result<Vec<String>> {
-    let id = resolve_session_id(layout, ppid)?;
-    let mut other_active: Vec<String> = Vec::new();
-    state_mutate(layout, ppid, |state| {
-        other_active = state
-            .tasks
-            .active
-            .iter()
-            .filter(|s| s.as_str() != slug)
-            .cloned()
-            .collect();
+/// Returns the previously-bound focus (if any) when it differed from `slug`.
+/// Callers surface that as a "focus rebound" warning in their summary.
+fn register_focus(layout: &Layout, slug: &str) -> Result<Option<String>> {
+    let mut overwrote: Option<String> = None;
+    state_mutate(layout, |state| {
+        let prev = state.focus.clone();
         if !state.tasks.active.iter().any(|s| s == slug) {
             state.tasks.active.push(slug.to_string());
         }
-        state.sessions.insert(
-            id.as_str().to_string(),
-            Session {
-                focus: slug.to_string(),
-                pid: ppid.parent_id(),
-            },
-        );
+        state.focus = Some(slug.to_string());
+        overwrote = match prev {
+            Some(p) if p != slug => Some(p),
+            _ => None,
+        };
         Ok(())
     })?;
-    Ok(other_active)
+    Ok(overwrote)
 }
 
 #[cfg(test)]

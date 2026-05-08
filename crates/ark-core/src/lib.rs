@@ -13,8 +13,6 @@ pub mod io;
 pub mod layout;
 /// Platform registry and platform-specific install behavior.
 pub mod platforms;
-/// Per-session identity machinery (UUID cache + parent-id provider).
-pub mod session;
 /// Persisted state Ark writes to disk: manifest, snapshot, and per-checkout state.
 pub mod state;
 /// Embedded template trees and walkers.
@@ -55,11 +53,7 @@ pub use error::{Error, Result};
 pub use io::{PathExt, WriteMode, hash_bytes};
 pub use layout::Layout;
 pub use platforms::{CLAUDE_PLATFORM, CODEX_PLATFORM, OPENCODE_PLATFORM, PLATFORMS, Platform};
-pub use session::{
-    Ppid, RealPpid, SessionId, StubPpid, cache_file_path, cache_matches, lookup_session_id,
-    release_session_id, resolve_session_id,
-};
 pub use state::{
-    Manifest, Session, StateFile, Tasks, clear_focus_for_slug, load_state, prune_dead_sessions,
-    reconcile_against_disk, state_mutate,
+    Manifest, StateFile, Tasks, clear_focus_for_slug, load_state, reconcile_against_disk,
+    state_mutate,
 };

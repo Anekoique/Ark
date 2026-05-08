@@ -310,8 +310,7 @@ Phases: `design`, `plan`, `review`, `execute`, `verify`, `commit`. The `commit` 
 - `IllegalPhaseTransition` — wrong phase for this verb.
 - `WrongTier` — tier-specific verb on the wrong tier.
 - `TaskNotFound` — slug not in `tasks.active`.
-- `NoActiveTask` — non-targeted verb run with an empty active set.
-- `AmbiguousActiveTask` — non-targeted verb with multiple actives and no resolver hit; run `ark agent task resume --slug <s>` first.
+- `NoFocus` — non-targeted verb run with no `[focus]` bound; run `ark agent task new` or `task resume --slug <s>` first.
 
 ```bash
 ark agent task new --slug <s> --title "<t>" --tier <t> [--worktree]
@@ -327,7 +326,7 @@ ark agent task promote  --to <tier>                   # change tier mid-flight
 ark agent task worktree list | cleanup [--delete-branch]
 ```
 
-`task new`, `task resume`, `task discard` require `--slug`. Other verbs resolve via topology cascade: worktree path → single active task → session focus. If the cascade can't pick one, the CLI errors and asks you to `task resume` first.
+`task new`, `task resume`, `task discard` require `--slug`. Other verbs resolve the slug from `.ark/.state.toml`'s `[focus]` field — `task new` and `task resume` write it; `task archive` and `task discard` clear it when their slug matches. With no focus bound, the CLI errors `NoFocus` and asks you to `task resume` first.
 
 **Hand-edited operations (no CLI):**
 - Deep-tier iteration: copy `NN_PLAN.md` / `NN_REVIEW.md` to `(NN+1)_*`, bump `task.toml.iteration`, reset `phase = "plan"`.
@@ -335,13 +334,17 @@ ark agent task worktree list | cleanup [--delete-branch]
 
 ---
 
-## Multi-session state
+## Focus model
 
-`.ark/.state.toml` (gitignored, per-checkout — each worktree owns its own) carries developer identity, the active-slug set, and a per-session focus map. Each shell gets its own session id, keyed by `(project, ppid)`, so two terminals see distinct focused tasks.
+`.ark/.state.toml` (gitignored, per-checkout — each worktree owns its own) carries developer identity, the active-slug set, and a single `focus` slug naming the task this checkout is currently driving. One focus per checkout: deep-tier worktrees own their own `.state.toml` and so their own focus.
 
-- `task new` warns to stderr when other active tasks exist; does not refuse.
-- `task resume --slug <s>` switches this session's focus. Idempotent.
-- `task discard --slug <s>` removes an unarchived task. Refused (`TaskStillActive`) if seeded files diverge from templates; pass `--force` to override. **Never pass `--force` on the user's behalf without explicit go-ahead.**
+- `task new --slug <s>` creates the task and binds focus to `<s>`. Warns when an existing focus is rebound and suggests `--worktree` for parallel work.
+- `task resume --slug <s>` switches focus to `<s>`. Idempotent. Same rebind warning as `task new`.
+- `task commit` clears focus on success; the slug stays in `tasks.active` until `ark archive` runs.
+- `task archive` clears focus when the archived slug matched.
+- `task discard --slug <s>` removes an unarchived task and clears focus when it matched. Refused (`TaskStillActive`) if seeded files diverge from templates; pass `--force` to override. **Never pass `--force` on the user's behalf without explicit go-ahead.**
+
+For genuinely parallel work, use a worktree (`task new --worktree`) — each worktree has its own focus, so the two tasks don't share a slot.
 
 ---
 

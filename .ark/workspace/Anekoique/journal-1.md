@@ -244,3 +244,31 @@ Brownfield projects can author a feature SPEC from an existing implementation th
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 10: per-checkout `[focus]` replaces session-keyed map
+
+**Date**: 2026-05-08
+**Slug**: session-focus-bind
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `7d0ae82`
+**Closing Commit**: <PENDING:session-focus-bind>
+
+### Summary
+
+Non-targeted task verbs now resolve via a single per-checkout `[focus]` field instead of a per-session focus map; the `session/` module, `Ppid` trait, and `$TMPDIR` cache scheme are gone.
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| state | `StateFile.focus: Option<String>`; reconcile clears stale focus instead of pruning sessions; `state_mutate`/`load_state` lose `&dyn Ppid` |
+| verbs | `task new`/`resume` set focus and warn on rebind suggesting `--worktree`; `task commit`/`archive`/`discard` clear focus when slug matches |
+| errors | `Error::NoFocus { project_root, candidates }` replaces `NoActiveTask` and `AmbiguousActiveTask`; `agent_cli::resolve_slug` reads `state.focus` directly |
+| cleanup | First new-binary `state_mutate` strips legacy `[sessions.*]` blocks and unlinks orphan `<temp>/ark-session-<hash>-*.id` files |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

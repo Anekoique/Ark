@@ -16,7 +16,6 @@ use crate::{
     },
     error::Result,
     layout::Layout,
-    session::ppid::RealPpid,
     state::load_state,
 };
 
@@ -78,7 +77,6 @@ pub fn worktree_list(opts: WorktreeListOptions) -> Result<WorktreeListSummary> {
     let cfg = WorktreeConfig::load_or_default(&layout)?;
     let worktrees_dir = cfg.resolve_worktrees_dir(&layout);
 
-    let ppid = RealPpid::new();
     let mut rows: Vec<WorktreeRow> = Vec::new();
     for entry in parse_git_worktree_list(layout.root())? {
         if !is_under(&entry.path, &worktrees_dir) {
@@ -87,7 +85,7 @@ pub fn worktree_list(opts: WorktreeListOptions) -> Result<WorktreeListSummary> {
         // Silently skip worktrees with unreadable state or `task.toml`
         // (third-party worktrees living under this dir).
         let wt_layout = Layout::new(&entry.path);
-        let Ok(state) = load_state(&wt_layout, &ppid) else {
+        let Ok(state) = load_state(&wt_layout) else {
             continue;
         };
         for slug in state.tasks.active {

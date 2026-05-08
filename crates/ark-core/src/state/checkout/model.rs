@@ -1,6 +1,4 @@
-//! `.ark/.state.toml` model: active task slugs, per-session focus.
-
-use std::collections::BTreeMap;
+//! `.ark/.state.toml` model: active task slugs and per-checkout focus.
 
 use serde::{Deserialize, Serialize};
 
@@ -14,11 +12,12 @@ pub struct StateFile {
     #[serde(default)]
     pub tasks: Tasks,
 
-    /// Session focus map keyed by UUID.
+    /// Slug this checkout is currently driving. `None` when no task is bound.
     ///
-    /// `BTreeMap` for stable serialization order across writes.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub sessions: BTreeMap<String, Session>,
+    /// Set by `task new` and `task resume`; cleared by `task archive` and
+    /// `task discard` when the cleared slug matches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus: Option<String>,
 }
 
 /// Active task slugs.
@@ -29,13 +28,4 @@ pub struct Tasks {
     /// Slugs of tasks created but not yet archived.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub active: Vec<String>,
-}
-
-/// Per-session focus pointer.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Session {
-    /// Slug this session is currently driving.
-    pub focus: String,
-    /// Parent process id at session registration; the liveness-probe key.
-    pub pid: u32,
 }

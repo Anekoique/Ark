@@ -71,12 +71,11 @@ fn standard_tier_archive_after_commit() {
     assert!(!tmp.path().join(".ark/tasks/std1").exists());
 
     // Active set in `.state.toml` no longer contains the archived slug.
-    let state = ark_core::load_state(
-        &ark_core::Layout::new(tmp.path()),
-        &ark_core::RealPpid::new(),
-    )
-    .unwrap();
+    let state = ark_core::load_state(&ark_core::Layout::new(tmp.path())).unwrap();
     assert!(!state.tasks.active.iter().any(|s| s == "std1"));
+    // Focus was bound to `std1` by `task new`; archive of the focused slug
+    // clears it.
+    assert!(state.focus.is_none(), "archive of focused must clear focus");
     // Side-effect-free archive: no SPEC promotion happens here.
     assert!(!tmp.path().join(".ark/specs/features/std1").exists());
 

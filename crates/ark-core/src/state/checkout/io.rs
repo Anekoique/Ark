@@ -5,6 +5,9 @@
 //! orphans, loads the state (synthesizing from legacy files when absent),
 //! runs the caller's closure, then writes atomically (temp + rename) and
 //! finalizes migration by deleting any legacy `.developer` / `.current`.
+//! After every successful save, a best-effort sweep unlinks orphan
+//! `<temp>/ark-session-<this-project-hash>-*.id` files left over from the
+//! pre-`session-focus-bind` cache scheme.
 //!
 //! Reads use [`load_state`], which performs the same synthesize-and-reconcile
 //! pass without acquiring a lock and never persists. Concurrent readers and
@@ -20,32 +23,27 @@ use std::{
 
 use crate::{
     error::{Error, Result},
-    io::PathExt,
+    io::{PathExt, hash_bytes},
     layout::{Layout, STATE_TMP_PREFIX},
-    session::{
-        cache::{lookup_session_id, release_session_id},
-        ppid::Ppid,
-    },
     state::checkout::{migrate, model::StateFile, reconcile::reconcile_against_disk},
 };
 
 /// Backoff schedule for `try_lock`. Five attempts, cumulative ≤ 320 ms.
 const LOCK_BACKOFF_MS: &[u64] = &[10, 20, 40, 80, 160];
 
+/// Filename prefix used by the legacy session-id cache scheme.
+const LEGACY_SESSION_CACHE_PREFIX: &str = "ark-session-";
+
 /// Loads the state file, synthesizing from legacy and reconciling against disk.
 ///
 /// Pure read: does not acquire a lock and does not persist. The caller sees
 /// an in-memory `StateFile` whose `tasks.active` matches on-disk truth and
-/// whose `sessions` map omits dead sessions.
+/// whose `focus` is `None` whenever its target is no longer active.
 ///
 /// Identity loaded via legacy `.developer` is included in the returned value
 /// but the legacy file is NOT deleted on read; cleanup happens on the next
 /// successful [`state_mutate`].
-///
-/// `ppid` is unused at load time (sessions are read verbatim and pruned by
-/// cache-presence, which uses the recorded session pid, not the caller's).
-/// It is accepted for symmetry with `state_mutate`.
-pub fn load_state(layout: &Layout, _ppid: &dyn Ppid) -> Result<StateFile> {
+pub fn load_state(layout: &Layout) -> Result<StateFile> {
     let mut state = read_or_synthesize(layout)?;
     reconcile_against_disk(layout, &mut state)?;
     Ok(state)
@@ -63,7 +61,7 @@ pub fn load_state(layout: &Layout, _ppid: &dyn Ppid) -> Result<StateFile> {
 /// - [`Error::StateTomlCorrupt`] when the on-disk file fails to parse.
 /// - [`Error::Io`] for filesystem failures during write or rename.
 /// - Any error returned by `edit`.
-pub fn state_mutate<F>(layout: &Layout, ppid: &dyn Ppid, edit: F) -> Result<()>
+pub fn state_mutate<F>(layout: &Layout, edit: F) -> Result<()>
 where
     F: FnOnce(&mut StateFile) -> Result<()>,
 {
@@ -79,41 +77,30 @@ where
     // Sort + dedup again after the closure may have pushed new entries.
     state.tasks.active.sort();
     state.tasks.active.dedup();
+    // Belt-and-braces: empty focus collapses to None.
+    if state.focus.as_deref() == Some("") {
+        state.focus = None;
+    }
 
-    write_atomic(layout, ppid, &state)?;
+    write_atomic(layout, &state)?;
     migrate::delete_legacy_files(layout)?;
+    cleanup_orphan_session_caches(layout);
 
     Ok(())
 }
 
-/// Removes `slug` from the active set, clears any session focused on it,
-/// and releases this session's cache file when its focus matched.
+/// Removes `slug` from the active set and clears focus if it pointed at `slug`.
 ///
-/// The own-focus decision is made INSIDE the locked closure: a sibling
-/// shell-mate could otherwise re-resume a different slug between a pre-lock
-/// probe and our mutation, and we'd delete a cache that backs a live
-/// session focus. Resolving the session id outside the lock is fine —
-/// the id is keyed by `(project, ppid)` which is stable for this process.
-pub fn clear_focus_for_slug(layout: &Layout, ppid: &dyn Ppid, slug: &str) -> Result<()> {
-    let id = lookup_session_id(layout, ppid)?;
-    let mut release_my_cache = false;
-    state_mutate(layout, ppid, |state| {
+/// Used by `task archive` and `task discard`. A no-op on `tasks.active` when
+/// `slug` is absent (reconcile's drop-pass handles that case eventually).
+pub fn clear_focus_for_slug(layout: &Layout, slug: &str) -> Result<()> {
+    state_mutate(layout, |state| {
         state.tasks.active.retain(|s| s != slug);
-        if let Some(my_id) = &id
-            && state
-                .sessions
-                .get(my_id.as_str())
-                .is_some_and(|sess| sess.focus == slug)
-        {
-            release_my_cache = true;
+        if state.focus.as_deref() == Some(slug) {
+            state.focus = None;
         }
-        state.sessions.retain(|_, sess| sess.focus != slug);
         Ok(())
-    })?;
-    if release_my_cache && let Some(id) = id {
-        release_session_id(layout, ppid, &id)?;
-    }
-    Ok(())
+    })
 }
 
 /// Reads `.state.toml` if present, else synthesizes from legacy.
@@ -121,6 +108,9 @@ fn read_or_synthesize(layout: &Layout) -> Result<StateFile> {
     let path = layout.state_file();
     match path.read_text_optional()? {
         Some(text) => {
+            // toml::from_str silently ignores unknown fields by default,
+            // so legacy `[sessions.*]` blocks deserialize without error
+            // and are dropped on the next save.
             toml::from_str(&text).map_err(|source| Error::StateTomlCorrupt { path, source })
         }
         None => migrate::synthesize_from_legacy(layout),
@@ -131,7 +121,7 @@ fn read_or_synthesize(layout: &Layout) -> Result<StateFile> {
 ///
 /// `std::fs::rename` replaces the destination atomically on POSIX and on
 /// Windows since Rust 1.5 (uses `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`).
-fn write_atomic(layout: &Layout, _ppid: &dyn Ppid, state: &StateFile) -> Result<()> {
+fn write_atomic(layout: &Layout, state: &StateFile) -> Result<()> {
     let canonical = layout.state_file();
     if let Some(parent) = canonical.parent() {
         parent.ensure_dir()?;
@@ -174,6 +164,38 @@ fn sweep_tmp_orphans(layout: &Layout) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Best-effort cleanup of legacy `<temp>/ark-session-<this-project-hash>-*.id`
+/// files. Pre-`session-focus-bind` Ark cached a UUID per `(project, ppid)`
+/// here; the new code never reads or writes them, so we strip them once on
+/// each save. IO errors are swallowed: the cleanup is non-essential and must
+/// not abort `state_mutate`.
+fn cleanup_orphan_session_caches(layout: &Layout) {
+    let project_hash = project_hash(layout);
+    let prefix = format!("{LEGACY_SESSION_CACHE_PREFIX}{project_hash}-");
+    let temp_dir = std::env::temp_dir();
+    let Ok(read_dir) = std::fs::read_dir(&temp_dir) else {
+        return;
+    };
+    for entry in read_dir.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with(&prefix) && name.ends_with(".id") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// Returns the first 16 hex chars of the project root's SHA-256.
+///
+/// Mirrors the legacy `session::cache::project_hash`; kept here as a private
+/// helper so `cleanup_orphan_session_caches` can target the right files.
+fn project_hash(layout: &Layout) -> String {
+    let bytes = layout.root().to_string_lossy();
+    let mut hash = hash_bytes(bytes.as_bytes());
+    hash.truncate(16);
+    hash
 }
 
 /// Reports whether `path`'s file name matches `.state.toml.tmp.*`.
@@ -228,7 +250,6 @@ impl LockGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::ppid::StubPpid;
 
     fn layout_for(tmp: &tempfile::TempDir) -> Layout {
         Layout::new(tmp.path())
@@ -239,9 +260,9 @@ mod tests {
     fn load_state_returns_default_when_no_files_present() {
         let tmp = tempfile::tempdir().unwrap();
         let layout = layout_for(&tmp);
-        let state = load_state(&layout, &StubPpid(1)).unwrap();
+        let state = load_state(&layout).unwrap();
         assert!(state.tasks.active.is_empty());
-        assert!(state.sessions.is_empty());
+        assert!(state.focus.is_none());
     }
 
     /// Verifies that pure reads do not delete legacy files.
@@ -250,7 +271,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let layout = layout_for(&tmp);
         layout.tasks_current().write_bytes(b"foo\n").unwrap();
-        load_state(&layout, &StubPpid(1)).unwrap();
+        load_state(&layout).unwrap();
         assert!(layout.tasks_current().exists());
     }
 
@@ -259,12 +280,12 @@ mod tests {
     fn state_mutate_round_trips_atomically() {
         let tmp = tempfile::tempdir().unwrap();
         let layout = layout_for(&tmp);
-        state_mutate(&layout, &StubPpid(1), |s| {
+        state_mutate(&layout, |s| {
             s.tasks.active.push("a".into());
             Ok(())
         })
         .unwrap();
-        let state = load_state(&layout, &StubPpid(1)).unwrap();
+        let state = load_state(&layout).unwrap();
         // "a" was dropped by reconcile because no task dir exists; the test
         // verifies the round-trip mechanic, not the active-set semantics.
         let _ = state;
@@ -286,7 +307,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let layout = layout_for(&tmp);
         layout.tasks_current().write_bytes(b"foo\n").unwrap();
-        state_mutate(&layout, &StubPpid(1), |_| Ok(())).unwrap();
+        state_mutate(&layout, |_| Ok(())).unwrap();
         assert!(!layout.tasks_current().exists());
     }
 
@@ -297,7 +318,7 @@ mod tests {
         let layout = layout_for(&tmp);
         let orphan = layout.ark_dir().join(format!("{STATE_TMP_PREFIX}99999"));
         orphan.write_bytes(b"junk").unwrap();
-        state_mutate(&layout, &StubPpid(1), |_| Ok(())).unwrap();
+        state_mutate(&layout, |_| Ok(())).unwrap();
         assert!(!orphan.exists());
     }
 
@@ -310,7 +331,7 @@ mod tests {
             .state_file()
             .write_bytes(b"not = valid = toml")
             .unwrap();
-        let err = state_mutate(&layout, &StubPpid(1), |_| Ok(())).unwrap_err();
+        let err = state_mutate(&layout, |_| Ok(())).unwrap_err();
         assert!(matches!(err, Error::StateTomlCorrupt { .. }));
     }
 
@@ -326,7 +347,7 @@ mod tests {
         let tmp_a = Arc::clone(&tmp);
         let h_a = std::thread::spawn(move || {
             let layout = Layout::new(tmp_a.path());
-            state_mutate(&layout, &StubPpid(1), |s| {
+            state_mutate(&layout, |s| {
                 std::thread::sleep(Duration::from_millis(30));
                 s.tasks.active.push("a".into());
                 Ok(())
@@ -335,7 +356,7 @@ mod tests {
         let tmp_b = Arc::clone(&tmp);
         let h_b = std::thread::spawn(move || {
             let layout = Layout::new(tmp_b.path());
-            state_mutate(&layout, &StubPpid(2), |s| {
+            state_mutate(&layout, |s| {
                 std::thread::sleep(Duration::from_millis(30));
                 s.tasks.active.push("b".into());
                 Ok(())
@@ -360,8 +381,82 @@ mod tests {
             .open(layout.state_lock_file())
             .unwrap();
         held.lock().unwrap();
-        let err = state_mutate(&layout, &StubPpid(1), |_| Ok(())).unwrap_err();
+        let err = state_mutate(&layout, |_| Ok(())).unwrap_err();
         assert!(matches!(err, Error::StateLockContended { .. }));
         held.unlock().unwrap();
+    }
+
+    /// Verifies that `cleanup_orphan_session_caches` unlinks files matching
+    /// this project's hash and leaves files for other projects intact.
+    #[test]
+    fn cleanup_orphan_session_caches_removes_only_this_projects_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = layout_for(&tmp);
+        let mine_prefix = format!("ark-session-{}-", project_hash(&layout));
+        let mine = std::env::temp_dir().join(format!("{mine_prefix}99999.id"));
+        let other = std::env::temp_dir().join("ark-session-deadbeefcafef00d-99998.id");
+        mine.write_bytes(b"abc").unwrap();
+        other.write_bytes(b"abc").unwrap();
+        cleanup_orphan_session_caches(&layout);
+        assert!(!mine.exists(), "this project's cache file must be removed");
+        assert!(other.exists(), "other projects' cache files must survive");
+        // Cleanup the survivor so the next test run starts fresh.
+        let _ = std::fs::remove_file(other);
+    }
+
+    /// Verifies that `state_mutate` strips legacy `[sessions.*]` blocks on
+    /// first save.
+    #[test]
+    fn state_mutate_strips_legacy_sessions_blocks_on_save() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = layout_for(&tmp);
+        layout
+            .state_file()
+            .write_bytes(
+                b"[tasks]\nactive = []\n\n[sessions.deadbeef]\nfocus = \"foo\"\npid = 1234\n",
+            )
+            .unwrap();
+        state_mutate(&layout, |_| Ok(())).unwrap();
+        let after = layout.state_file().read_text().unwrap();
+        assert!(
+            !after.contains("[sessions"),
+            "legacy [sessions.*] block must be dropped on first save: {after}"
+        );
+    }
+
+    /// Verifies that `state_mutate` persists `focus = Some(slug)`.
+    #[test]
+    fn state_mutate_persists_focus() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = layout_for(&tmp);
+        // Write a task dir so reconcile keeps the slug in active.
+        let dir = layout.task_dir("only");
+        dir.ensure_dir().unwrap();
+        let now = chrono::Utc::now();
+        let toml = crate::commands::agent::state::TaskToml {
+            id: "only".into(),
+            title: "only".into(),
+            tier: crate::commands::agent::state::Tier::Quick,
+            phase: crate::commands::agent::state::Phase::Design,
+            iteration: 0,
+            max_iterations: None,
+            created_at: now,
+            updated_at: now,
+            archived_at: None,
+            committed_at: None,
+            branch: None,
+            worktree_path: None,
+            base_branch: None,
+            start_head: None,
+            journal_path: None,
+        };
+        toml.save(&dir).unwrap();
+        state_mutate(&layout, |s| {
+            s.focus = Some("only".into());
+            Ok(())
+        })
+        .unwrap();
+        let state = load_state(&layout).unwrap();
+        assert_eq!(state.focus.as_deref(), Some("only"));
     }
 }

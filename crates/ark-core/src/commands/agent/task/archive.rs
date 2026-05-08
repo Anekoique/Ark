@@ -19,7 +19,6 @@ use crate::{
     error::{Error, Result},
     io::{PathExt, git::run_git, read_managed_block, update_managed_block, write_atomic},
     layout::{Layout, SESSIONS_MARKER},
-    session::ppid::{Ppid, RealPpid},
     state::clear_focus_for_slug,
 };
 
@@ -71,14 +70,6 @@ impl fmt::Display for TaskArchiveMoveSummary {
 /// [`Error::TaskAlreadyExists`] if a same-slug archive entry already exists
 /// in the destination month.
 pub fn task_archive_move(opts: TaskArchiveMoveOptions) -> Result<TaskArchiveMoveSummary> {
-    task_archive_move_with_ppid(opts, &RealPpid::new())
-}
-
-/// Test seam for [`task_archive_move`]: same flow with an injectable PPID provider.
-pub(crate) fn task_archive_move_with_ppid(
-    opts: TaskArchiveMoveOptions,
-    ppid: &dyn Ppid,
-) -> Result<TaskArchiveMoveSummary> {
     validate_slug(&opts.slug)?;
 
     let layout = Layout::new(&opts.project_root);
@@ -109,11 +100,10 @@ pub(crate) fn task_archive_move_with_ppid(
         patch_workspace_slot(&layout, journal_rel, &opts.slug, toml.start_head.as_deref())?;
     }
 
-    // Clear state-file references *before* rename so the focused-session
-    // probe still sees the live entry. If a later step fails, two-way
-    // reconcile re-adds the slug from the surviving `tasks/<slug>/` dir
-    // (the rename has not happened yet).
-    clear_focus_for_slug(&layout, ppid, &opts.slug)?;
+    // Clear state-file references *before* rename. If a later step fails,
+    // two-way reconcile re-adds the slug from the surviving `tasks/<slug>/`
+    // dir (the rename has not happened yet).
+    clear_focus_for_slug(&layout, &opts.slug)?;
 
     task_dir.rename_to(&archive_path)?;
 
@@ -404,7 +394,7 @@ mod tests {
             "archive_month must select the directory: got {}",
             s.archive_path.display()
         );
-        let state = crate::state::load_state(&Layout::new(tmp.path()), &RealPpid::new()).unwrap();
+        let state = crate::state::load_state(&Layout::new(tmp.path())).unwrap();
         assert!(!state.tasks.active.iter().any(|s| s == "demo"));
     }
 

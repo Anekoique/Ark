@@ -104,8 +104,7 @@ Error::IllegalPhaseTransition { tier: Tier, from: Phase, to: Phase },
 Error::WrongTier              { expected: Tier, actual: Tier },
 Error::TaskNotFound           { slug: String },
 Error::TaskAlreadyExists      { slug: String },
-Error::NoActiveTask           { project_root: PathBuf },
-Error::AmbiguousActiveTask    { candidates: Vec<String> },
+Error::NoFocus                { project_root: PathBuf, candidates: Vec<String> },
 Error::UnknownTemplate        { name: String },
 Error::SpecSectionMissing     { plan_path: PathBuf },
 Error::NoPlanFound            { task_dir: PathBuf },
@@ -184,7 +183,7 @@ ark agent spec register  --feature <f> --scope "<s>" --from-task <t> [--date YYY
 - C-11: `## Spec` section-scan: start matches `line == "## Spec"` or `line.starts_with("## Spec ")`; end matches the next `^## ` H2 or EOF; rejects `## Speculation`.
 - C-12: `spec register` arg validation rejects empty strings or strings containing `|`, `\n`, `\r` → `Error::InvalidSpecField`.
 - C-13: `update_managed_block` refuses to write on orphan START marker → `Error::ManagedBlockCorrupt`.
-- C-14: `--slug` is required only on `task new`, `task resume`, `task discard`. Other verbs resolve via topology cascade (worktree → single active → session focus). Empty active set → `Error::NoActiveTask`. Multiple actives unresolved → `Error::AmbiguousActiveTask`.
+- C-14: `--slug` is required only on `task new`, `task resume`, `task discard`. Other verbs read `.state.toml`'s `[focus]` field; absent focus → `Error::NoFocus { project_root, candidates }`.
 - C-15: Archival is user-invoked via `/ark:archive`; `/ark:design` and `/ark:quick` never archive automatically.
 
 [**CHANGELOG**]
@@ -192,3 +191,4 @@ ark agent spec register  --feature <f> --scope "<s>" --from-task <t> [--date YYY
 - 2026-05-06 `drop-task-slug`: `--slug` confined to `task new` / `resume` / `discard`; other verbs resolve via topology cascade. Added `Error::NoActiveTask` and `Error::AmbiguousActiveTask`.
 - 2026-05-08 `doc-tighten`: rewritten to match tightened SPEC contract; semantic content preserved.
 - 2026-05-08 `extract-spec-cmd`: added `ark agent spec import --feature <s> --scope "<s>" --from-file <p> --from-commit <sha>` for brownfield SPEC authoring. Shares `upsert_index_row` with `spec register`; INDEX rows use `from-task = "extracted"` sentinel. Added `Error::SpecAlreadyExists`.
+- 2026-05-08 `session-focus-bind`: replaced topology cascade with per-checkout `[focus]` field in `.state.toml`. `--slug` still required on `new`/`resume`/`discard`; other verbs read `state.focus`. Removed `Error::NoActiveTask` and `Error::AmbiguousActiveTask`; added `Error::NoFocus { project_root, candidates }`.

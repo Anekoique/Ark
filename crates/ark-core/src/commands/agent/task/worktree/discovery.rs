@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use crate::{
     commands::agent::state::TaskToml, error::Result, io::git::run_git, layout::Layout,
-    session::ppid::RealPpid, state::load_state,
+    state::load_state,
 };
 
 /// Information about one git worktree from `git worktree list --porcelain`.
@@ -88,13 +88,12 @@ pub fn find_worktree_for_slug(
     slug: &str,
 ) -> Result<Option<(PathBuf, TaskToml)>> {
     let canonical_prefix = canonicalize_or_pass(worktrees_dir);
-    let ppid = RealPpid::new();
     for entry in parse_git_worktree_list(repo_root)? {
         if !is_under(&entry.path, &canonical_prefix) {
             continue;
         }
         let wt_layout = Layout::new(&entry.path);
-        let Ok(state) = load_state(&wt_layout, &ppid) else {
+        let Ok(state) = load_state(&wt_layout) else {
             continue;
         };
         if !state.tasks.active.iter().any(|s| s == slug) {

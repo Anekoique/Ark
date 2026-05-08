@@ -1,0 +1,10 @@
+id = "session-focus-bind"
+title = "per-checkout [focus] replaces session-keyed map and topology cascade"
+tier = "standard"
+phase = "committed"
+iteration = 0
+created_at = "2026-05-08T05:15:25.783398Z"
+updated_at = "2026-05-08T07:00:36.743473Z"
+committed_at = "2026-05-08T07:00:36.743473Z"
+start_head = "7d0ae822e1f512d0ff284d7e5dc3bc69b55cf324"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

@@ -1,13 +1,15 @@
 //! Per-checkout state index: `.ark/.state.toml`.
 //!
-//! Carries the active-task slug set and a per-session focus map. Truth lives
-//! in `.ark/tasks/<slug>/task.toml`; this module reconciles against that
-//! truth on every read. All mutations route through [`state_mutate`], which
-//! takes an exclusive file lock and writes atomically.
+//! Carries the active-task slug set and a single `focus` slug pointing at
+//! the task this checkout is currently driving. Truth lives in
+//! `.ark/tasks/<slug>/task.toml`; this module reconciles against that truth
+//! on every read. All mutations route through [`state_mutate`], which takes
+//! an exclusive file lock and writes atomically.
 //!
-//! Sessions register themselves on `task new` / `task resume` (no SessionStart
-//! hook integration). Liveness is probed through the per-session cache file
-//! under the OS temp directory; see [`crate::session::cache`].
+//! Focus is set by `task new` / `task resume` and cleared by `task archive`
+//! / `task discard` when the cleared slug matches. There is no per-session
+//! map: one focus per checkout. Deep-tier worktrees own their own
+//! `.state.toml` and so their own focus.
 //!
 //! Self-healing migration from the legacy `.ark/tasks/.current` file runs at
 //! the read path; the legacy file is deleted only after a successful save.
@@ -19,5 +21,5 @@ pub mod reconcile;
 
 pub use io::{clear_focus_for_slug, is_state_tmp, load_state, state_mutate};
 pub use migrate::synthesize_from_legacy;
-pub use model::{Session, StateFile, Tasks};
-pub use reconcile::{prune_dead_sessions, reconcile_against_disk};
+pub use model::{StateFile, Tasks};
+pub use reconcile::reconcile_against_disk;

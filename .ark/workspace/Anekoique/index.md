@@ -16,6 +16,7 @@
 | 7 | 2026-05-06 | Drop --slug from non-targeted task verbs | `drop-task-slug` | `main` | <PENDING:drop-task-slug> | `journal-1.md` |
 | 8 | 2026-05-08 | tight docs | `doc-tighten` | `main` | <PENDING:doc-tighten> | `journal-1.md` |
 | 9 | 2026-05-08 | Brownfield SPEC import via `/ark:extract-spec` | `extract-spec-cmd` | `main` | <PENDING:extract-spec-cmd> | `journal-1.md` |
+| 10 | 2026-05-08 | per-checkout `[focus]` replaces session-keyed map | `session-focus-bind` | `main` | <PENDING:session-focus-bind> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

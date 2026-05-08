@@ -12,7 +12,6 @@ use crate::{
     error::{Error, Result},
     io::PathExt,
     layout::Layout,
-    session::ppid::{Ppid, RealPpid},
     state::clear_focus_for_slug,
     templates::ARK_TEMPLATES,
 };
@@ -77,8 +76,8 @@ impl fmt::Display for TaskDiscardSummary {
     }
 }
 
-/// Removes an unarchived task: clears state references, releases this
-/// session's cache when its focus matched, then deletes the task dir.
+/// Removes an unarchived task: clears state references and the focus pointer
+/// (when it matched the discarded slug), then deletes the task dir.
 ///
 /// # Errors
 ///
@@ -87,14 +86,6 @@ impl fmt::Display for TaskDiscardSummary {
 /// - [`Error::TaskStillActive`] if any guarded artifact diverges from its
 ///   embedded template and `force` is false.
 pub fn task_discard(opts: TaskDiscardOptions) -> Result<TaskDiscardSummary> {
-    task_discard_with_ppid(opts, &RealPpid::new())
-}
-
-/// Test seam for [`task_discard`]: same flow with an injectable parent-id provider.
-pub(crate) fn task_discard_with_ppid(
-    opts: TaskDiscardOptions,
-    ppid: &dyn Ppid,
-) -> Result<TaskDiscardSummary> {
     validate_slug(&opts.slug)?;
     let layout = Layout::new(&opts.project_root);
     let task_dir = layout.task_dir(&opts.slug);
@@ -116,7 +107,7 @@ pub(crate) fn task_discard_with_ppid(
         });
     }
 
-    clear_focus_for_slug(&layout, ppid, &opts.slug)?;
+    clear_focus_for_slug(&layout, &opts.slug)?;
     task_dir.remove_dir_all()?;
 
     Ok(TaskDiscardSummary {
