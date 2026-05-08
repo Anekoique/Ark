@@ -1,0 +1,94 @@
+name: Auto-tag on version bump
+
+# When a push to main changes [workspace.package].version in Cargo.toml,
+# wait for CI to pass on that commit, then create and push a vX.Y.Z tag.
+# The tag push triggers release.yml.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Cargo.toml
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Detect version change
+        id: version
+        run: |
+          set -euo pipefail
+
+          new=$(awk '
+            /^\[workspace\.package\]/ { in_section=1; next }
+            /^\[/ && !/^\[workspace\.package\]/ { in_section=0 }
+            in_section && /^version[[:space:]]*=/ {
+              gsub(/.*"|".*/, "")
+              print
+              exit
+            }
+          ' Cargo.toml)
+
+          if [ -z "$new" ]; then
+            echo "no version found in [workspace.package]; skipping"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          old=$(git show HEAD~1:Cargo.toml 2>/dev/null | awk '
+            /^\[workspace\.package\]/ { in_section=1; next }
+            /^\[/ && !/^\[workspace\.package\]/ { in_section=0 }
+            in_section && /^version[[:space:]]*=/ {
+              gsub(/.*"|".*/, "")
+              print
+              exit
+            }
+          ' || echo "")
+
+          echo "old=$old"
+          echo "new=$new"
+
+          if [ "$old" = "$new" ]; then
+            echo "version unchanged; skipping"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          tag="v$new"
+          if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "tag $tag already exists; skipping"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for CI to pass
+        if: steps.version.outputs.changed == 'true'
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: CI
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 20
+          allowed-conclusions: success
+
+      - name: Create and push tag
+        if: steps.version.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
