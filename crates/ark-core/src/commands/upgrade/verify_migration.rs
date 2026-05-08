@@ -13,7 +13,7 @@ use crate::{
     commands::agent::{
         state::{Phase, TaskToml},
         task::verify_seed::{
-            SeedInputs, read_plan_goals, read_prd_constraints, read_project_specs,
+            SeedInputs, read_plan_goals, read_prd_constraints, read_project_spec_tree,
             read_related_specs, render_seeded_verify,
         },
     },
@@ -83,7 +83,7 @@ fn try_migrate_task(layout: &Layout, task_dir: &std::path::Path) -> Result<bool>
 
     let prd_path = task_dir.join("PRD.md");
     let inputs = SeedInputs {
-        project_specs: read_project_specs(&layout.specs_project_index())?,
+        project_specs: read_project_spec_tree(&layout.specs_project_index())?,
         related_specs: read_related_specs(&prd_path)?,
         prd_constraints: read_prd_constraints(&prd_path)?,
         plan_goals: latest_plan_goals(task_dir)?,

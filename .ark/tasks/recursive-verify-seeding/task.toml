@@ -1,0 +1,10 @@
+id = "recursive-verify-seeding"
+title = "recursive VERIFY seeding for nested project INDEX.md"
+tier = "quick"
+phase = "committed"
+iteration = 0
+created_at = "2026-05-08T08:25:53.342436Z"
+updated_at = "2026-05-08T08:39:05.555719Z"
+committed_at = "2026-05-08T08:39:05.555719Z"
+start_head = "ab40c673f32c93d15fef4ebc8b2aa91532d1912e"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

@@ -273,3 +273,30 @@ Non-targeted task verbs now resolve via a single per-checkout `[focus]` field in
 |------|---------|
 | `79500fd` | refactor(state): replace per-session focus map with per-checkout |
 
+
+## Session 11: recursive VERIFY seeding for nested project INDEX.md
+
+**Date**: 2026-05-08
+**Slug**: recursive-verify-seeding
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `ab40c67`
+**Closing Commit**: <PENDING:recursive-verify-seeding>
+
+### Summary
+
+Seeded VERIFY's `Project Spec Compliance` walks `specs/project/INDEX.md` recursively and renders Index-integrity + Leaf-SPECs subsections instead of one flat per-leaf checklist.
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| seeder | `read_project_spec_tree` walks nested `INDEX.md` rows with cycle guard; missing referenced files skipped silently |
+| renderer | `Project Spec Compliance` block emits `### Index integrity` (one PENDING per index) + `### Leaf SPECs` (rolled-up PENDING + traceability sublist) |
+| template | `templates/ark/templates/VERIFY.md` comment describes the recursive walk and two-subsection layout |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

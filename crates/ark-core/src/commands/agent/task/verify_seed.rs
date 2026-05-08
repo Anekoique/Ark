@@ -4,8 +4,10 @@
 //! invokes [`render_seeded_verify`] to overlay four dynamically-derived
 //! checklist sections:
 //!
-//! - **Project Spec Compliance** — one bullet per registered project SPEC
-//!   in `.ark/specs/project/INDEX.md`.
+//! - **Project Spec Compliance** — recursive walk of
+//!   `.ark/specs/project/INDEX.md`. Renders two subsections: one PENDING per
+//!   discovered `INDEX.md` (integrity), and one rolled-up PENDING for leaf
+//!   SPEC layout conformance plus a traceability sublist of leaf paths.
 //! - **Related Feature Spec Compliance** — one bullet per spec listed in the
 //!   PRD's `[**Related Specs**]` block.
 //! - **PRD Constraints** — one bullet for the Outcome plus one per Constraint
@@ -18,7 +20,10 @@
 //! by a list of `- [ ] <item>: PENDING` lines. A missing marker errors with
 //! [`Error::TemplateMarkerMissing`].
 
-use std::path::Path;
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     error::{Error, Result},
@@ -30,12 +35,38 @@ const MARKER_RELATED: &str = "{{RELATED_FEATURE_COMPLIANCE}}";
 const MARKER_OUTCOME: &str = "{{PRD_CONSTRAINTS}}";
 const MARKER_PLAN: &str = "{{PLAN_FIDELITY}}";
 
+/// Project-level SPEC topology discovered by recursively walking
+/// `specs/project/INDEX.md`.
+///
+/// Paths are stored relative to `specs/project/` (e.g. `INDEX.md`,
+/// `coding/INDEX.md`, `rust/STYLE.md`). Order is preserved as a depth-first
+/// pre-order traversal of the tree so the rendered VERIFY checklist reads
+/// top-down.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectSpecTree {
+    /// Every `INDEX.md` reached by the walk, including the root. Each one
+    /// becomes an integrity-check bullet in the seeded VERIFY.
+    pub indexes: Vec<String>,
+    /// Every leaf SPEC reached by the walk (rows whose first cell points at a
+    /// non-`INDEX.md` markdown file). Rendered as a single rolled-up bullet
+    /// plus a traceability sublist.
+    pub leaves: Vec<String>,
+}
+
+impl ProjectSpecTree {
+    /// `true` when neither index nor leaf rows were discovered (e.g. no INDEX
+    /// file at all). The renderer falls back to the `(none registered)`
+    /// placeholder.
+    fn is_empty(&self) -> bool {
+        self.indexes.is_empty() && self.leaves.is_empty()
+    }
+}
+
 /// Inputs for the VERIFY seed substitution.
 #[derive(Debug, Clone, Default)]
 pub struct SeedInputs {
-    /// One label per registered project SPEC. Examples: `LAYOUT.md`,
-    /// `rust/STYLE.md`. Order is preserved as-is from `INDEX.md`.
-    pub project_specs: Vec<String>,
+    /// Recursive project-SPEC tree rooted at `specs/project/INDEX.md`.
+    pub project_specs: ProjectSpecTree,
     /// One label per related feature SPEC named in the PRD.
     pub related_specs: Vec<String>,
     /// Each entry seeds one bullet under PRD Constraints. Typical content:
@@ -57,7 +88,7 @@ pub struct SeedInputs {
 /// markers is absent.
 pub fn render_seeded_verify(template: &str, inputs: &SeedInputs, path: &Path) -> Result<String> {
     let mut out = template.to_string();
-    substitute_or_error(&mut out, MARKER_PROJECT, &inputs.project_specs, path)?;
+    substitute_project(&mut out, &inputs.project_specs, path)?;
     substitute_or_error(&mut out, MARKER_RELATED, &inputs.related_specs, path)?;
     substitute_or_error(&mut out, MARKER_OUTCOME, &inputs.prd_constraints, path)?;
     substitute_or_error(&mut out, MARKER_PLAN, &inputs.plan_goals, path)?;
@@ -84,6 +115,18 @@ fn substitute_or_error(
     Ok(())
 }
 
+/// Replaces `{{PROJECT_SPEC_COMPLIANCE}}` with the two-subsection layout.
+fn substitute_project(body: &mut String, tree: &ProjectSpecTree, path: &Path) -> Result<()> {
+    if !body.contains(MARKER_PROJECT) {
+        return Err(Error::TemplateMarkerMissing {
+            marker: MARKER_PROJECT,
+            path: path.to_path_buf(),
+        });
+    }
+    *body = body.replace(MARKER_PROJECT, &render_project_block(tree));
+    Ok(())
+}
+
 /// Renders the bullet list for a marker. Empty input yields a placeholder so
 /// the section is never structurally empty (one `(none)` line is friendlier
 /// to readers than a blank section).
@@ -101,18 +144,125 @@ fn render_bullet_list(items: &[String]) -> String {
     out
 }
 
-/// Parses `.ark/specs/project/INDEX.md` for project-SPEC labels.
+/// Renders the `Project Spec Compliance` block: an `### Index integrity`
+/// subsection (one PENDING per discovered INDEX) and a `### Leaf SPECs`
+/// subsection (one rolled-up PENDING plus a traceability sublist).
+fn render_project_block(tree: &ProjectSpecTree) -> String {
+    if tree.is_empty() {
+        return "- (none registered): N/A".into();
+    }
+    let mut out = String::new();
+    out.push_str("### Index integrity\n\n");
+    if tree.indexes.is_empty() {
+        out.push_str("- (none discovered): N/A\n");
+    } else {
+        for index in &tree.indexes {
+            let dir = index_parent_display(index);
+            out.push_str(&format!(
+                "- [ ] `{index}` enumerates all children of `{dir}`: PENDING\n"
+            ));
+        }
+    }
+    out.push_str("\n### Leaf SPECs\n\n");
+    if tree.leaves.is_empty() {
+        out.push_str("- (none discovered): N/A");
+    } else {
+        out.push_str(
+            "- [ ] All leaf SPECs under `specs/project/` conform to `LAYOUT.md`: PENDING\n",
+        );
+        for (i, leaf) in tree.leaves.iter().enumerate() {
+            out.push_str(&format!("  - `{leaf}`"));
+            if i + 1 < tree.leaves.len() {
+                out.push('\n');
+            }
+        }
+    }
+    out
+}
+
+/// Display string for an INDEX's parent directory, anchored at
+/// `specs/project/`. The root INDEX shows `specs/project/`; nested ones show
+/// `specs/project/<rel>/`.
+fn index_parent_display(index_rel: &str) -> String {
+    match index_rel.rsplit_once('/') {
+        Some((dir, _)) => format!("specs/project/{dir}/"),
+        None => "specs/project/".into(),
+    }
+}
+
+/// Recursively walks `specs/project/INDEX.md` and returns the discovered
+/// [`ProjectSpecTree`].
 ///
-/// The INDEX is a markdown file whose `## Index` section carries a table
-/// with one row per registered SPEC: `| `<name>.md` | <scope> |`. The
-/// parser extracts the backtick-wrapped name from the first column.
-/// Files that are missing or have no Index table yield an empty list — the
+/// A row whose first backtick-wrapped cell ends in `INDEX.md` is treated as a
+/// nested-index reference and recursed into; any other markdown path is a
+/// leaf. Cycles and self-references are guarded with a visited set keyed on
+/// canonicalised absolute paths. Rows pointing at files that don't exist on
+/// disk are skipped silently — the parent INDEX's integrity bullet is the
+/// natural place to flag such mismatches at review time.
+///
+/// Files that are missing or have no Index table yield an empty tree — the
 /// caller treats that as "no project SPECs to check," which renders the
 /// `(none registered)` placeholder.
-pub fn read_project_specs(project_index: &Path) -> Result<Vec<String>> {
-    let Some(text) = project_index.read_text_optional()? else {
-        return Ok(Vec::new());
+pub fn read_project_spec_tree(project_index: &Path) -> Result<ProjectSpecTree> {
+    if !project_index.is_file() {
+        return Ok(ProjectSpecTree::default());
+    }
+    let root_dir = project_index
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let mut tree = ProjectSpecTree::default();
+    let mut visited = HashSet::new();
+    walk_index(
+        &root_dir,
+        project_index,
+        "INDEX.md",
+        &mut tree,
+        &mut visited,
+    )?;
+    Ok(tree)
+}
+
+/// Recursive helper: parses one INDEX, records it, and descends into nested
+/// INDEX rows. `index_rel` is the path of this INDEX relative to `root_dir`.
+fn walk_index(
+    root_dir: &Path,
+    index_path: &Path,
+    index_rel: &str,
+    tree: &mut ProjectSpecTree,
+    visited: &mut HashSet<PathBuf>,
+) -> Result<()> {
+    let canonical = index_path
+        .canonicalize()
+        .unwrap_or_else(|_| index_path.to_path_buf());
+    if !visited.insert(canonical) {
+        return Ok(());
+    }
+    let Some(text) = index_path.read_text_optional()? else {
+        return Ok(());
     };
+    tree.indexes.push(index_rel.to_string());
+    let dir = index_path.parent().unwrap_or(root_dir);
+    for entry in parse_index_rows(&text) {
+        // `entry` is the row's first-cell path, relative to `dir`.
+        let child_abs = dir.join(&entry);
+        if !child_abs.exists() {
+            continue;
+        }
+        let child_rel = pathbuf_to_rel_string(root_dir, &child_abs);
+        if entry.ends_with("INDEX.md") {
+            walk_index(root_dir, &child_abs, &child_rel, tree, visited)?;
+        } else {
+            tree.leaves.push(child_rel);
+        }
+    }
+    Ok(())
+}
+
+/// Returns the row entries (first-cell backtick-wrapped paths) found in the
+/// `## Index` table of an INDEX.md body. Header, separator, and
+/// `{...}`-wrapped placeholder rows are skipped.
+fn parse_index_rows(text: &str) -> Vec<String> {
     let mut in_index = false;
     let mut out = Vec::new();
     for line in text.lines() {
@@ -122,15 +272,11 @@ pub fn read_project_specs(project_index: &Path) -> Result<Vec<String>> {
             continue;
         }
         if in_index && trimmed.starts_with("## ") {
-            // Hit the next H2; stop scanning.
             break;
         }
         if !in_index {
             continue;
         }
-        // Looking for table rows of shape `| `name` | scope |`. The header
-        // (`| Spec | Scope |`) and separator (`|------|----|`) are skipped
-        // because they don't carry a backtick-wrapped name in the first cell.
         if let Some(rest) = trimmed.strip_prefix("| ")
             && let Some(start) = rest.find('`')
             && let Some(end) = rest[start + 1..].find('`')
@@ -141,7 +287,17 @@ pub fn read_project_specs(project_index: &Path) -> Result<Vec<String>> {
             }
         }
     }
-    Ok(out)
+    out
+}
+
+/// Returns `abs_path` rendered relative to `root_dir`, falling back to a
+/// stringified absolute path when the strip fails (defensive — every call
+/// site builds `abs_path` by joining onto `root_dir`'s ancestry).
+fn pathbuf_to_rel_string(root_dir: &Path, abs_path: &Path) -> String {
+    abs_path
+        .strip_prefix(root_dir)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| abs_path.to_string_lossy().to_string())
 }
 
 /// Parses a PRD's `[**Related Specs**]` bullet list.
@@ -322,13 +478,24 @@ mod tests {
     #[test]
     fn render_substitutes_all_four_markers() {
         let inputs = SeedInputs {
-            project_specs: vec!["LAYOUT.md".into()],
+            project_specs: ProjectSpecTree {
+                indexes: vec!["INDEX.md".into()],
+                leaves: vec!["LAYOUT.md".into()],
+            },
             related_specs: vec!["features/foo/SPEC.md".into()],
             prd_constraints: vec!["Outcome: ship".into()],
             plan_goals: vec!["G-1: x".into()],
         };
         let out = render_seeded_verify(marker_template(), &inputs, Path::new("VERIFY.md")).unwrap();
-        assert!(out.contains("- [ ] LAYOUT.md: PENDING"));
+        assert!(out.contains("### Index integrity"));
+        assert!(
+            out.contains("- [ ] `INDEX.md` enumerates all children of `specs/project/`: PENDING")
+        );
+        assert!(out.contains("### Leaf SPECs"));
+        assert!(out.contains(
+            "- [ ] All leaf SPECs under `specs/project/` conform to `LAYOUT.md`: PENDING"
+        ));
+        assert!(out.contains("  - `LAYOUT.md`"));
         assert!(out.contains("- [ ] features/foo/SPEC.md: PENDING"));
         assert!(out.contains("- [ ] Outcome: ship: PENDING"));
         assert!(out.contains("- [ ] G-1: x: PENDING"));
@@ -355,27 +522,128 @@ mod tests {
     }
 
     #[test]
-    fn read_project_specs_extracts_table_rows() {
-        let tmp = tempfile::tempdir().unwrap();
-        let p = tmp.path().join("INDEX.md");
-        p.write_bytes(
-            b"# Project Specs\n\n## Index\n\n| Spec | Scope |\n|------|-------|\n| `LAYOUT.md` | \
-              foo |\n| `rust/STYLE.md` | bar |\n\n## How to Use\n\nIgnore this section.\n",
-        )
-        .unwrap();
-        let got = read_project_specs(&p).unwrap();
-        assert_eq!(got, vec!["LAYOUT.md", "rust/STYLE.md"]);
+    fn render_project_block_renders_nested_indexes() {
+        let tree = ProjectSpecTree {
+            indexes: vec!["INDEX.md".into(), "coding/INDEX.md".into()],
+            leaves: vec![
+                "LAYOUT.md".into(),
+                "rust/STYLE.md".into(),
+                "coding/testing/SPEC.md".into(),
+            ],
+        };
+        let block = render_project_block(&tree);
+        assert!(
+            block.contains("- [ ] `INDEX.md` enumerates all children of `specs/project/`: PENDING")
+        );
+        assert!(block.contains(
+            "- [ ] `coding/INDEX.md` enumerates all children of `specs/project/coding/`: PENDING"
+        ));
+        assert!(block.contains("  - `LAYOUT.md`"));
+        assert!(block.contains("  - `rust/STYLE.md`"));
+        assert!(block.contains("  - `coding/testing/SPEC.md`"));
     }
 
-    /// Verifies that an INDEX without an `## Index` section returns empty.
     #[test]
-    fn read_project_specs_returns_empty_when_no_index_section() {
+    fn read_project_spec_tree_walks_flat_index() {
         let tmp = tempfile::tempdir().unwrap();
-        let p = tmp.path().join("INDEX.md");
-        p.write_bytes(b"# Project Specs\n\nFreeform prose, no Index table.\n")
+        let root = tmp.path().join("project");
+        std::fs::create_dir_all(root.join("rust")).unwrap();
+        let index = root.join("INDEX.md");
+        index
+            .write_bytes(
+                b"# Project Specs\n\n## Index\n\n| Spec | Scope |\n|------|-------|\n\
+                  | `LAYOUT.md` | foo |\n| `rust/STYLE.md` | bar |\n\n## How to Use\n\n",
+            )
             .unwrap();
-        let got = read_project_specs(&p).unwrap();
-        assert!(got.is_empty());
+        // Touch leaves so they exist on disk.
+        root.join("LAYOUT.md").write_bytes(b"# layout\n").unwrap();
+        root.join("rust/STYLE.md")
+            .write_bytes(b"# style\n")
+            .unwrap();
+
+        let tree = read_project_spec_tree(&index).unwrap();
+        assert_eq!(tree.indexes, vec!["INDEX.md"]);
+        assert_eq!(tree.leaves, vec!["LAYOUT.md", "rust/STYLE.md"]);
+    }
+
+    #[test]
+    fn read_project_spec_tree_recurses_into_nested_index() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("project");
+        std::fs::create_dir_all(root.join("coding/testing")).unwrap();
+        root.join("INDEX.md")
+            .write_bytes(
+                b"# Project Specs\n\n## Index\n\n| Spec | Scope |\n|------|-------|\n\
+                  | `LAYOUT.md` | foo |\n| `coding/INDEX.md` | nested |\n\n## How to Use\n\n",
+            )
+            .unwrap();
+        root.join("LAYOUT.md").write_bytes(b"# l\n").unwrap();
+        root.join("coding/INDEX.md")
+            .write_bytes(
+                b"# Coding Specs\n\n## Index\n\n| Spec | Scope |\n|------|-------|\n\
+                  | `testing/SPEC.md` | tests |\n\n",
+            )
+            .unwrap();
+        root.join("coding/testing/SPEC.md")
+            .write_bytes(b"# t\n")
+            .unwrap();
+
+        let tree = read_project_spec_tree(&root.join("INDEX.md")).unwrap();
+        assert_eq!(tree.indexes, vec!["INDEX.md", "coding/INDEX.md"]);
+        assert_eq!(tree.leaves, vec!["LAYOUT.md", "coding/testing/SPEC.md"]);
+    }
+
+    #[test]
+    fn read_project_spec_tree_skips_missing_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("project");
+        std::fs::create_dir_all(&root).unwrap();
+        root.join("INDEX.md")
+            .write_bytes(
+                b"# Project Specs\n\n## Index\n\n| Spec | Scope |\n|------|-------|\n\
+                  | `LAYOUT.md` | exists |\n| `rust/STYLE.md` | missing |\n\
+                  | `coding/INDEX.md` | also missing |\n\n",
+            )
+            .unwrap();
+        root.join("LAYOUT.md").write_bytes(b"# l\n").unwrap();
+
+        let tree = read_project_spec_tree(&root.join("INDEX.md")).unwrap();
+        assert_eq!(tree.indexes, vec!["INDEX.md"]);
+        assert_eq!(tree.leaves, vec!["LAYOUT.md"]);
+    }
+
+    #[test]
+    fn read_project_spec_tree_handles_cycle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("project");
+        std::fs::create_dir_all(root.join("a")).unwrap();
+        // Root references a/INDEX.md; a/INDEX.md references back to ../INDEX.md.
+        root.join("INDEX.md")
+            .write_bytes(
+                b"# Project Specs\n\n## Index\n\n| Spec | Scope |\n|------|-------|\n\
+                  | `a/INDEX.md` | child |\n\n",
+            )
+            .unwrap();
+        root.join("a/INDEX.md")
+            .write_bytes(
+                b"# A\n\n## Index\n\n| Spec | Scope |\n|------|-------|\n\
+                  | `../INDEX.md` | back-edge |\n\n",
+            )
+            .unwrap();
+
+        let tree = read_project_spec_tree(&root.join("INDEX.md")).unwrap();
+        // Both indexes recorded once; the back-edge does not loop.
+        assert_eq!(tree.indexes, vec!["INDEX.md", "a/INDEX.md"]);
+        assert!(tree.leaves.is_empty());
+    }
+
+    #[test]
+    fn read_project_spec_tree_returns_empty_when_index_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("INDEX.md"); // never created
+        let tree = read_project_spec_tree(&p).unwrap();
+        assert!(tree.indexes.is_empty());
+        assert!(tree.leaves.is_empty());
     }
 
     #[test]
@@ -441,9 +709,6 @@ mod tests {
         )
         .unwrap();
         let got = read_plan_goals(&p).unwrap();
-        // Two G-bullets pass, the NG- bullet is filtered. Labels carry their
-        // `**` markers (the post-refactor PLAN style) and short_label
-        // truncates at the first `". "`.
         assert_eq!(got.len(), 2);
         assert!(got[0].starts_with("**G-1"));
         assert!(got[1].starts_with("**G-2"));

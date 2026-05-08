@@ -12,7 +12,7 @@ use crate::{
     commands::agent::{
         state::{Phase, TaskToml, Tier, check_transition, validate_slug},
         task::verify_seed::{
-            SeedInputs, read_plan_goals, read_prd_constraints, read_project_specs,
+            SeedInputs, read_plan_goals, read_prd_constraints, read_project_spec_tree,
             read_related_specs, render_seeded_verify,
         },
         template::copy_template,
@@ -144,7 +144,7 @@ fn seed_verify_dynamic_sections(
 ) -> Result<()> {
     let template = verify_path.read_text()?;
     let inputs = SeedInputs {
-        project_specs: read_project_specs(&layout.specs_project_index())?,
+        project_specs: read_project_spec_tree(&layout.specs_project_index())?,
         related_specs: read_related_specs(&task_dir.join("PRD.md"))?,
         prd_constraints: read_prd_constraints(&task_dir.join("PRD.md"))?,
         plan_goals: latest_plan_goals(task_dir)?,
