@@ -1,10 +1,11 @@
 id = "doc-tighten"
 title = "Tighten command/skill/template docs (Trellis-inspired)"
 tier = "standard"
-phase = "committed"
+phase = "archived"
 iteration = 0
 created_at = "2026-05-08T02:48:22.881822Z"
-updated_at = "2026-05-08T04:04:31.926374Z"
+updated_at = "2026-05-08T07:02:22.052609Z"
+archived_at = "2026-05-08T07:02:22.052609Z"
 committed_at = "2026-05-08T04:04:31.926374Z"
 start_head = "aac0f9733144a0cfdc832cac40e13a393386313a"
 journal_path = ".ark/workspace/Anekoique/journal-1.md"

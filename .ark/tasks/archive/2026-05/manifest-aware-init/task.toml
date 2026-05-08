@@ -1,10 +1,11 @@
 id = "manifest-aware-init"
 title = "manifest-aware ark init"
 tier = "quick"
-phase = "committed"
+phase = "archived"
 iteration = 0
 created_at = "2026-05-05T13:07:08.924794Z"
-updated_at = "2026-05-05T13:13:54.122934Z"
+updated_at = "2026-05-08T07:02:22.099442Z"
+archived_at = "2026-05-08T07:02:22.099442Z"
 committed_at = "2026-05-05T13:13:54.122934Z"
 start_head = "ccddfde0644f9b2d14cb0ec445f7b51194976a92"
 journal_path = ".ark/workspace/Anekoique/journal-1.md"

@@ -1,10 +1,11 @@
 id = "session-envelope"
 title = "extend SessionStart envelope with suppressOutput and systemMessage"
 tier = "quick"
-phase = "committed"
+phase = "archived"
 iteration = 0
 created_at = "2026-05-06T04:39:08.821196Z"
-updated_at = "2026-05-06T05:12:13.571583Z"
+updated_at = "2026-05-08T07:02:22.130179Z"
+archived_at = "2026-05-08T07:02:22.130179Z"
 committed_at = "2026-05-06T05:12:13.571583Z"
 start_head = "162a50915896bae28629eec36efc54e36f222c4d"
 journal_path = ".ark/workspace/Anekoique/journal-1.md"

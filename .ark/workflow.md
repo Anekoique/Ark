@@ -213,8 +213,8 @@ ark agent task commit -m "<message>"
 
 ### Main Changes
 
-| Area | Description |
-|------|-------------|
+| Area   | Description |
+| ------ | ----------- |
 | <area> | <≤80 chars> |
 ```
 

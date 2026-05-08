@@ -63,7 +63,7 @@ New worktrees inherit the parent's `.ark/.developer` and run `git submodule upda
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `12f975b`
-**Closing Commit**: <PENDING:tier-aware-plan-naming>
+**Closing Commit**: ccddfde
 
 ### Summary
 
@@ -81,7 +81,7 @@ Standard/quick tasks seed `PLAN.md`; deep keeps `NN_PLAN.md`. Locators accept bo
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `ccddfde` | feat(workflow): tier-aware PLAN naming |
 
 ## Session 4: Manifest-aware ark init
 
@@ -90,7 +90,7 @@ Standard/quick tasks seed `PLAN.md`; deep keeps `NN_PLAN.md`. Locators accept bo
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `ccddfde`
-**Closing Commit**: <PENDING:manifest-aware-init>
+**Closing Commit**: ee62980
 
 ### Summary
 
@@ -107,7 +107,7 @@ Re-running `ark init` on an installed project skips the platform prompt; CLI fla
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `ee62980` | feat(init): manifest-aware platform resolution |
 
 ## Session 5: Cap journal Main Changes prose
 
@@ -116,7 +116,7 @@ Re-running `ark init` on an installed project skips the platform prompt; CLI fla
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `ee62980`
-**Closing Commit**: <PENDING:prose-discipline>
+**Closing Commit**: 162a509
 
 ### Summary
 
@@ -133,7 +133,7 @@ Slash-command templates now require ≤ 4 short rows per session block; existing
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `162a509` | docs(commit): cap journal Main Changes prose |
 
 ## Session 6: Extend SessionStart envelope with suppressOutput and systemMessage
 
@@ -142,7 +142,7 @@ Slash-command templates now require ≤ 4 short rows per session block; existing
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `162a509`
-**Closing Commit**: <PENDING:session-envelope>
+**Closing Commit**: 8153c3c
 
 ### Summary
 
@@ -159,7 +159,7 @@ Hook output stops dumping a JSON wall in transcripts; one-line `Ark: branch=… 
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `8153c3c` | feat(context): extend envelope |
 
 ## Session 7: Drop --slug from non-targeted task verbs
 
@@ -168,7 +168,7 @@ Hook output stops dumping a JSON wall in transcripts; one-line `Ark: branch=… 
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `8153c3c`
-**Closing Commit**: <PENDING:drop-task-slug>
+**Closing Commit**: aac0f97
 
 ### Summary
 
@@ -187,7 +187,7 @@ Hook output stops dumping a JSON wall in transcripts; one-line `Ark: branch=… 
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `aac0f97` | feat(agent): drop --slug from non-targeted task verbs |
 
 ## Session 8: tight docs
 
@@ -196,7 +196,7 @@ Hook output stops dumping a JSON wall in transcripts; one-line `Ark: branch=… 
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `aac0f97`
-**Closing Commit**: <PENDING:doc-tighten>
+**Closing Commit**: e169239
 
 ### Summary
 
@@ -215,7 +215,7 @@ Restructured commands, workflow.md, and templates into a CLI-driven contract; ti
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `e169239` | feat(workflow): tighten docs |
 
 ## Session 9: Brownfield SPEC import via `/ark:extract-spec`
 
@@ -224,7 +224,7 @@ Restructured commands, workflow.md, and templates into a CLI-driven contract; ti
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `e169239`
-**Closing Commit**: <PENDING:extract-spec-cmd>
+**Closing Commit**: 7d0ae82
 
 ### Summary
 
@@ -243,7 +243,7 @@ Brownfield projects can author a feature SPEC from an existing implementation th
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `7d0ae82` | feat(cmd): add `extract-spec` command |
 
 ## Session 10: per-checkout `[focus]` replaces session-keyed map
 
@@ -252,7 +252,7 @@ Brownfield projects can author a feature SPEC from an existing implementation th
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `7d0ae82`
-**Closing Commit**: <PENDING:session-focus-bind>
+**Closing Commit**: 79500fd
 
 ### Summary
 
@@ -271,4 +271,5 @@ Non-targeted task verbs now resolve via a single per-checkout `[focus]` field in
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `79500fd` | refactor(state): replace per-session focus map with per-checkout |
+

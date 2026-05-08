@@ -1,10 +1,11 @@
 id = "prose-discipline"
 title = "concise journal Main Changes prose"
 tier = "quick"
-phase = "committed"
+phase = "archived"
 iteration = 0
 created_at = "2026-05-05T13:24:53.912015Z"
-updated_at = "2026-05-05T13:30:08.153860Z"
+updated_at = "2026-05-08T07:02:22.114893Z"
+archived_at = "2026-05-08T07:02:22.114893Z"
 committed_at = "2026-05-05T13:30:08.153860Z"
 start_head = "ee6298095751d3a3ea8f7fe0f71b5637b0b782e7"
 journal_path = ".ark/workspace/Anekoique/journal-1.md"
