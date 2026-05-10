@@ -259,3 +259,4 @@ struct InitArgs {
 [**CHANGELOG**]
 
 - 2026-05-08 `doc-tighten`: rewritten to match tightened SPEC contract; semantic content preserved.
+- 2026-05-10 `subagent-support`: NG-2 ("No `.codex/agents/*.toml` custom subagents") is superseded; Codex now ships `ark-researcher`, `ark-reviewer`, `ark-verifier` under `.codex/agents/` via `Platform.agents_templates` and `agents_dest_dir` (new optional fields). `Platform` is now `#[non_exhaustive]`. The Codex agent file format follows `reference/Trellis/.codex/agents/trellis-research.toml`: keys `name`, `description`, `sandbox_mode`, `developer_instructions` (multi-line body), and a `[features]` block with `multi_agent = false` and `[features.multi_agent_v2].enabled = false` to disable nested-agent spawning. See `specs/features/subagent-support/SPEC.md`.

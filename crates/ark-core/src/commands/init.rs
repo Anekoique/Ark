@@ -144,13 +144,18 @@ pub fn init(opts: InitOptions) -> Result<InitSummary> {
     for platform in &opts.platforms {
         drop_manifest_entries_under(&mut manifest, platform.dest_dir);
         let dest_root = layout.resolve(platform.dest_dir);
-        extract(
+        let agents_dest_skip = platform
+            .agents_dest_dir
+            .map(|d| layout.resolve(d))
+            .filter(|p| p.starts_with(&dest_root));
+        extract_filtered(
             platform.templates,
             &dest_root,
             &layout,
             opts.mode,
             &mut manifest,
             &mut summary,
+            agents_dest_skip.as_deref(),
         )?;
         platform.apply_managed_state(&layout, &mut manifest)?;
     }
@@ -200,8 +205,33 @@ fn extract(
     manifest: &mut Manifest,
     summary: &mut InitSummary,
 ) -> Result<()> {
+    extract_filtered(tree, dest_root, layout, mode, manifest, summary, None)
+}
+
+/// Extracts every file in `tree` under `dest_root`, optionally skipping files
+/// whose dest lies under `skip_subtree`.
+///
+/// The `skip_subtree` carve-out exists so a platform whose main `templates`
+/// tree physically contains its agents subtree (Claude) can route agent files
+/// through [`crate::platforms::Platform::apply_managed_state`] instead of the
+/// `WriteMode::Skip`-honoring main extract loop. The call site passes
+/// `Some(layout.resolve(agents_dest_dir))` when relevant.
+fn extract_filtered(
+    tree: &Dir<'_>,
+    dest_root: &Path,
+    layout: &Layout,
+    mode: WriteMode,
+    manifest: &mut Manifest,
+    summary: &mut InitSummary,
+    skip_subtree: Option<&Path>,
+) -> Result<()> {
     walk(tree).try_for_each(|entry| {
         let dest = dest_root.join(entry.relative_path);
+        if let Some(skip) = skip_subtree
+            && dest.starts_with(skip)
+        {
+            return Ok(());
+        }
         let contents = merge_managed_blocks(&dest, entry.contents)?;
         let outcome = write_file(&dest, &contents, mode)?;
         let relative = dest
@@ -569,6 +599,80 @@ mod tests {
         assert_eq!(
             v["hooks"]["SessionStart"][0]["hooks"][0]["command"],
             serde_json::Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()),
+        );
+    }
+
+    /// Verifies that `ark init` installs all three Ark subagents under each
+    /// selected platform (V-IT-2 from the `subagent-support` PLAN).
+    #[test]
+    fn init_installs_agents_for_all_selected_platforms() {
+        let tmp = tempfile::tempdir().unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+        for (dir, ext) in [
+            (".claude/agents", "md"),
+            (".codex/agents", "toml"),
+            (".opencode/agents", "md"),
+        ] {
+            for stem in ["ark-researcher", "ark-reviewer", "ark-verifier"] {
+                let path = tmp.path().join(dir).join(format!("{stem}.{ext}"));
+                assert!(
+                    path.exists(),
+                    "expected `{}` to be installed by `ark init`",
+                    path.display(),
+                );
+            }
+        }
+    }
+
+    /// Verifies that `ark init --claude --no-codex --no-opencode` installs only
+    /// Claude's agents (V-IT-4 from the `subagent-support` PLAN).
+    #[test]
+    fn init_skips_agents_for_unselected_platforms() {
+        use crate::platforms::CLAUDE_PLATFORM;
+        let tmp = tempfile::tempdir().unwrap();
+        init(InitOptions::new(tmp.path()).with_platforms(vec![&CLAUDE_PLATFORM])).unwrap();
+        assert!(tmp.path().join(".claude/agents/ark-researcher.md").exists());
+        assert!(!tmp.path().join(".codex/agents").exists());
+        assert!(!tmp.path().join(".opencode/agents").exists());
+    }
+
+    /// Verifies that a user-authored agent at a non-reserved stem survives
+    /// `ark init` (V-F-4 from the `subagent-support` PLAN).
+    #[test]
+    fn user_authored_agent_at_non_reserved_stem_survives_init() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".claude/agents")).unwrap();
+        let user = tmp.path().join(".claude/agents/my-custom.md");
+        std::fs::write(&user, b"USER OWNED").unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&user).unwrap(),
+            "USER OWNED",
+            "user-authored agent at non-reserved stem must survive init"
+        );
+        assert!(
+            tmp.path().join(".claude/agents/ark-researcher.md").exists(),
+            "Ark agents land alongside the user file"
+        );
+    }
+
+    /// Verifies that a user-authored agent at a RESERVED stem is overwritten
+    /// by `ark init` (V-E-4 from the `subagent-support` PLAN; closes V-002).
+    #[test]
+    fn init_overwrites_user_agent_at_reserved_stem() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".claude/agents")).unwrap();
+        let reserved = tmp.path().join(".claude/agents/ark-researcher.md");
+        std::fs::write(&reserved, b"USER OVERRIDE").unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+        let after = std::fs::read_to_string(&reserved).unwrap();
+        assert_ne!(
+            after, "USER OVERRIDE",
+            "init must overwrite a user-authored agent at a reserved stem"
+        );
+        assert!(
+            after.contains("name: ark-researcher"),
+            "post-init body must be the canonical researcher template"
         );
     }
 }

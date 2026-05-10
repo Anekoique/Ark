@@ -178,3 +178,4 @@ Parity tests (tree-walked, not hand-listed):
 [**CHANGELOG**]
 
 - 2026-05-08 `doc-tighten`: rewritten to match tightened SPEC contract; semantic content preserved.
+- 2026-05-10 `subagent-support`: OpenCode now ships `ark-researcher`, `ark-reviewer`, `ark-verifier` under `.opencode/agents/` via the new `Platform.agents_templates` + `agents_dest_dir` fields. `OPENCODE_PLATFORM.agents_templates = Some(&OPENCODE_AGENT_TEMPLATES)`, `agents_dest_dir = Some(OPENCODE_AGENTS_DIR)`, `extra_dirs = []` (the agents directory lives under the platform's existing `removal_root = .opencode`). OpenCode agent file format follows the Trellis OpenCode precedent: YAML frontmatter (`description`, `mode: subagent`, `permission:` block) + markdown body. `Platform` is now `#[non_exhaustive]`. See `specs/features/subagent-support/SPEC.md`.

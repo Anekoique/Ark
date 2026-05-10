@@ -57,3 +57,4 @@ pub use state::{
     Manifest, StateFile, Tasks, clear_focus_for_slug, load_state, reconcile_against_disk,
     state_mutate,
 };
+pub use templates::{CLAUDE_AGENT_TEMPLATES, CODEX_AGENT_TEMPLATES, OPENCODE_AGENT_TEMPLATES};

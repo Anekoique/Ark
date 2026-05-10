@@ -11,10 +11,10 @@ Use `INDEX.md` when an area has multiple sub-specs that need their own hierarchy
 
 ## Index
 
-| Spec                  | Scope                                                  |
-| --------------------- | ------------------------------------------------------ |
-| `<e.g. rust/SPEC.md>` | <e.g. language style, error handling, module layout>   |
-| `<e.g. os/INDEX.md>`  | <e.g. OS-wide specs grouped by architecture/module>    |
+| Spec                            | Scope                                                                    |
+| ------------------------------- | ------------------------------------------------------------------------ |
+| `<e.g. <language>/SPEC.md>`     | <e.g. language-specific style, error-handling, naming conventions>       |
+| `<e.g. <area>/INDEX.md>`        | <e.g. an area with several child SPECs (architecture, security, …)>      |
 
 <one row per spec or nested index. Keep the Scope column terse — agents scan this table to decide what to read.>
 

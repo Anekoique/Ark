@@ -1,0 +1,14 @@
+id = "subagent-support"
+title = "add researcher/reviewer/verifier subagents across claude/codex/opencode"
+tier = "deep"
+phase = "committed"
+iteration = 1
+max_iterations = 3
+created_at = "2026-05-10T07:00:10.047108Z"
+updated_at = "2026-05-10T09:15:09.553639Z"
+committed_at = "2026-05-10T09:15:09.553639Z"
+branch = "feat/subagent-support"
+worktree_path = ".ark/worktrees/feat/subagent-support"
+base_branch = "main"
+start_head = "8372470e978059fee9fc30121b9c0952749b2829"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

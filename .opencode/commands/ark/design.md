@@ -2,6 +2,7 @@
 description: Start a standard or deep-tier task. Produces PRD → PLAN → (REVIEW loop if --deep) → EXECUTE → VERIFY.
 ---
 
+
 # `/ark:design $ARGUMENTS`
 
 Create a **standard**-tier task (default) or **deep**-tier task (if `--deep` is in `$ARGUMENTS`).
@@ -54,6 +55,8 @@ Scaffolds `.ark/tasks/<slug>/{PRD.md, task.toml}`, registers the slug, sets this
 
 Edit `.ark/tasks/<slug>/PRD.md`: **What**, **Why**, **Outcome**, **Related Specs** (one bullet per touched feature SPEC + how it interacts).
 
+**Deep — dispatch `ark-researcher`** when PRD authoring hits a third-party library, prior-art comparison, or cross-cutting pattern map. Findings land at `<task>/research/<topic>.md`. After dispatch, run `git status`; `git restore` any out-of-scope edits and `git clean -fd` any out-of-scope new files (the researcher's allowed write scope is `<task>/research/` only).
+
 **Gate:** PRD complete → Phase 2.
 
 ## Phase 2 — PLAN
@@ -83,6 +86,8 @@ Per the template: `## Summary`, `## Log` (*None in 00_PLAN*), `## Spec` (Goals/N
 - Constraints: one declarative sentence each, ≤120 chars. The *why* goes in Trade-offs, not the Constraint body.
 - If a goal sounds like a procedure ("Two flags control X..."), it is a Constraint, not a Goal.
 
+**Deep — dispatch `ark-researcher`** for library/API choices or pattern comparisons that PLAN authoring cannot resolve from training. Same post-check: `git status`, `git restore` out-of-scope edits, `git clean -fd` out-of-scope new files.
+
 **Gate:** every Goal `G-N` mapped to ≥1 Validation `V-*-N` in the Acceptance Mapping table.
 
 ### Step 2.4: Advance `[AI]`
@@ -107,7 +112,8 @@ ark context --scope phase --for review --format json
 
 Ask the user: *"Should I self-review, or will you run the reviewer?"*
 
-If self-reviewing: switch framing — *you are now the reviewer*. Read the latest `NN_PLAN.md` critically against the PRD and project specs. Fill `NN_REVIEW.md` with verdict, blocking/non-blocking counts, findings (`R-NNN` with Severity/Section/Problem/Why it matters/Recommendation), and Trade-off Advice (`TR-N`).
+- **Self:** switch framing — *you are now the reviewer*. Read the latest `NN_PLAN.md` against the PRD and project specs; fill `NN_REVIEW.md` with verdict, findings (`R-NNN`), trade-off advice (`TR-N`).
+- **Agent:** dispatch `ark-reviewer`. `git status` after; `git restore` edits outside `NN_REVIEW.md` and `git clean -fd` any new files.
 
 **Reject (HIGH)** if the latest PLAN's `## Spec` references prior iterations instead of restating in full.
 
@@ -161,7 +167,14 @@ ark context --scope phase --for verify --format json
 
 ### Step 5.2: Maintain VERIFY.md `[AI]` (preferably a fresh agent)
 
-Apply the **higher quality bar**: plan fidelity, correctness, code quality, abstraction, SPEC drift — not just "does it work". Resolve every checklist item to PASS / FAIL / N/A; capture cross-cutting observations as Findings (`V-NNN`) with a Resolution. **No verdict line — completion = no `PENDING`.**
+Ask the user: *"Should I self-verify, or will you run the verifier?"*
+
+- **Self:** apply the higher quality bar — plan fidelity, correctness, code quality, abstraction, SPEC drift. Resolve every item PASS / FAIL / N/A; capture cross-cutting observations as Findings (`V-NNN`) with a Resolution.
+- **Agent:** dispatch `ark-verifier`. Runs the project's build / test / lint / format-check; fills `VERIFY.md`. Does not self-fix — FAIL items return to the main session. `git status` after; `git restore` edits outside `VERIFY.md` and `git clean -fd` any new files.
+
+**No verdict line — completion = no `PENDING`.**
+
+Stems `ark-researcher`/`ark-reviewer`/`ark-verifier` are reserved; user agents at those stems are overwritten on `init`/`upgrade`/`load`.
 
 ### Step 5.3: Close out `[AI]` then `[USER]`
 

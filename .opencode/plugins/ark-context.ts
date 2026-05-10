@@ -27,11 +27,7 @@ const stderrNoticed = new Set<string>()
 
 // Pure helpers, intentionally NOT exported. OpenCode treats every named
 // export as a plugin factory and invokes it at load time with no arguments,
-// which crashes any helper that takes parameters. To keep the helpers
-// testable, the plugin source is read by `crates/ark-core/src/templates.rs`'s
-// `opencode_plugin_keeps_helpers_internal` test, which asserts the helpers
-// exist and have live consumers via string-level grep — see that test for
-// the stability contract.
+// which crashes any helper that takes parameters. Keep helpers internal.
 
 function buildEnvelopePrefix(additionalContext: string): string {
   return `<ark-context>\n${additionalContext}\n</ark-context>\n\n---\n\n`
