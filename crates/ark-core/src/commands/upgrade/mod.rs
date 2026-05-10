@@ -180,20 +180,46 @@ fn collect_desired_templates(
     layout: &Layout,
     manifest: &Manifest,
 ) -> Vec<(PathBuf, Cow<'static, [u8]>)> {
-    let trees = std::iter::once((&ARK_TEMPLATES, layout.ark_dir()))
-        .chain(platforms::installed(manifest).map(|p| (p.templates, layout.resolve(p.dest_dir))));
-    trees
-        .flat_map(|(tree, dest_root)| {
-            walk(tree).map(move |entry| {
-                let absolute = dest_root.join(entry.relative_path);
-                let relative = absolute
-                    .strip_prefix(layout.root())
-                    .expect("template dest under project root")
-                    .to_path_buf();
-                (relative, Cow::Borrowed(entry.contents))
-            })
-        })
-        .collect()
+    let mut out: Vec<(PathBuf, Cow<'static, [u8]>)> = Vec::new();
+
+    // Main `.ark/` tree.
+    for entry in walk(&ARK_TEMPLATES) {
+        let absolute = layout.ark_dir().join(entry.relative_path);
+        let relative = absolute
+            .strip_prefix(layout.root())
+            .expect("template dest under project root")
+            .to_path_buf();
+        out.push((relative, Cow::Borrowed(entry.contents)));
+    }
+
+    // Per-installed-platform: the main tree, but skip files whose dest falls
+    // under `agents_dest_dir`. Agent files are owned by `apply_managed_state`
+    // (re-applied unconditionally after the conflict pipeline runs); routing
+    // them through this catalogue would either falsely flag user-modified
+    // agents as upgrade conflicts (only to have `apply_managed_state` overwrite
+    // anyway) or, worse, let a user-preserved agent silently miss `apply`'s
+    // re-write. Excluded here, owned-and-re-written there.
+    for p in platforms::installed(manifest) {
+        let dest_root = layout.resolve(p.dest_dir);
+        let skip = p
+            .agents_dest_dir
+            .map(|d| layout.resolve(d))
+            .filter(|sk| sk.starts_with(&dest_root));
+        for entry in walk(p.templates) {
+            let absolute = dest_root.join(entry.relative_path);
+            if let Some(sk) = skip.as_deref()
+                && absolute.starts_with(sk)
+            {
+                continue;
+            }
+            let relative = absolute
+                .strip_prefix(layout.root())
+                .expect("template dest under project root")
+                .to_path_buf();
+            out.push((relative, Cow::Borrowed(entry.contents)));
+        }
+    }
+    out
 }
 
 /// Splices on-disk managed-block bodies into desired templates.
@@ -425,7 +451,15 @@ mod tests {
             .into_iter()
             .map(|(p, _)| p)
             .collect();
-        let from_manifest: std::collections::BTreeSet<_> = manifest.files.into_iter().collect();
+        // Agent files are recorded in the manifest by `apply_managed_state` but
+        // intentionally excluded from `collect_desired_templates` (they are
+        // owned by `apply_managed_state`'s unconditional re-write, not the
+        // upgrade conflict pipeline). Strip them before comparing.
+        let from_manifest: std::collections::BTreeSet<_> = manifest
+            .files
+            .into_iter()
+            .filter(|p| !crate::commands::upgrade::plan::is_agent_path(p))
+            .collect();
         assert_eq!(desired, from_manifest);
     }
 
@@ -590,10 +624,21 @@ mod tests {
         let mut prompter = PanicPrompter;
         upgrade(UpgradeOptions::new(tmp.path()), &mut prompter).unwrap();
         let after = Manifest::read(tmp.path()).unwrap().unwrap();
-        // Hashes are refreshed for every tracked file *except* seed-only paths
-        // (config.toml, project specs) which upgrade intentionally ignores.
-        let trackable = after.files.iter().filter(|p| !is_exempted(p)).count();
-        assert_eq!(after.hashes.len(), trackable);
+        // Hashes are refreshed by:
+        //   1. The conflict pipeline for every tracked file *except* seed-only
+        //      paths (config.toml, project specs) and agent files (both are
+        //      exempt — agents are owned by `apply_managed_state` instead).
+        //   2. `apply_managed_state` for agent files (it calls
+        //      `record_file_with_hash` directly).
+        // So after upgrade, the only files lacking hashes are the seed-only
+        // exempt paths.
+        use super::plan::is_agent_path;
+        let with_hash_expected = after
+            .files
+            .iter()
+            .filter(|p| !is_exempted(p) || is_agent_path(p))
+            .count();
+        assert_eq!(after.hashes.len(), with_hash_expected);
     }
 
     #[test]

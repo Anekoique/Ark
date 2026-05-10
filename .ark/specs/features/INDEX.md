@@ -19,6 +19,7 @@ The table below is managed by `ark agent spec register` — new rows appear when
 | `task-concurrency-control` | task concurrency control                  | 2026-05-01 from task `task-concurrency-control` |
 | `ark-workflow-refactor`    | refactor ark-workflow                     | 2026-05-02 from task `ark-workflow-refactor`    |
 | `workspace` | add workspace support | 2026-05-02 from task `workspace` |
+| `subagent-support` | add researcher/reviewer/verifier subagents across claude/codex/opencode | 2026-05-10 from task `subagent-support` |
 
 <!-- ARK:FEATURES:END -->
 

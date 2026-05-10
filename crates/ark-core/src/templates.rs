@@ -15,6 +15,18 @@
 //!   file ships via the whole-file [`crate::templates::OPENCODE_ARK_CONTEXT_TS`] constant
 //!   (re-applied unconditionally on every `init` / `load` / `upgrade`; not
 //!   hash-tracked, mirroring `CODEX_CONFIG_TOML`).
+//! - [`crate::templates::CLAUDE_AGENT_TEMPLATES`] — extracted under
+//!   `.claude/agents/` via `Platform.agents_templates`. `CLAUDE_TEMPLATES`
+//!   physically contains the same files (since it is rooted at `templates/claude/`),
+//!   but the main extract path filters them out so the agents are written
+//!   unconditionally via `apply_managed_state` (preserves C-26's reserved-stem
+//!   invariant on default `WriteMode::Skip`).
+//! - [`crate::templates::CODEX_AGENT_TEMPLATES`] — extracted under `.codex/agents/`
+//!   via `Platform.agents_templates`. Codex's main tree is rooted at `skills/`,
+//!   so agents need a separate static.
+//! - [`crate::templates::OPENCODE_AGENT_TEMPLATES`] — extracted under
+//!   `.opencode/agents/` via `Platform.agents_templates`. OpenCode's main tree
+//!   is rooted at `commands/`, so agents need a separate static.
 
 use include_dir::{Dir, include_dir};
 
@@ -28,6 +40,36 @@ pub static CODEX_TEMPLATES: Dir<'_> =
 /// Embedded OpenCode command template tree.
 pub static OPENCODE_TEMPLATES: Dir<'_> =
     include_dir!("$CARGO_MANIFEST_DIR/../../templates/opencode/commands");
+
+/// Embedded Claude Code agent template tree (extracts under `.claude/agents/`).
+///
+/// `CLAUDE_TEMPLATES` is rooted at `templates/claude/`, so it physically also
+/// contains the `agents/` subtree. The main extract path skips files whose
+/// destination falls under [`crate::platforms::Platform::agents_dest_dir`] to
+/// avoid double-extraction; this dedicated static is what
+/// [`Platform::apply_managed_state`] uses to write Claude agents
+/// unconditionally (so the reserved-stem invariant in `subagent-support`'s
+/// SPEC C-26 holds even on default `WriteMode::Skip`).
+///
+/// [`Platform::apply_managed_state`]: crate::platforms::Platform::apply_managed_state
+pub static CLAUDE_AGENT_TEMPLATES: Dir<'_> =
+    include_dir!("$CARGO_MANIFEST_DIR/../../templates/claude/agents");
+
+/// Embedded Codex agent template tree (extracts under `.codex/agents/`).
+///
+/// Codex's main template tree [`CODEX_TEMPLATES`] is rooted at
+/// `templates/codex/skills/`, so the agents subtree must be a separate static.
+/// Mirrors the same `Platform.agents_templates` indirection used by OpenCode.
+pub static CODEX_AGENT_TEMPLATES: Dir<'_> =
+    include_dir!("$CARGO_MANIFEST_DIR/../../templates/codex/agents");
+
+/// Embedded OpenCode agent template tree (extracts under `.opencode/agents/`).
+///
+/// OpenCode's main template tree [`OPENCODE_TEMPLATES`] is rooted at
+/// `templates/opencode/commands/`, so the agents subtree must be a separate
+/// static.
+pub static OPENCODE_AGENT_TEMPLATES: Dir<'_> =
+    include_dir!("$CARGO_MANIFEST_DIR/../../templates/opencode/agents");
 
 /// Whole-file body for `.codex/config.toml`.
 ///
@@ -268,6 +310,378 @@ mod tests {
         assert!(
             body.contains("shouldInject(sessionID, processedSessions)"),
             "plugin must invoke `shouldInject` (live consumer)"
+        );
+    }
+
+    /// Names of the three Ark subagents shipped per platform.
+    const ARK_AGENTS: &[&str] = &["ark-researcher", "ark-reviewer", "ark-verifier"];
+
+    /// Verifies that each platform ships exactly the three Ark subagents.
+    ///
+    /// Claude's agents live under [`CLAUDE_TEMPLATES`]'s `agents/` subtree;
+    /// Codex's and OpenCode's live under their dedicated agent template trees.
+    #[test]
+    fn each_platform_ships_three_agents() {
+        let claude_agents = CLAUDE_TEMPLATES
+            .get_dir("agents")
+            .expect("templates/claude/agents exists");
+        let claude_stems: std::collections::BTreeSet<_> = claude_agents
+            .files()
+            .filter_map(|f| f.path().file_stem()?.to_str())
+            .collect();
+        for name in ARK_AGENTS {
+            assert!(
+                claude_stems.contains(name),
+                "Claude must ship `{name}.md`, got {claude_stems:?}",
+            );
+        }
+
+        let codex_stems: std::collections::BTreeSet<_> = CODEX_AGENT_TEMPLATES
+            .files()
+            .filter_map(|f| f.path().file_stem()?.to_str())
+            .collect();
+        for name in ARK_AGENTS {
+            assert!(
+                codex_stems.contains(name),
+                "Codex must ship `{name}.toml`, got {codex_stems:?}",
+            );
+        }
+
+        let opencode_stems: std::collections::BTreeSet<_> = OPENCODE_AGENT_TEMPLATES
+            .files()
+            .filter_map(|f| f.path().file_stem()?.to_str())
+            .collect();
+        for name in ARK_AGENTS {
+            assert!(
+                opencode_stems.contains(name),
+                "OpenCode must ship `{name}.md`, got {opencode_stems:?}",
+            );
+        }
+    }
+
+    /// Returns the bytes of an Ark agent body for the given platform and stem.
+    fn agent_body(platform: &str, stem: &str) -> Vec<u8> {
+        match platform {
+            "claude" => CLAUDE_TEMPLATES
+                .get_file(format!("agents/{stem}.md"))
+                .expect("claude agent file")
+                .contents()
+                .to_vec(),
+            "codex" => CODEX_AGENT_TEMPLATES
+                .get_file(format!("{stem}.toml"))
+                .expect("codex agent file")
+                .contents()
+                .to_vec(),
+            "opencode" => OPENCODE_AGENT_TEMPLATES
+                .get_file(format!("{stem}.md"))
+                .expect("opencode agent file")
+                .contents()
+                .to_vec(),
+            _ => unreachable!("unknown platform `{platform}`"),
+        }
+    }
+
+    /// Verifies that every agent prompt body carries a Recursion Guard section.
+    #[test]
+    fn agent_prompts_carry_recursion_guard() {
+        for stem in ARK_AGENTS {
+            for platform in &["claude", "codex", "opencode"] {
+                let body = agent_body(platform, stem);
+                let body_str = std::str::from_utf8(&body).expect("utf8 agent body");
+                assert!(
+                    body_str.contains("## Recursion guard"),
+                    "{platform}/{stem} body must contain `## Recursion guard`"
+                );
+            }
+        }
+    }
+
+    /// Verifies that every agent prompt declares an explicit write scope wall.
+    #[test]
+    fn agent_prompts_carry_write_scope_walls() {
+        for stem in ARK_AGENTS {
+            for platform in &["claude", "codex", "opencode"] {
+                let body = agent_body(platform, stem);
+                let body_str = std::str::from_utf8(&body).expect("utf8 agent body");
+                assert!(
+                    body_str.contains("## Write scope"),
+                    "{platform}/{stem} body must contain `## Write scope`"
+                );
+                assert!(
+                    body_str.contains("**Allowed:**"),
+                    "{platform}/{stem} body must contain `**Allowed:**`"
+                );
+                assert!(
+                    body_str.contains("**Forbidden:**"),
+                    "{platform}/{stem} body must contain `**Forbidden:**`"
+                );
+            }
+        }
+    }
+
+    /// Verifies the Claude agents' YAML frontmatter shape.
+    #[test]
+    fn claude_agent_frontmatter_shape() {
+        for stem in ARK_AGENTS {
+            let body = agent_body("claude", stem);
+            let body_str = std::str::from_utf8(&body).expect("utf8");
+            let prefix = format!("---\nname: {stem}\n");
+            assert!(
+                body_str.starts_with(&prefix),
+                "Claude agent `{stem}` must open `{prefix}`"
+            );
+            let frontmatter_end = body_str
+                .find("\n---\n")
+                .expect("Claude agent has closing frontmatter delimiter");
+            let frontmatter = &body_str[..frontmatter_end];
+            assert!(
+                frontmatter.contains("description:"),
+                "Claude agent `{stem}` frontmatter must contain `description:`"
+            );
+            assert!(
+                frontmatter.contains("tools:"),
+                "Claude agent `{stem}` frontmatter must contain `tools:`"
+            );
+        }
+    }
+
+    /// Verifies the Codex agents' TOML schema (per `codex-support` SPEC C-25 / Trellis prior art).
+    #[test]
+    fn codex_agent_frontmatter_shape() {
+        for stem in ARK_AGENTS {
+            let body = agent_body("codex", stem);
+            let body_str = std::str::from_utf8(&body).expect("utf8");
+            let parsed: toml::Value =
+                toml::from_str(body_str).expect("Codex agent file is parseable TOML");
+            let table = parsed.as_table().expect("TOML root is a table");
+            for key in &[
+                "name",
+                "description",
+                "sandbox_mode",
+                "developer_instructions",
+            ] {
+                assert!(
+                    table.contains_key(*key),
+                    "Codex agent `{stem}` must define `{key}` at top level"
+                );
+            }
+            assert_eq!(
+                table.get("name").and_then(|v| v.as_str()),
+                Some(*stem),
+                "Codex agent `{stem}` `name` must equal stem"
+            );
+            assert_eq!(
+                table.get("sandbox_mode").and_then(|v| v.as_str()),
+                Some("workspace-write"),
+                "Codex agent `{stem}` must use `sandbox_mode = \"workspace-write\"`"
+            );
+            let features = table
+                .get("features")
+                .and_then(|v| v.as_table())
+                .expect("Codex agent has [features] table");
+            assert_eq!(
+                features.get("multi_agent").and_then(|v| v.as_bool()),
+                Some(false),
+                "Codex agent `{stem}` must set `[features].multi_agent = false`"
+            );
+            let v2 = features
+                .get("multi_agent_v2")
+                .and_then(|v| v.as_table())
+                .expect("[features.multi_agent_v2] table present");
+            assert_eq!(
+                v2.get("enabled").and_then(|v| v.as_bool()),
+                Some(false),
+                "Codex agent `{stem}` must set `[features.multi_agent_v2].enabled = false`"
+            );
+        }
+    }
+
+    /// Verifies the OpenCode agents' frontmatter shape.
+    #[test]
+    fn opencode_agent_frontmatter_shape() {
+        for stem in ARK_AGENTS {
+            let body = agent_body("opencode", stem);
+            let body_str = std::str::from_utf8(&body).expect("utf8");
+            assert!(
+                body_str.starts_with("---\ndescription:"),
+                "OpenCode agent `{stem}` must open `---\\ndescription:`"
+            );
+            let frontmatter_end = body_str
+                .find("\n---\n")
+                .expect("OpenCode agent has closing frontmatter delimiter");
+            let frontmatter = &body_str[..frontmatter_end];
+            assert!(
+                frontmatter.contains("mode: subagent"),
+                "OpenCode agent `{stem}` must declare `mode: subagent`"
+            );
+            assert!(
+                frontmatter.contains("permission:"),
+                "OpenCode agent `{stem}` must define a `permission:` block"
+            );
+        }
+    }
+
+    /// Strips per-platform frontmatter from an agent body and normalizes the
+    /// commit-command token so the residual is the platform-neutral prompt.
+    ///
+    /// Codex skills use bare `ark-commit`; Claude / OpenCode slash commands
+    /// use `/ark:commit`. Both forms collapse to `<COMMIT>` for the equality
+    /// check.
+    fn strip_frontmatter_and_normalize(platform: &str, stem: &str) -> String {
+        let body = agent_body(platform, stem);
+        let body_str = std::str::from_utf8(&body).expect("utf8");
+        let stripped = match platform {
+            "codex" => {
+                let parsed: toml::Value = toml::from_str(body_str).unwrap();
+                parsed
+                    .get("developer_instructions")
+                    .and_then(|v| v.as_str())
+                    .expect("codex developer_instructions present")
+                    .to_string()
+            }
+            _ => {
+                // Skip the first --- ... --- frontmatter block.
+                let after_open = body_str.strip_prefix("---\n").expect("frontmatter open");
+                let end = after_open
+                    .find("\n---\n")
+                    .expect("frontmatter close marker");
+                after_open[end + "\n---\n".len()..].to_string()
+            }
+        };
+        stripped
+            .replace("/ark:commit", "<COMMIT>")
+            .replace("ark-commit", "<COMMIT>")
+            .trim_start_matches('\n')
+            .to_string()
+    }
+
+    /// Verifies that prompt bodies are byte-identical across platforms after
+    /// stripping per-platform frontmatter and normalizing the platform-native
+    /// commit-command form (Codex's bare `ark-commit` vs Claude/OpenCode's
+    /// `/ark:commit`).
+    #[test]
+    fn agent_bodies_are_byte_identical_modulo_platform_idioms() {
+        for stem in ARK_AGENTS {
+            let claude = strip_frontmatter_and_normalize("claude", stem);
+            let codex = strip_frontmatter_and_normalize("codex", stem);
+            let opencode = strip_frontmatter_and_normalize("opencode", stem);
+            assert_eq!(
+                claude, codex,
+                "agent `{stem}`: Claude and Codex bodies must be byte-identical after frontmatter \
+                 + Dispatch-line strip"
+            );
+            assert_eq!(
+                claude, opencode,
+                "agent `{stem}`: Claude and OpenCode bodies must be byte-identical after \
+                 frontmatter + Dispatch-line strip"
+            );
+        }
+    }
+
+    /// Verifies that the researcher prompt names the literal contract phrase.
+    #[test]
+    fn researcher_prompt_carries_paths_summaries_contract() {
+        for platform in &["claude", "codex", "opencode"] {
+            let body = agent_body(platform, "ark-researcher");
+            let body_str = std::str::from_utf8(&body).expect("utf8");
+            assert!(
+                body_str.contains("paths plus one-line summaries"),
+                "{platform}/ark-researcher body must contain the literal contract phrase `paths \
+                 plus one-line summaries`"
+            );
+        }
+    }
+
+    /// Verifies that the reviewer prompt names the iteration-rejection rule with HIGH severity.
+    #[test]
+    fn reviewer_prompt_carries_iteration_rejection_rule() {
+        for platform in &["claude", "codex", "opencode"] {
+            let body = agent_body(platform, "ark-reviewer");
+            let body_str = std::str::from_utf8(&body).expect("utf8");
+            assert!(
+                body_str.contains("references prior iterations"),
+                "{platform}/ark-reviewer must carry the iteration-rejection rule"
+            );
+            assert!(
+                body_str.contains("HIGH"),
+                "{platform}/ark-reviewer must tag the rule as HIGH severity"
+            );
+        }
+    }
+
+    /// Verifies that the reviewer prompt names the SPEC-contradiction rule with CRITICAL severity.
+    #[test]
+    fn reviewer_prompt_carries_spec_contradiction_rule() {
+        for platform in &["claude", "codex", "opencode"] {
+            let body = agent_body(platform, "ark-reviewer");
+            let body_str = std::str::from_utf8(&body).expect("utf8");
+            assert!(
+                body_str.contains("contradicts an existing feature SPEC"),
+                "{platform}/ark-reviewer must carry the SPEC-contradiction rule"
+            );
+            assert!(
+                body_str.contains("CRITICAL"),
+                "{platform}/ark-reviewer must tag the rule as CRITICAL severity"
+            );
+        }
+    }
+
+    /// Verifies that the verifier prompt explicitly forbids self-fix.
+    #[test]
+    fn verifier_prompt_carries_no_self_fix_rule() {
+        for platform in &["claude", "codex", "opencode"] {
+            let body = agent_body(platform, "ark-verifier");
+            let body_str = std::str::from_utf8(&body).expect("utf8");
+            let phrases = ["does not self-fix", "no self-fix", "do NOT self-fix"];
+            assert!(
+                phrases.iter().any(|p| body_str.contains(*p)),
+                "{platform}/ark-verifier must contain a no-self-fix phrase ({phrases:?})"
+            );
+        }
+    }
+
+    /// Verifies that `templates/claude/commands/ark/design.md` names all three Ark subagents.
+    #[test]
+    fn design_md_names_three_agents() {
+        let body = std::str::from_utf8(
+            CLAUDE_TEMPLATES
+                .get_file("commands/ark/design.md")
+                .expect("design.md exists")
+                .contents(),
+        )
+        .expect("utf8");
+        for name in ARK_AGENTS {
+            assert!(
+                body.contains(name),
+                "design.md must reference `{name}` at the dispatch site"
+            );
+        }
+    }
+
+    /// Verifies that `codex-support` SPEC carries a CHANGELOG entry naming this task.
+    ///
+    /// The SPEC file lives in this repo's own dotfile checkout (`.ark/specs/...`)
+    /// rather than the embedded `ARK_TEMPLATES` tree — the templates ship the
+    /// scaffolding, not the project's own promoted feature SPECs. This repo is
+    /// self-hosting so the path is stable.
+    #[test]
+    fn codex_support_spec_changelog_present() {
+        let body = include_str!("../../../.ark/specs/features/codex-support/SPEC.md");
+        assert!(
+            body.contains("`subagent-support`"),
+            "codex-support SPEC must reference `subagent-support` in its CHANGELOG"
+        );
+    }
+
+    /// Verifies that `opencode-support` SPEC carries a CHANGELOG entry naming this task.
+    ///
+    /// See `codex_support_spec_changelog_present` for the path rationale.
+    #[test]
+    fn opencode_support_spec_changelog_present() {
+        let body = include_str!("../../../.ark/specs/features/opencode-support/SPEC.md");
+        assert!(
+            body.contains("`subagent-support`"),
+            "opencode-support SPEC must reference `subagent-support` in its CHANGELOG"
         );
     }
 }

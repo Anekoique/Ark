@@ -16,6 +16,13 @@ pub const CLAUDE_DIR: &str = ".claude";
 /// Subdirectory under `.claude/` where Ark's slash commands live.
 pub const CLAUDE_COMMANDS_ARK_DIR: &str = ".claude/commands/ark";
 
+/// Subdirectory under `.claude/` where Ark's subagent definitions live.
+///
+/// Sits outside [`CLAUDE_COMMANDS_ARK_DIR`] (Claude's commands/ subtree) so it
+/// must be tracked separately by [`Layout::owned_dirs`] via the platform's
+/// `extra_dirs` field; otherwise `unload`/`load`/`remove` would not see it.
+pub const CLAUDE_AGENTS_DIR: &str = ".claude/agents";
+
 /// Project-root file carrying the shared `CLAUDE.md` managed block.
 pub const CLAUDE_MD: &str = "CLAUDE.md";
 
@@ -111,6 +118,12 @@ pub const CODEX_DIR: &str = ".codex";
 /// `<project>/.codex/skills/` — where Codex skill folders are extracted.
 pub const CODEX_SKILLS_DIR: &str = ".codex/skills";
 
+/// `<project>/.codex/agents/` — where Codex subagent TOML files are extracted.
+///
+/// Lives under [`CODEX_DIR`] so it inherits the platform's `removal_root`;
+/// no separate `extra_dirs` entry is needed.
+pub const CODEX_AGENTS_DIR: &str = ".codex/agents";
+
 /// Codex hook configuration file.
 pub const CODEX_HOOKS_FILE: &str = ".codex/hooks.json";
 
@@ -125,6 +138,12 @@ pub const OPENCODE_DIR: &str = ".opencode";
 
 /// OpenCode slash-command extraction directory.
 pub const OPENCODE_COMMANDS_DIR: &str = ".opencode/commands";
+
+/// `<project>/.opencode/agents/` — where OpenCode subagent markdown files are extracted.
+///
+/// Lives under [`OPENCODE_DIR`] so it inherits the platform's `removal_root`;
+/// no separate `extra_dirs` entry is needed.
+pub const OPENCODE_AGENTS_DIR: &str = ".opencode/agents";
 
 /// Bun-loaded OpenCode context plugin path.
 pub const OPENCODE_PLUGIN_FILE: &str = ".opencode/plugins/ark-context.ts";
@@ -177,6 +196,11 @@ impl Layout {
     /// Returns the directory containing Ark's Claude Code slash commands.
     pub fn claude_commands_ark_dir(&self) -> PathBuf {
         self.root.join(CLAUDE_COMMANDS_ARK_DIR)
+    }
+
+    /// Returns the directory containing Ark's Claude Code subagent files.
+    pub fn claude_agents_dir(&self) -> PathBuf {
+        self.root.join(CLAUDE_AGENTS_DIR)
     }
 
     /// Returns the project-root `CLAUDE.md` path.
@@ -371,6 +395,11 @@ impl Layout {
         self.root.join(CODEX_SKILLS_DIR)
     }
 
+    /// Returns the directory containing Ark's Codex subagent files.
+    pub fn codex_agents_dir(&self) -> PathBuf {
+        self.root.join(CODEX_AGENTS_DIR)
+    }
+
     /// Returns the Codex hook configuration path.
     pub fn codex_hooks_file(&self) -> PathBuf {
         self.root.join(CODEX_HOOKS_FILE)
@@ -394,6 +423,11 @@ impl Layout {
     /// Returns the OpenCode command extraction directory.
     pub fn opencode_commands_dir(&self) -> PathBuf {
         self.root.join(OPENCODE_COMMANDS_DIR)
+    }
+
+    /// Returns the directory containing Ark's OpenCode subagent files.
+    pub fn opencode_agents_dir(&self) -> PathBuf {
+        self.root.join(OPENCODE_AGENTS_DIR)
     }
 
     /// Returns the OpenCode context plugin path.
@@ -431,16 +465,24 @@ impl Layout {
 
     /// Returns directories whose full contents round-trip through snapshots.
     ///
-    /// `.codex/` and `.opencode/` join the set whether or not those platforms
-    /// are installed in this project — `walk_files` on a missing directory
-    /// yields an empty vec, so the un-installed cases are silently no-ops.
-    pub fn owned_dirs(&self) -> [PathBuf; 4] {
-        [
-            self.ark_dir(),
-            self.claude_commands_ark_dir(),
-            self.codex_dir(),
-            self.opencode_dir(),
-        ]
+    /// Derived from the platform registry: each [`crate::platforms::Platform`]
+    /// contributes its `removal_root` plus every entry in `extra_dirs`. The
+    /// `.ark/` root is always included. `walk_files` on a missing directory
+    /// yields an empty vec, so un-installed platforms are silent no-ops.
+    ///
+    /// Claude's `removal_root` is `.claude/commands/ark/` (narrow, to coexist
+    /// with user-authored Claude artifacts), so its agent directory at
+    /// `.claude/agents/` is contributed via `extra_dirs`. Codex and OpenCode
+    /// own their entire platform root; `extra_dirs` is empty for them.
+    pub fn owned_dirs(&self) -> Vec<PathBuf> {
+        let mut dirs = vec![self.ark_dir()];
+        for p in crate::platforms::PLATFORMS {
+            dirs.push(self.resolve(p.removal_root));
+            for extra in p.extra_dirs {
+                dirs.push(self.resolve(extra));
+            }
+        }
+        dirs
     }
 
     /// Returns empty parent directories to prune after removing Ark content.

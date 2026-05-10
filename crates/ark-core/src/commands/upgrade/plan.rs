@@ -83,7 +83,23 @@ impl PlannedAction {
 }
 
 pub(super) fn is_exempted(relative: &Path) -> bool {
-    relative == Path::new(MANIFEST_RELATIVE_PATH) || is_seed_only(relative)
+    relative == Path::new(MANIFEST_RELATIVE_PATH)
+        || is_seed_only(relative)
+        || is_agent_path(relative)
+}
+
+/// Paths under any platform's `agents_dest_dir`.
+///
+/// Agent files are owned by [`crate::platforms::Platform::apply_managed_state`]
+/// (re-applied unconditionally on every `init` / `load` / `upgrade`); the
+/// upgrade conflict pipeline must not classify them as orphans or prompt about
+/// user modifications, since `apply_managed_state` overwrites them after the
+/// pipeline runs anyway. Excluded here, owned-and-re-written there.
+pub(super) fn is_agent_path(relative: &Path) -> bool {
+    crate::platforms::PLATFORMS
+        .iter()
+        .filter_map(|p| p.agents_dest_dir)
+        .any(|dest| relative.starts_with(Path::new(dest)))
 }
 
 /// Paths seeded by `init` whose content becomes user-owned afterwards.

@@ -13,7 +13,7 @@ use crate::{
     io::{PathExt, WriteMode, update_managed_block, write_file},
     layout::Layout,
     platforms::{CLAUDE_PLATFORM, PLATFORMS, Platform},
-    state::Snapshot,
+    state::{Manifest, Snapshot},
 };
 
 /// Options for loading Ark into a project.
@@ -114,11 +114,16 @@ fn restore(layout: &Layout, snapshot: Snapshot) -> Result<LoadSummary> {
     for hb in &snapshot.hook_bodies {
         hb.apply(layout)?;
     }
+    let mut manifest = Manifest::read(layout.root())?.unwrap_or_default();
     for platform in canonical_targets(&snapshot) {
-        if let Some(spec) = platform.hook_file {
-            spec.apply_canonical(layout)?;
-        }
+        // `apply_managed_state` re-overwrites managed blocks, hook entries,
+        // `extra_files`, and (when present) the agents subtree from the
+        // embedded canonical bodies. This guarantees reserved Ark stems
+        // (C-26) get the canonical text on `load` even if the snapshot
+        // captured user-edited bytes.
+        platform.apply_managed_state(layout, &mut manifest)?;
     }
+    manifest.write(layout.root())?;
 
     Snapshot::remove(layout.root())?;
 
@@ -445,5 +450,80 @@ mod tests {
         let plugin_after =
             std::fs::read_to_string(tmp.path().join(".opencode/plugins/ark-context.ts")).unwrap();
         assert_eq!(plugin_after, OPENCODE_ARK_CONTEXT_TS);
+    }
+
+    /// Verifies that `unload` then `load` round-trips agent files for every
+    /// platform (V-IT-5a/b/c from the `subagent-support` PLAN; closes R-001).
+    ///
+    /// Claude is the load-bearing case: its narrow `removal_root`
+    /// (`.claude/commands/ark/`) does not cover `.claude/agents/`, so this
+    /// test exercises the registry-derived `Layout::owned_dirs()` path.
+    #[test]
+    fn unload_load_round_trips_agent_files_for_every_platform() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
+
+        // Capture canonical bytes before unload for byte-equality assertion.
+        let before: Vec<(std::path::PathBuf, Vec<u8>)> = [
+            ".claude/agents/ark-researcher.md",
+            ".claude/agents/ark-reviewer.md",
+            ".claude/agents/ark-verifier.md",
+            ".codex/agents/ark-researcher.toml",
+            ".codex/agents/ark-reviewer.toml",
+            ".codex/agents/ark-verifier.toml",
+            ".opencode/agents/ark-researcher.md",
+            ".opencode/agents/ark-reviewer.md",
+            ".opencode/agents/ark-verifier.md",
+        ]
+        .iter()
+        .map(|p| {
+            let abs = tmp.path().join(p);
+            (PathBuf::from(p), std::fs::read(&abs).unwrap())
+        })
+        .collect();
+
+        unload(UnloadOptions::new(tmp.path())).unwrap();
+        for (rel, _) in &before {
+            assert!(
+                !tmp.path().join(rel).exists(),
+                "agent file `{}` must be removed by unload",
+                rel.display(),
+            );
+        }
+
+        load(LoadOptions::new(tmp.path())).unwrap();
+        for (rel, expected) in &before {
+            let after = std::fs::read(tmp.path().join(rel)).unwrap();
+            assert_eq!(
+                after,
+                *expected,
+                "agent file `{}` must be byte-identical after load",
+                rel.display(),
+            );
+        }
+    }
+
+    /// Verifies that `load` restores the canonical agent body even when the
+    /// snapshot captured user-edited bytes (the C-26 reserved-stem invariant
+    /// must hold on the load path, not just `init`/`upgrade`).
+    #[test]
+    fn load_restores_canonical_agent_body_overwriting_snapshot_edits() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
+
+        // Capture canonical bytes for the assertion.
+        let agent = tmp.path().join(".claude/agents/ark-researcher.md");
+        let canonical = std::fs::read(&agent).unwrap();
+
+        // User edits the reserved-stem agent before unload.
+        std::fs::write(&agent, b"USER EDIT BEFORE UNLOAD").unwrap();
+        unload(UnloadOptions::new(tmp.path())).unwrap();
+        load(LoadOptions::new(tmp.path())).unwrap();
+
+        let restored = std::fs::read(&agent).unwrap();
+        assert_eq!(
+            restored, canonical,
+            "load must overwrite snapshot-captured edits at reserved stems with the canonical body"
+        );
     }
 }

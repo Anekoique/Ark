@@ -24,18 +24,20 @@ use crate::{
         update_managed_block,
     },
     layout::{
-        AGENTS_MD, CLAUDE_COMMANDS_ARK_DIR, CLAUDE_DIR, CLAUDE_MD, CLAUDE_SETTINGS_FILE,
-        CODEX_CONFIG_FILE, CODEX_DIR, CODEX_HOOKS_FILE, CODEX_SKILLS_DIR, Layout,
-        MANAGED_BLOCK_BODY, OPENCODE_COMMANDS_DIR, OPENCODE_DIR, OPENCODE_PLUGIN_FILE,
+        AGENTS_MD, CLAUDE_AGENTS_DIR, CLAUDE_COMMANDS_ARK_DIR, CLAUDE_DIR, CLAUDE_MD,
+        CLAUDE_SETTINGS_FILE, CODEX_AGENTS_DIR, CODEX_CONFIG_FILE, CODEX_DIR, CODEX_HOOKS_FILE,
+        CODEX_SKILLS_DIR, Layout, MANAGED_BLOCK_BODY, OPENCODE_AGENTS_DIR, OPENCODE_COMMANDS_DIR,
+        OPENCODE_DIR, OPENCODE_PLUGIN_FILE,
     },
     state::{Manifest, Snapshot, SnapshotHookBody},
     templates::{
-        CLAUDE_TEMPLATES, CODEX_CONFIG_TOML, CODEX_TEMPLATES, OPENCODE_ARK_CONTEXT_TS,
-        OPENCODE_TEMPLATES,
+        CLAUDE_AGENT_TEMPLATES, CLAUDE_TEMPLATES, CODEX_AGENT_TEMPLATES, CODEX_CONFIG_TOML,
+        CODEX_TEMPLATES, OPENCODE_AGENT_TEMPLATES, OPENCODE_ARK_CONTEXT_TS, OPENCODE_TEMPLATES,
     },
 };
 
 /// Describes one coding-agent integration target.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy)]
 pub struct Platform {
     /// Stores the stable platform id.
@@ -54,6 +56,33 @@ pub struct Platform {
     pub hook_file: Option<HookFileSpec>,
     /// Stores whole-file writes that are not hash-tracked.
     pub extra_files: &'static [(&'static str, &'static str)],
+    /// Optional embedded agents-template tree, extracted under [`agents_dest_dir`].
+    ///
+    /// `None` for platforms whose subagent runtime is not yet wired up. Set on
+    /// every platform that ships Ark agents. Files extracted from this tree
+    /// are written by [`Self::apply_managed_state`] (unconditional, regardless
+    /// of `WriteMode`), so reserved Ark-agent stems are always overwritten and
+    /// the C-26 reserved-stem invariant holds even on default `init`.
+    ///
+    /// [`agents_dest_dir`]: Self::agents_dest_dir
+    pub agents_templates: Option<&'static Dir<'static>>,
+    /// Project-relative directory where [`agents_templates`] extracts.
+    ///
+    /// `None` iff [`agents_templates`] is `None`.
+    ///
+    /// [`agents_templates`]: Self::agents_templates
+    pub agents_dest_dir: Option<&'static str>,
+    /// Project-relative directories owned by this platform that lie OUTSIDE
+    /// [`removal_root`].
+    ///
+    /// Concatenated by [`crate::layout::Layout::owned_dirs`] so `unload` /
+    /// `load` round-trip them, and walked by [`Self::remove_dir`] so `remove`
+    /// wipes them. Empty for platforms whose extras already nest under
+    /// `removal_root`. Claude's narrow `removal_root` (`.claude/commands/ark/`)
+    /// requires `[".claude/agents"]` here.
+    ///
+    /// [`removal_root`]: Self::removal_root
+    pub extra_dirs: &'static [&'static str],
 }
 
 impl Platform {
@@ -84,9 +113,13 @@ impl Platform {
 
     /// Re-applies this platform's managed state.
     ///
-    /// Idempotent and not hash-tracked — callable from every `init`,
-    /// `upgrade`, and `load` step that needs to converge to the canonical
-    /// shape. Records the managed block on `manifest` if newly inserted.
+    /// Idempotent — callable from every `init`, `upgrade`, and `load` step
+    /// that needs to converge to the canonical shape. Managed blocks, hook
+    /// entries, and `extra_files` are not hash-tracked. Agent files (when
+    /// `agents_templates` is `Some`) are written unconditionally and recorded
+    /// in `manifest.{files, hashes}` so `is_installed` and `is_in_snapshot`
+    /// see them; the unconditional write bypasses the upgrade conflict
+    /// pipeline (agents are excluded from `collect_desired_templates`).
     pub fn apply_managed_state(&self, layout: &Layout, manifest: &mut Manifest) -> Result<()> {
         if let Some(target) = self.managed_block_target {
             let path = layout.resolve(target);
@@ -96,6 +129,17 @@ impl Platform {
         }
         if let Some(spec) = self.hook_file {
             spec.apply_canonical(layout)?;
+        }
+        if let (Some(tree), Some(dest)) = (self.agents_templates, self.agents_dest_dir) {
+            let dest_root = layout.resolve(dest);
+            for entry in crate::templates::walk(tree) {
+                let path = dest_root.join(entry.relative_path);
+                path.write_bytes(entry.contents)?;
+                let relative = path
+                    .strip_prefix(layout.root())
+                    .expect("agent dest under project root");
+                manifest.record_file_with_hash(relative, entry.contents);
+            }
         }
         for (rel, body) in self.extra_files {
             layout.resolve(rel).write_bytes(body.as_bytes())?;
@@ -141,11 +185,32 @@ impl Platform {
         }
     }
 
-    /// Wipes this platform's `removal_root` from disk.
+    /// Wipes this platform's `removal_root` plus the Ark-owned files inside
+    /// each `extra_dirs` entry.
     ///
-    /// Returns `Ok(true)` iff anything was removed.
+    /// `removal_root` is wholly Ark-owned and removed wholesale. `extra_dirs`
+    /// entries (e.g. `.claude/agents/`) are shared with the user; only files
+    /// that exactly match an Ark-shipped template inside `agents_templates`
+    /// are unlinked, then the directory is removed iff it ends up empty.
+    /// User-authored siblings at non-reserved stems survive.
+    ///
+    /// Returns `Ok(true)` iff any directory or file was removed.
     pub fn remove_dir(&self, layout: &Layout) -> Result<bool> {
-        layout.resolve(self.removal_root).remove_dir_all()
+        let mut removed = layout.resolve(self.removal_root).remove_dir_all()?;
+        for extra in self.extra_dirs {
+            let dir = layout.resolve(extra);
+            if let Some(tree) = self.agents_templates {
+                for entry in crate::templates::walk(tree) {
+                    if dir.join(entry.relative_path).remove_if_exists()? {
+                        removed = true;
+                    }
+                }
+            }
+            if dir.remove_dir_if_empty()? {
+                removed = true;
+            }
+        }
+        Ok(removed)
     }
 }
 
@@ -248,6 +313,17 @@ pub const CLAUDE_PLATFORM: Platform = Platform {
         entry_builder: ark_session_start_hook_entry,
     }),
     extra_files: &[],
+    // Claude's `templates` tree is rooted at `templates/claude/` and physically
+    // contains both `commands/` and `agents/`. The main extract path filters
+    // out files whose dest falls under `agents_dest_dir` so agents are NOT
+    // written through `WriteMode::Skip`-honoring `init::extract`; instead
+    // `apply_managed_state` writes them unconditionally via `path.write_bytes`,
+    // so the C-26 reserved-stem invariant holds on default `init`.
+    agents_templates: Some(&CLAUDE_AGENT_TEMPLATES),
+    agents_dest_dir: Some(CLAUDE_AGENTS_DIR),
+    // `.claude/agents/` lies outside `removal_root` (`.claude/commands/ark/`),
+    // so it must be tracked here for `unload`/`load`/`remove` round-trip.
+    extra_dirs: &[CLAUDE_AGENTS_DIR],
 };
 
 /// OpenAI Codex CLI integration.
@@ -270,6 +346,12 @@ pub const CODEX_PLATFORM: Platform = Platform {
         entry_builder: ark_codex_hook_entry,
     }),
     extra_files: &[(CODEX_CONFIG_FILE, CODEX_CONFIG_TOML)],
+    // Codex's main `templates` tree is rooted at `templates/codex/skills/`,
+    // so the agents subtree needs a dedicated static.
+    agents_templates: Some(&CODEX_AGENT_TEMPLATES),
+    agents_dest_dir: Some(CODEX_AGENTS_DIR),
+    // `.codex/agents/` lives under `removal_root = .codex`, so no extra entry.
+    extra_dirs: &[],
 };
 
 /// OpenCode integration.
@@ -288,6 +370,14 @@ pub const OPENCODE_PLATFORM: Platform = Platform {
     managed_block_target: Some(AGENTS_MD),
     hook_file: None,
     extra_files: &[(OPENCODE_PLUGIN_FILE, OPENCODE_ARK_CONTEXT_TS)],
+    // OpenCode's main `templates` tree is rooted at
+    // `templates/opencode/commands/`, so the agents subtree needs a dedicated
+    // static.
+    agents_templates: Some(&OPENCODE_AGENT_TEMPLATES),
+    agents_dest_dir: Some(OPENCODE_AGENTS_DIR),
+    // `.opencode/agents/` lives under `removal_root = .opencode`, so no extra
+    // entry.
+    extra_dirs: &[],
 };
 
 #[cfg(test)]
@@ -591,5 +681,96 @@ mod tests {
     #[test]
     fn platforms_source_no_bare_std_fs_or_dot_paths() {
         crate::commands::tests_common::assert_source_clean(include_str!("platforms.rs"));
+    }
+
+    /// Verifies that `agents_templates` and `agents_dest_dir` are paired:
+    /// either both `Some` or both `None`.
+    #[test]
+    fn agents_templates_and_dest_dir_are_paired() {
+        for p in PLATFORMS {
+            assert_eq!(
+                p.agents_templates.is_some(),
+                p.agents_dest_dir.is_some(),
+                "platform `{}`: `agents_templates` and `agents_dest_dir` must be both Some or \
+                 both None",
+                p.id,
+            );
+        }
+    }
+
+    /// Verifies that `Layout::owned_dirs()` is derived from `PLATFORMS`.
+    ///
+    /// The expected set is `{ark_dir} ∪ {p.removal_root for p in PLATFORMS} ∪
+    /// {extra for p in PLATFORMS for extra in p.extra_dirs}`. A regression
+    /// where a maintainer hard-codes the entries while keeping the registry
+    /// fields unchanged would still pass round-trip tests; this test catches
+    /// that drift directly.
+    #[test]
+    fn owned_dirs_derives_from_registry() {
+        let layout = Layout::new(std::path::Path::new("/proj"));
+        let actual: std::collections::BTreeSet<_> = layout.owned_dirs().into_iter().collect();
+        let mut expected = std::collections::BTreeSet::new();
+        expected.insert(layout.ark_dir());
+        for p in PLATFORMS {
+            expected.insert(layout.resolve(p.removal_root));
+            for extra in p.extra_dirs {
+                expected.insert(layout.resolve(extra));
+            }
+        }
+        assert_eq!(
+            actual, expected,
+            "`Layout::owned_dirs()` must equal the registry-derived set"
+        );
+    }
+
+    /// Verifies that Claude's `extra_dirs` carries `.claude/agents/`.
+    ///
+    /// Claude's `removal_root` is the narrow `.claude/commands/ark/`, so
+    /// `.claude/agents/` would otherwise escape `unload`/`load`/`remove`
+    /// round-trip. This is the exact regression that motivated `extra_dirs`.
+    #[test]
+    fn claude_platform_lists_agents_dir_in_extra_dirs() {
+        assert!(
+            CLAUDE_PLATFORM.extra_dirs.contains(&CLAUDE_AGENTS_DIR),
+            "CLAUDE_PLATFORM.extra_dirs must include CLAUDE_AGENTS_DIR ({CLAUDE_AGENTS_DIR})"
+        );
+    }
+
+    /// Verifies that `remove_dir` spares user-authored agents at non-reserved
+    /// stems while still wiping every reserved Ark agent. Closes the data-loss
+    /// gap where `.claude/agents/` was previously `remove_dir_all`'d.
+    #[test]
+    fn remove_dir_preserves_user_authored_agents_at_non_reserved_stems() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+
+        // Set up a Claude install with both Ark agents and a user agent.
+        let agents = layout.resolve(CLAUDE_AGENTS_DIR);
+        agents.ensure_dir().unwrap();
+        layout
+            .resolve(CLAUDE_COMMANDS_ARK_DIR)
+            .ensure_dir()
+            .unwrap();
+        agents
+            .join("ark-researcher.md")
+            .write_bytes(b"ark")
+            .unwrap();
+        agents.join("ark-reviewer.md").write_bytes(b"ark").unwrap();
+        agents.join("ark-verifier.md").write_bytes(b"ark").unwrap();
+        let user_path = agents.join("my-custom.md");
+        user_path.write_bytes(b"USER OWNED").unwrap();
+
+        assert!(CLAUDE_PLATFORM.remove_dir(&layout).unwrap());
+        assert!(
+            user_path.exists(),
+            "user-authored agent at non-reserved stem must survive `remove`"
+        );
+        assert_eq!(std::fs::read(&user_path).unwrap(), b"USER OWNED");
+        for stem in ["ark-researcher.md", "ark-reviewer.md", "ark-verifier.md"] {
+            assert!(
+                !agents.join(stem).exists(),
+                "reserved Ark agent `{stem}` must be removed"
+            );
+        }
     }
 }

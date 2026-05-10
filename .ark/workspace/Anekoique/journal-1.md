@@ -327,3 +327,31 @@ Seeded VERIFY's `Project Spec Compliance` walks `specs/project/INDEX.md` recursi
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 13: ark-agent support
+
+**Date**: 2026-05-10
+**Slug**: subagent-support
+**Branch**: `feat/subagent-support`
+**Base Branch**: `main`
+**Start Head**: `8372470`
+**Closing Commit**: <PENDING:subagent-support>
+
+### Summary
+
+Three Ark subagents (researcher / reviewer / verifier) ship across Claude / Codex / OpenCode; `/ark:design` wires them into DESIGN, REVIEW, and VERIFY.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| agents | `ark-{researcher,reviewer,verifier}` prompts under `templates/{claude,codex,opencode}/agents/` |
+| registry | `Platform` gains `agents_templates`/`agents_dest_dir`/`extra_dirs`; `#[non_exhaustive]` |
+| install | Claude routes agents through `apply_managed_state`; reserved-stem overwrites on default `init` |
+| owned_dirs | derived from `PLATFORMS` so unload/load round-trip Claude's `.claude/agents/` |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |
