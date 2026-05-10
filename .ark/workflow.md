@@ -267,10 +267,12 @@ After the branch is merged, clean up from the parent checkout:
 
 ```bash
 ark agent task worktree list                          # what's active
-ark agent task worktree cleanup [--delete-branch]    # remove dir; optionally delete branch
+ark cleanup                                           # dry-run: every prunable worktree
+ark cleanup --apply [--delete-branch] [--force]       # remove dirs + (optionally) branches
+ark cleanup --slug <s> --apply                        # remove just one
 ```
 
-Archive does NOT auto-clean worktrees — cleanup is a deliberate step.
+`ark cleanup` surfaces every worktree whose backing task is Committed, Archived, or whose branch is gone locally. Archive does NOT auto-clean worktrees — cleanup is a deliberate step.
 
 ---
 
@@ -304,6 +306,8 @@ ark context [...] --format json                       # machine output
 Phases: `design`, `plan`, `review`, `execute`, `verify`, `commit`. The `commit` projection is body-free — slash commands read VERIFY.md and the latest plan from the artifact paths it returns.
 
 **`ark archive`** — manager-only bulk move. Semver-stable. Only job: relocate committed tasks. No SPEC promotion, no journal writes.
+
+**`ark cleanup`** — worktree prune. Semver-stable. Dry-run by default; `--apply` removes worktrees of Committed / Archived tasks and worktrees whose branch is gone. Reuses `worktree cleanup` per slug; never touches `task.toml` or state.
 
 **`ark agent`** — structural mutation. **Hidden, not semver-stable.** Errors out on illegal transitions:
 

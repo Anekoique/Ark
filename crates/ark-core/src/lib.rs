@@ -19,10 +19,11 @@ pub mod state;
 pub mod templates;
 
 pub use commands::{
-    ArchiveOptions, ArchiveSummary, ConflictChoice, ConflictPolicy, ContextOptions, ContextSummary,
-    Format as ContextFormat, InitOptions, InitSummary, LoadOptions, LoadSummary, PhaseFilter,
-    ProjectedContext, Prompter, RemoveOptions, RemoveSummary, Scope as ContextScope, ScopeTag,
-    UnloadOptions, UnloadSummary, UpgradeOptions, UpgradeSummary,
+    ArchiveOptions, ArchiveSummary, CleanupOptions, CleanupReason, CleanupRow, CleanupSummary,
+    ConflictChoice, ConflictPolicy, ContextOptions, ContextSummary, Format as ContextFormat,
+    InitOptions, InitSummary, LoadOptions, LoadSummary, PhaseFilter, ProjectedContext, Prompter,
+    RemoveOptions, RemoveSummary, Scope as ContextScope, ScopeTag, UnloadOptions, UnloadSummary,
+    UpgradeOptions, UpgradeSummary,
     agent::{
         Phase, Status, TaskToml, Tier,
         spec::{
@@ -47,7 +48,7 @@ pub use commands::{
             scaffold_developer_dir, workspace_record,
         },
     },
-    ark_archive, context, init, load, remove, unload, upgrade,
+    ark_archive, cleanup, context, init, load, remove, unload, upgrade,
 };
 pub use error::{Error, Result};
 pub use io::{PathExt, WriteMode, hash_bytes};

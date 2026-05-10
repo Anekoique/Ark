@@ -355,3 +355,31 @@ Three Ark subagents (researcher / reviewer / verifier) ship across Claude / Code
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 14: ark cleanup
+
+**Date**: 2026-05-10
+**Slug**: ark-cleanup
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `f14837c`
+**Closing Commit**: <PENDING:ark-cleanup>
+
+### Summary
+
+`ark cleanup` lists prunable worktrees (Committed / Archived / branch-gone) and removes them on `--apply`.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| cli | new top-level `ark cleanup`, peer to `ark archive`; clap `requires = "apply"` for `--delete-branch` and `--force` |
+| core | `commands/cleanup.rs` reuses `worktree_cleanup` per row; reads each worktree's own `task.toml` for phase |
+| docs | workflow.md §"Worktrees" post-merge step + §"CLI surfaces" entry name the new verb |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ec56fc0` | fix: fix historical workspace record |
+| `258f187` | feat(workflow): add ark-agent support |

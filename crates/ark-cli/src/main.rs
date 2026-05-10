@@ -11,11 +11,11 @@ use std::{
 };
 
 use ark_core::{
-    ArchiveOptions, ConflictChoice, ConflictPolicy, ContextFormat, ContextOptions, ContextScope,
-    DeveloperRegisterOptions, Identity, InitOptions, Layout, LoadOptions, Manifest, PLATFORMS,
-    PhaseFilter, Platform, Prompter, RemoveOptions, UnloadOptions, UpgradeOptions, WriteMode,
-    ark_archive, context, developer_register, identity_resolve, identity_write, init, load, remove,
-    scaffold_developer_dir, unload, upgrade,
+    ArchiveOptions, CleanupOptions, ConflictChoice, ConflictPolicy, ContextFormat, ContextOptions,
+    ContextScope, DeveloperRegisterOptions, Identity, InitOptions, Layout, LoadOptions, Manifest,
+    PLATFORMS, PhaseFilter, Platform, Prompter, RemoveOptions, UnloadOptions, UpgradeOptions,
+    WriteMode, ark_archive, cleanup, context, developer_register, identity_resolve, identity_write,
+    init, load, remove, scaffold_developer_dir, unload, upgrade,
 };
 use clap::{Parser, Subcommand};
 
@@ -53,6 +53,12 @@ enum Command {
     /// Manager-only operation. Run after a release cut or whenever you want
     /// to consolidate completed work into the YYYY-MM archive directories.
     Archive(ArchiveCliArgs),
+    /// List (dry-run) or remove (`--apply`) worktrees of closed tasks.
+    ///
+    /// Surfaces every worktree under `.ark/worktrees/` whose backing task
+    /// is Committed, Archived, or whose backing branch is gone locally.
+    /// Dry-run by default; `--apply` invokes `worktree cleanup` per row.
+    Cleanup(CleanupArgs),
     /// Internal commands invoked by the Ark workflow and slash commands.
     /// Not covered by semver — prefer the slash commands over calling these directly.
     #[command(hide = true)]
@@ -69,6 +75,24 @@ struct ArchiveCliArgs {
     /// List candidates without performing any move.
     #[arg(long, default_value_t = false)]
     dry_run: bool,
+}
+
+#[derive(clap::Args)]
+struct CleanupArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Restrict to a single slug.
+    #[arg(long)]
+    slug: Option<String>,
+    /// Remove the listed worktrees instead of just printing them.
+    #[arg(long, default_value_t = false)]
+    apply: bool,
+    /// Also delete the backing branch (only with --apply).
+    #[arg(long = "delete-branch", requires = "apply", default_value_t = false)]
+    delete_branch: bool,
+    /// Force removal of dirty worktrees and force-delete unmerged branches.
+    #[arg(long, requires = "apply", default_value_t = false)]
+    force: bool,
 }
 
 #[derive(clap::Args)]
@@ -608,6 +632,22 @@ impl Command {
                     month: a.month,
                     dry_run: a.dry_run,
                 })?;
+                let any_fail = !summary.failures.is_empty();
+                render(summary);
+                if any_fail {
+                    std::process::exit(1);
+                }
+            }
+            Self::Cleanup(a) => {
+                let root = a.target.resolve_with_discovery()?;
+                let mut opts = CleanupOptions::new(root)
+                    .with_apply(a.apply)
+                    .with_delete_branch(a.delete_branch)
+                    .with_force(a.force);
+                if let Some(slug) = a.slug {
+                    opts = opts.with_slug(slug);
+                }
+                let summary = cleanup(opts)?;
                 let any_fail = !summary.failures.is_empty();
                 render(summary);
                 if any_fail {

@@ -1,0 +1,10 @@
+id = "ark-cleanup"
+title = "add ark cleanup"
+tier = "standard"
+phase = "committed"
+iteration = 0
+created_at = "2026-05-10T09:57:47.089019Z"
+updated_at = "2026-05-10T10:30:25.648942Z"
+committed_at = "2026-05-10T10:30:25.648942Z"
+start_head = "f14837cc3bf56d81dee39b3368be26ef09191858"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"
