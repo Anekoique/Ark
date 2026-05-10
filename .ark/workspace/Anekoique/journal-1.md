@@ -37,7 +37,7 @@ Re-introduce per-developer workspace journals. The deferred-slot mechanism resol
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `1a129d8`
-**Closing Commit**: <PENDING:worktree-sync-defaults>
+**Closing Commit**: 88d2c99
 
 ### Summary
 
@@ -54,7 +54,7 @@ New worktrees inherit the parent's `.ark/.developer` and run `git submodule upda
 
 | Hash | Message |
 |------|---------|
-| `96865d5` | fix(worktree): fix worktree synchronization issues |
+| `88d2c99` | fix(worktree): fix worktree synchronization issues |
 
 ## Session 3: Tier-aware PLAN naming
 
