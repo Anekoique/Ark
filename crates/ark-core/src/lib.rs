@@ -44,7 +44,7 @@ pub use commands::{
             RecordMode, RecordOptions, RecordSnapshot, RecordSummary, RecordTransaction,
             ResolveOptions as IdentityResolveOptions, WorkspaceConfig, developer_register,
             developer_touch, identity::identity_prompt, identity_resolve, identity_write,
-            workspace_record,
+            scaffold_developer_dir, workspace_record,
         },
     },
     ark_archive, context, init, load, remove, unload, upgrade,

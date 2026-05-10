@@ -14,6 +14,7 @@ use std::{
 use include_dir::Dir;
 
 use crate::{
+    commands::agent::workspace::scaffold_top_index,
     error::Result,
     io::{PathExt, WriteMode, WriteOutcome, merge_managed_blocks, write_file},
     layout::{ARK_DIR, EMPTY_DIRS, Layout},
@@ -158,6 +159,8 @@ pub fn init(opts: InitOptions) -> Result<InitSummary> {
         .iter()
         .try_for_each(|dir| layout.resolve(dir).ensure_dir())?;
 
+    scaffold_top_index(&layout)?;
+
     manifest.write(layout.root())?;
     Ok(summary)
 }
@@ -248,6 +251,7 @@ mod tests {
             ".ark/specs/INDEX.md",
             ".ark/specs/project/INDEX.md",
             ".ark/specs/features/INDEX.md",
+            ".ark/workspace/index.md",
             ".claude/commands/ark/quick.md",
             ".claude/commands/ark/design.md",
             ".claude/commands/ark/commit.md",
@@ -481,6 +485,43 @@ mod tests {
         );
         // Parent's .ark/ is untouched (still has its own workflow.md).
         assert!(parent.path().join(".ark/workflow.md").is_file());
+    }
+
+    /// Scaffolds `.ark/workspace/index.md` with an empty `ARK:DEVELOPERS`
+    /// block so re-running `init` (or fresh installs) leave the workspace
+    /// ready before any developer is registered.
+    #[test]
+    fn init_scaffolds_top_workspace_index() {
+        let tmp = tempfile::tempdir().unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+        let idx = std::fs::read_to_string(tmp.path().join(".ark/workspace/index.md")).unwrap();
+        assert!(idx.contains("# Workspace Index"));
+        assert!(idx.contains("<!-- ARK:DEVELOPERS:START -->"));
+        assert!(idx.contains("<!-- ARK:DEVELOPERS:END -->"));
+    }
+
+    /// Re-running `init` does not clobber rows that `developer_register` /
+    /// `workspace_record` have written into the top-level managed block.
+    #[test]
+    fn init_preserves_existing_developer_rows() {
+        use chrono::NaiveDate;
+
+        use crate::commands::agent::workspace::{DeveloperRegisterOptions, developer_register};
+
+        let tmp = tempfile::tempdir().unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+        developer_register(DeveloperRegisterOptions {
+            project_root: tmp.path().to_path_buf(),
+            name: "alice".into(),
+            active_journal: "journal-1.md".into(),
+            date: NaiveDate::from_ymd_opt(2026, 5, 10).unwrap(),
+            session_count: 7,
+        })
+        .unwrap();
+
+        init(InitOptions::new(tmp.path()).with_mode(WriteMode::Force)).unwrap();
+        let idx = std::fs::read_to_string(tmp.path().join(".ark/workspace/index.md")).unwrap();
+        assert!(idx.contains("| `alice` | 2026-05-10 | 7 | `journal-1.md` |"));
     }
 
     /// Writes the `SessionStart` hook entry into `.claude/settings.json`.

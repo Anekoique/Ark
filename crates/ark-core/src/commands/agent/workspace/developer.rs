@@ -17,7 +17,7 @@ use chrono::NaiveDate;
 use crate::{
     error::{Error, Result},
     io::{PathExt, read_managed_block, update_managed_block},
-    layout::{DEVELOPERS_MARKER, Layout},
+    layout::{DEVELOPERS_MARKER, Layout, SESSIONS_MARKER},
 };
 
 /// Default top-level workspace index body shipped with `ark init`.
@@ -106,6 +106,50 @@ pub struct DeveloperTouchOptions {
     pub active_journal: String,
 }
 
+/// Static preface for the per-developer `index.md`.
+const PERSONAL_INDEX_PREFACE: &str = "# Sessions\n\n> Personal session history.\n\n## History\n\n";
+
+const PERSONAL_INDEX_SUFFIX: &str =
+    "\n\n---\n\nHand-edits outside the `ARK:SESSIONS` markers are preserved.\n";
+
+/// Scaffolds `.ark/workspace/index.md` with an empty `ARK:DEVELOPERS` block.
+///
+/// No-op if the file already exists. Called by `init` so a freshly Arked
+/// project has the workspace index ready to receive developer rows; called
+/// internally by `developer_register` for the same scaffold.
+pub fn scaffold_top_index(layout: &Layout) -> Result<()> {
+    let index_path = layout.workspace_index();
+    if let Some(parent) = index_path.parent() {
+        parent.ensure_dir()?;
+    }
+    if !index_path.exists() {
+        let scaffold = format!(
+            "{}<!-- {DEVELOPERS_MARKER}:START -->\n<!-- {DEVELOPERS_MARKER}:END -->\n{}",
+            TOP_INDEX_PREFACE, TOP_INDEX_SUFFIX
+        );
+        index_path.write_bytes(scaffold.as_bytes())?;
+    }
+    Ok(())
+}
+
+/// Scaffolds `.ark/workspace/<name>/index.md` with an empty `ARK:SESSIONS` block.
+///
+/// Creates the per-developer directory if missing; leaves the index alone if
+/// it already has content (e.g. previously-recorded sessions).
+pub fn scaffold_developer_dir(layout: &Layout, name: &str) -> Result<()> {
+    let dev_dir = layout.workspace_developer_dir(name);
+    dev_dir.ensure_dir()?;
+    let personal_index = layout.workspace_developer_index(name);
+    if !personal_index.exists() {
+        let scaffold = format!(
+            "{}<!-- {SESSIONS_MARKER}:START -->\n<!-- {SESSIONS_MARKER}:END -->{}",
+            PERSONAL_INDEX_PREFACE, PERSONAL_INDEX_SUFFIX
+        );
+        personal_index.write_bytes(scaffold.as_bytes())?;
+    }
+    Ok(())
+}
+
 /// Registers a developer in the top-level Active Developers table.
 ///
 /// Idempotent: re-running with the same `name` updates the row in place.
@@ -115,19 +159,8 @@ pub fn developer_register(opts: DeveloperRegisterOptions) -> Result<DeveloperReg
     let active_journal = sanitize_field("active_journal", &opts.active_journal)?;
 
     let layout = Layout::new(&opts.project_root);
+    scaffold_top_index(&layout)?;
     let index_path = layout.workspace_index();
-    if let Some(parent) = index_path.parent() {
-        parent.ensure_dir()?;
-    }
-
-    // Scaffold the preface if the file is fresh (no markers yet).
-    if !index_path.exists() {
-        let scaffold = format!(
-            "{}<!-- {DEVELOPERS_MARKER}:START -->\n<!-- {DEVELOPERS_MARKER}:END -->\n{}",
-            TOP_INDEX_PREFACE, TOP_INDEX_SUFFIX
-        );
-        index_path.write_bytes(scaffold.as_bytes())?;
-    }
 
     let existing_body = read_managed_block(&index_path, DEVELOPERS_MARKER)?.unwrap_or_default();
     let (new_body, was_update) = upsert_row(

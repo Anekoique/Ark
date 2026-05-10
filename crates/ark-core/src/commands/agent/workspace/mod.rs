@@ -25,7 +25,7 @@ pub mod transaction;
 pub use config::WorkspaceConfig;
 pub use developer::{
     DeveloperRegisterOptions, DeveloperRegisterSummary, DeveloperTouchOptions, developer_register,
-    developer_touch,
+    developer_touch, scaffold_developer_dir, scaffold_top_index,
 };
 pub use identity::{Identity, ResolveOptions, identity_resolve, identity_write};
 pub use record::{RecordMode, RecordOptions, RecordSummary, workspace_record};

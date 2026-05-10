@@ -18,6 +18,7 @@
 | 9 | 2026-05-08 | Brownfield SPEC import via `/ark:extract-spec` | `extract-spec-cmd` | `main` | 7d0ae82 | `journal-1.md` |
 | 10 | 2026-05-08 | per-checkout `[focus]` replaces session-keyed map | `session-focus-bind` | `main` | 79500fd | `journal-1.md` |
 | 11 | 2026-05-08 | recursive VERIFY seeding for nested project INDEX.md | `recursive-verify-seeding` | `main` | <PENDING:recursive-verify-seeding> | `journal-1.md` |
+| 12 | 2026-05-10 | Scaffold workspace files during ark init | `fix-workspace-init` | `main` | <PENDING:fix-workspace-init> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

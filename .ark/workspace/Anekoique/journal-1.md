@@ -300,3 +300,30 @@ Seeded VERIFY's `Project Spec Compliance` walks `specs/project/INDEX.md` recursi
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 12: Scaffold workspace files during ark init
+
+**Date**: 2026-05-10
+**Slug**: fix-workspace-init
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `8372470`
+**Closing Commit**: <PENDING:fix-workspace-init>
+
+### Summary
+
+`ark init` now writes `.ark/workspace/index.md` (always) and the per-developer `<dev>/index.md` + Active Developers row when an identity is established.
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| scaffolding | `scaffold_top_index` / `scaffold_developer_dir` extract the previously inline scaffold logic so `init` can run them eagerly |
+| init | `commands/init.rs` calls `scaffold_top_index` after template extraction; CLI's identity bootstrap calls `scaffold_developer_dir` + idempotent `developer_register` |
+| idempotence | `bootstrap_workspace` skips `developer_register` when the row already exists, so re-init never clobbers `Last Active` / `Sessions` written by `workspace_record` |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

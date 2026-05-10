@@ -12,9 +12,10 @@ use std::{
 
 use ark_core::{
     ArchiveOptions, ConflictChoice, ConflictPolicy, ContextFormat, ContextOptions, ContextScope,
-    Identity, InitOptions, Layout, LoadOptions, Manifest, PLATFORMS, PhaseFilter, Platform,
-    Prompter, RemoveOptions, UnloadOptions, UpgradeOptions, WriteMode, ark_archive, context,
-    identity_write, init, load, remove, unload, upgrade,
+    DeveloperRegisterOptions, Identity, InitOptions, Layout, LoadOptions, Manifest, PLATFORMS,
+    PhaseFilter, Platform, Prompter, RemoveOptions, UnloadOptions, UpgradeOptions, WriteMode,
+    ark_archive, context, developer_register, identity_resolve, identity_write, init, load, remove,
+    scaffold_developer_dir, unload, upgrade,
 };
 use clap::{Parser, Subcommand};
 
@@ -425,15 +426,22 @@ impl TargetArgs {
 ///
 /// Relative paths are joined against the current working directory. Falls
 /// back to the path as-given if cwd lookup fails.
-/// Resolves the developer identity and writes `.ark/.developer` if set.
+/// Resolves the developer identity and writes `.ark/.developer` if set,
+/// then scaffolds the per-developer workspace dir and registers the row in
+/// the top-level Active Developers index.
 ///
-/// Precedence:
+/// Precedence for resolving the identity:
 /// 1. `--developer <name>` flag → write the file.
-/// 2. `--no-developer` → skip entirely (no prompt, no file write).
+/// 2. `--no-developer` → skip entirely (no prompt, no file write, no scaffold).
 /// 3. Existing `.ark/.developer` (e.g. re-running `ark init`) → leave as-is.
 /// 4. Interactive prompt on a TTY → write what the user enters.
 /// 5. Non-TTY without flags → skip silently (workspace ops fail later with
 ///    a clear `MissingIdentity` until the user sets one).
+///
+/// Whenever an identity is in play (cases 1, 3, 4) the per-developer
+/// `.ark/workspace/<name>/index.md` is scaffolded and the developer row is
+/// upserted in `.ark/workspace/index.md` so the workspace is ready for the
+/// first `workspace_record`.
 fn resolve_and_persist_identity(
     project_root: &Path,
     explicit: Option<&str>,
@@ -442,31 +450,60 @@ fn resolve_and_persist_identity(
     if no_developer {
         return Ok(());
     }
-    if let Some(name) = explicit {
+    let identity = if let Some(name) = explicit {
         let identity = Identity::new(name)?;
         identity_write(project_root, &identity)?;
-        return Ok(());
-    }
-    // Existing identity wins; re-running `ark init` should not re-prompt.
-    if Layout::new(project_root).developer_file().exists() {
-        return Ok(());
-    }
-    if !std::io::stdin().is_terminal() {
-        return Ok(());
-    }
-    let stdin = std::io::stdin();
-    let mut reader = stdin.lock();
-    let mut writer = std::io::stderr();
-    match ark_core::identity_prompt(&mut reader, &mut writer, 3) {
-        Ok(identity) => {
-            identity_write(project_root, &identity)?;
-            Ok(())
-        }
-        Err(_) => {
+        identity
+    } else if Layout::new(project_root).developer_file().exists() {
+        // Re-running `ark init`: read the existing file rather than re-prompting.
+        identity_resolve(ark_core::IdentityResolveOptions::new(project_root))?
+    } else if std::io::stdin().is_terminal() {
+        let stdin = std::io::stdin();
+        let mut reader = stdin.lock();
+        let mut writer = std::io::stderr();
+        match ark_core::identity_prompt(&mut reader, &mut writer, 3) {
+            Ok(identity) => {
+                identity_write(project_root, &identity)?;
+                identity
+            }
             // Don't fail init for an aborted prompt; user can run again.
-            Ok(())
+            Err(_) => return Ok(()),
         }
+    } else {
+        return Ok(());
+    };
+
+    bootstrap_workspace(project_root, &identity)
+}
+
+/// Scaffolds the per-developer workspace dir and registers the developer row
+/// if the top-level index does not already carry one.
+///
+/// Skips `developer_register` when a row for `identity` exists so re-running
+/// `ark init` does not clobber the live `Last Active` / `Sessions` /
+/// `Active Journal` cells `workspace_record` maintains.
+fn bootstrap_workspace(project_root: &Path, identity: &Identity) -> anyhow::Result<()> {
+    let layout = Layout::new(project_root);
+    scaffold_developer_dir(&layout, identity.name())?;
+
+    let already_registered =
+        ark_core::io::read_managed_block(layout.workspace_index(), "ARK:DEVELOPERS")?.is_some_and(
+            |body| {
+                let row_marker = format!("| `{}` |", identity.name());
+                body.lines().any(|l| l.starts_with(&row_marker))
+            },
+        );
+
+    if !already_registered {
+        developer_register(DeveloperRegisterOptions {
+            project_root: project_root.to_path_buf(),
+            name: identity.name().to_string(),
+            active_journal: "journal-1.md".to_string(),
+            date: chrono::Local::now().date_naive(),
+            session_count: 0,
+        })?;
     }
+    Ok(())
 }
 
 fn absolutize(path: &Path) -> PathBuf {
