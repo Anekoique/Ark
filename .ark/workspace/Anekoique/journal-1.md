@@ -383,3 +383,24 @@ Three Ark subagents (researcher / reviewer / verifier) ship across Claude / Code
 |------|---------|
 | `ec56fc0` | fix: fix historical workspace record |
 | `258f187` | feat(workflow): add ark-agent support |
+
+## Session 15: rfc001-arkos
+
+**Date**: 2026-05-11
+**Slug**: rfc001-arkos
+**Branch**: `docs/rfc001-arkos`
+**Base Branch**: `main`
+**Start Head**: `e0e8499`
+**Closing Commit**: <PENDING:rfc001-arkos>
+
+### Summary
+
+RFC 001 positions ArkOS as a workflow substrate for agents — peer to Ark, workload-grounded self-improvement, six first-class open questions.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| rfc | new `docs/rfcs/001-arkos.md` (370 lines) establishes substrate framing, layered model, self-improvement discipline |
+| docs/rfcs/ | new directory; first numbered RFC; three-digit prefix convention |
+| research | three persisted prior-art surveys under task `research/` (self-improving agents, recursive decomposition, self-generating specs) |
