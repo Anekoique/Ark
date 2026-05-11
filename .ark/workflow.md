@@ -120,7 +120,9 @@ ark agent task review    # deep → REVIEW
 ark context --scope phase --for review --format json
 ```
 
-Reviewer (ideally a fresh agent or different model) fills `NN_REVIEW.md`:
+**STOP. Ask the user which reviewer to use: `ark-reviewer` subagent, a different model, or self-review.** Do not pick on the user's behalf.
+
+The chosen reviewer fills `NN_REVIEW.md`:
 
 - Verdict: Approved / Approved with Revisions / Rejected.
 - Findings (`R-NNN`): Severity, Section, Problem, Why it matters, Recommendation.
@@ -165,6 +167,8 @@ ark agent task verify    # → VERIFY (seeds VERIFY.md)
 ```bash
 ark context --scope phase --for verify --format json
 ```
+
+**STOP. Ask the user which verifier to use: `ark-verifier` subagent, a different model, or self-verify.** Do not pick on the user's behalf.
 
 `VERIFY.md` is seeded with auto-populated checklist sections. Resolve each item:
 
