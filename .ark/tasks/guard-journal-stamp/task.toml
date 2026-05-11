@@ -1,0 +1,13 @@
+id = "guard-journal-stamp"
+title = "guard journal stamp contract"
+tier = "standard"
+phase = "committed"
+iteration = 0
+created_at = "2026-05-11T06:12:50.593190Z"
+updated_at = "2026-05-11T06:41:32.517960Z"
+committed_at = "2026-05-11T06:41:32.517960Z"
+branch = "feat/guard-journal-stamp"
+worktree_path = ".ark/worktrees/feat/guard-journal-stamp"
+base_branch = "main"
+start_head = "fcfd3414dabf816cc7e10e9bc0d881ed45b632c6"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

@@ -372,3 +372,4 @@ ark context --scope record [--format json]
 [**CHANGELOG**]
 
 - 2026-05-08 `doc-tighten`: rewritten to match tightened SPEC contract; semantic content preserved.
+- 2026-05-11 `guard-journal-stamp`: CLI enforces the session-heading contract. `stamp_task` and `stamp_manual` refuse when the journal's last `## Session N:` heading is already followed by stamped auto-fields; failure surfaces as `Error::JournalSessionHeadingMissing`.

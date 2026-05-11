@@ -344,6 +344,22 @@ pub enum Error {
         reason: &'static str,
     },
 
+    /// Active journal's last `## Session N:` heading already carries stamped
+    /// auto-fields — the agent did not append a fresh heading before invoking
+    /// `task commit`.
+    #[error(
+        "journal `{}` last `## Session` heading is already stamped; append a fresh `## Session N: \
+         <title>` block (with `### Summary` and `### Main Changes`) for slug `{slug}` before \
+         re-running `ark agent task commit`",
+        journal_path.display()
+    )]
+    JournalSessionHeadingMissing {
+        /// Active journal file path.
+        journal_path: PathBuf,
+        /// Slug of the task being committed (`"-"` for manual entries).
+        slug: String,
+    },
+
     /// `ark archive` refuses to run when the git staging area is dirty.
     #[error(
         "ark archive requires a clean staging area; run `git stash` or `git commit` first ({} staged path(s))",

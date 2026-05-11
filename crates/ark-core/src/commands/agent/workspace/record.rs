@@ -472,6 +472,62 @@ mod tests {
         assert!(matches!(err, Error::MissingIdentity));
     }
 
+    /// End-to-end guard: `workspace_record` surfaces
+    /// `JournalSessionHeadingMissing` and leaves both indices untouched
+    /// when the active journal's last heading is already stamped.
+    #[test]
+    fn record_errors_when_last_heading_already_stamped() {
+        let tmp = tempfile::tempdir().unwrap();
+        identity_write(tmp.path(), &Identity::new("alice").unwrap()).unwrap();
+        let layout = Layout::new(tmp.path());
+        let dev_dir = layout.workspace_developer_dir("alice");
+        dev_dir.ensure_dir().unwrap();
+        let journal = dev_dir.join("journal-1.md");
+        // Journal whose last heading is already stamped (simulating a
+        // post-`stamp_task` state the agent then forgot to extend).
+        std::fs::write(
+            &journal,
+            "## Session 1: Prior\n\n**Date**: 2026-05-10\n**Slug**: prior\n**Branch**: \
+             `main`\n**Base Branch**: `main`\n**Start Head**: `abc1234`\n**Closing Commit**: \
+             <PENDING:prior>\n\n### Summary\n\nold\n\n### Main Changes\n\n| Area | Description \
+             |\n|------|-------------|\n| x | y |\n",
+        )
+        .unwrap();
+        let original_journal = std::fs::read_to_string(&journal).unwrap();
+
+        let personal_path = layout.workspace_developer_index("alice");
+        let top_path = layout.workspace_index();
+
+        let commits: Vec<(String, String)> = Vec::new();
+        let mode = RecordMode::Task {
+            slug: "next-task",
+            branch: "feat/next",
+            base_branch: "main",
+            start_head_short: "deadbee",
+            commits_in_range: &commits,
+        };
+        let err = workspace_record(RecordOptions::new(tmp.path(), mode)).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::JournalSessionHeadingMissing { ref slug, .. } if slug == "next-task"
+        ));
+
+        // Journal byte-content unchanged.
+        let after_journal = std::fs::read_to_string(&journal).unwrap();
+        assert_eq!(after_journal, original_journal);
+
+        // Personal index either absent or carries no row for the refused entry.
+        if personal_path.exists() {
+            let personal = std::fs::read_to_string(&personal_path).unwrap();
+            assert!(!personal.contains("next-task"), "{personal}");
+        }
+        // Top-level index either absent or carries no entry for the dev.
+        if top_path.exists() {
+            let top = std::fs::read_to_string(&top_path).unwrap();
+            assert!(!top.contains("next-task"), "{top}");
+        }
+    }
+
     #[test]
     fn record_errors_when_journal_missing_or_no_heading() {
         let tmp = tempfile::tempdir().unwrap();

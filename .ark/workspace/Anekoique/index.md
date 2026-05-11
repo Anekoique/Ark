@@ -22,6 +22,7 @@
 | 13 | 2026-05-10 | ark-agent support | `subagent-support` | `feat/subagent-support` | <PENDING:subagent-support> | `journal-1.md` |
 | 14 | 2026-05-10 | ark cleanup | `ark-cleanup` | `main` | <PENDING:ark-cleanup> | `journal-1.md` |
 | 15 | 2026-05-11 | rfc001-arkos | `rfc001-arkos` | `docs/rfc001-arkos` | <PENDING:rfc001-arkos> | `journal-1.md` |
+| 16 | 2026-05-11 | guard journal stamp contract | `guard-journal-stamp` | `feat/guard-journal-stamp` | <PENDING:guard-journal-stamp> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

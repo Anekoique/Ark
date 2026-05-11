@@ -404,3 +404,30 @@ RFC 001 positions ArkOS as a workflow substrate for agents — peer to Ark, work
 | rfc | new `docs/rfcs/001-arkos.md` (370 lines) establishes substrate framing, layered model, self-improvement discipline |
 | docs/rfcs/ | new directory; first numbered RFC; three-digit prefix convention |
 | research | three persisted prior-art surveys under task `research/` (self-improving agents, recursive decomposition, self-generating specs) |
+
+## Session 16: guard journal stamp contract
+
+**Date**: 2026-05-11
+**Slug**: guard-journal-stamp
+**Branch**: `feat/guard-journal-stamp`
+**Base Branch**: `main`
+**Start Head**: `fcfd341`
+**Closing Commit**: <PENDING:guard-journal-stamp>
+
+### Summary
+
+CLI now refuses `task commit` when the journal's last `## Session` heading is already stamped, with a message naming the missing block.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| error | new `Error::JournalSessionHeadingMissing { journal_path, slug }` variant with actionable message |
+| stamp | `assert_unstamped` helper wired into `stamp_task` + `stamp_manual`; refuses before any write |
+| tests | 3 new in `stamp::tests`, 1 new in `record::tests`; 461 → 465 |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd50a33` | feat(rfc): add rfc001-arkos |

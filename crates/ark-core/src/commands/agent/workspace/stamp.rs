@@ -76,6 +76,7 @@ pub fn stamp_task(journal_path: &Path, fields: &TaskStampFields<'_>) -> Result<S
     let original_len = original.len() as u64;
 
     let split = locate_last_session_block(&original)?;
+    assert_unstamped(&original, &split, journal_path, Some(fields.slug))?;
     let heading = &original[split.heading_start..split.heading_end];
     let body = &original[split.heading_end..];
 
@@ -105,6 +106,7 @@ pub fn stamp_manual(journal_path: &Path, fields: &ManualStampFields<'_>) -> Resu
     let original_len = original.len() as u64;
 
     let split = locate_last_session_block(&original)?;
+    assert_unstamped(&original, &split, journal_path, None)?;
     let heading = &original[split.heading_start..split.heading_end];
     let body = &original[split.heading_end..];
 
@@ -167,6 +169,29 @@ fn locate_last_session_block(text: &str) -> Result<SessionSplit> {
         heading_start: start,
         heading_end: end,
     })
+}
+
+/// Refuses when the located heading is already followed by stamped
+/// auto-fields (i.e. a previous `stamp_*` call wrote them).
+///
+/// Detection: next non-blank line after `split.heading_end` begins with
+/// `**Date**`. Both [`render_task_auto_fields`] and [`render_manual_auto_fields`]
+/// emit `**Date**` as their first line, so this signal covers both modes.
+fn assert_unstamped(
+    text: &str,
+    split: &SessionSplit,
+    journal_path: &Path,
+    slug: Option<&str>,
+) -> Result<()> {
+    let body = &text[split.heading_end..];
+    let next_nonblank = body.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+    if next_nonblank.trim_start().starts_with("**Date**") {
+        return Err(Error::JournalSessionHeadingMissing {
+            journal_path: journal_path.to_path_buf(),
+            slug: slug.unwrap_or("-").to_string(),
+        });
+    }
+    Ok(())
 }
 
 fn render_task_auto_fields(fields: &TaskStampFields<'_>) -> String {
@@ -349,5 +374,73 @@ mod tests {
                     Summary\n\nx\n\n### Main Changes\n\n| a | b |\n";
         let title = extract_last_session_title(text).unwrap();
         assert_eq!(title, "Add workspace support");
+    }
+
+    /// Builds a fixture journal whose last heading already carries stamped
+    /// auto-fields (Date / Slug / Branch / ...). Simulates the
+    /// rfc001-arkos failure shape: agent invoked `task commit` a second
+    /// time without first appending a fresh `## Session N:` heading.
+    fn already_stamped_journal() -> String {
+        "## Session 1: Earlier\n\n**Date**: 2026-05-10\n**Slug**: earlier\n**Branch**: \
+         `main`\n**Base Branch**: `main`\n**Start Head**: `abc1234`\n**Closing Commit**: \
+         <PENDING:earlier>\n\n### Summary\n\nold\n\n### Main Changes\n\n| Area | Description \
+         |\n|------|-------------|\n| x | y |\n\n### Git Commits\n\n| Hash | Message \
+         |\n|------|---------|\n| _(none)_ |   |\n"
+            .to_string()
+    }
+
+    #[test]
+    fn stamp_task_refuses_when_heading_already_stamped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let journal = tmp.path().join("journal-1.md");
+        let original = already_stamped_journal();
+        std::fs::write(&journal, &original).unwrap();
+
+        let commits: Vec<(String, String)> = Vec::new();
+        let fields = task_fields("rfc001-arkos", &commits);
+        let err = stamp_task(&journal, &fields).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::JournalSessionHeadingMissing { ref slug, .. } if slug == "rfc001-arkos"
+        ));
+
+        // File is byte-identical to pre-call.
+        let after = std::fs::read_to_string(&journal).unwrap();
+        assert_eq!(after, original);
+    }
+
+    #[test]
+    fn stamp_manual_refuses_when_heading_already_stamped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let journal = tmp.path().join("journal-1.md");
+        let original = already_stamped_journal();
+        std::fs::write(&journal, &original).unwrap();
+
+        let fields = ManualStampFields {
+            date: NaiveDate::from_ymd_opt(2026, 5, 11).unwrap(),
+            branch: "main",
+        };
+        let err = stamp_manual(&journal, &fields).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::JournalSessionHeadingMissing { ref slug, .. } if slug == "-"
+        ));
+
+        let after = std::fs::read_to_string(&journal).unwrap();
+        assert_eq!(after, original);
+    }
+
+    /// Verifies the error message names the retry command + journal path.
+    #[test]
+    fn journal_session_heading_missing_message_is_actionable() {
+        let err = Error::JournalSessionHeadingMissing {
+            journal_path: std::path::PathBuf::from("/x/journal-1.md"),
+            slug: "demo".to_string(),
+        };
+        let msg = format!("{err}");
+        assert!(msg.contains("/x/journal-1.md"), "{msg}");
+        assert!(msg.contains("demo"), "{msg}");
+        assert!(msg.contains("ark agent task commit"), "{msg}");
+        assert!(msg.contains("## Session"), "{msg}");
     }
 }
