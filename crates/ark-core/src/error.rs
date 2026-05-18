@@ -501,6 +501,24 @@ pub enum Error {
         /// Template file path.
         path: PathBuf,
     },
+
+    /// PRD has no `[**SPEC Path**]` block; required on deep tier.
+    #[error("PRD at `{source_path}` has no `[**SPEC Path**]` block")]
+    FeaturePathMissing {
+        /// File whose `[**SPEC Path**]` block was expected (PRD or caller artifact).
+        source_path: PathBuf,
+    },
+
+    /// Parsed SPEC-path body failed validation.
+    #[error("invalid SPEC path `{value}`: {reason}")]
+    InvalidFeaturePath {
+        /// File the offending value came from (PRD path, or a non-PRD caller's artifact).
+        source_path: PathBuf,
+        /// Offending value verbatim.
+        value: String,
+        /// Validation failure reason.
+        reason: &'static str,
+    },
 }
 
 impl Error {

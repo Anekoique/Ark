@@ -191,10 +191,18 @@ fn gather_archive(layout: &Layout) -> Result<ArchiveState> {
     Ok(ArchiveState { recent: all })
 }
 
+/// Imports used by the recursive feature-spec walker. `GatherWarning` lives
+/// in the model module; the gather code emits it alongside `SpecRow`.
+use crate::commands::context::model::GatherWarning;
+
 fn gather_specs(layout: &Layout) -> Result<SpecsState> {
     let project = parse_project_index(layout)?;
-    let features = parse_features_index(layout)?;
-    Ok(SpecsState { project, features })
+    let (features, features_warnings) = parse_features_index(layout)?;
+    Ok(SpecsState {
+        project,
+        features,
+        features_warnings,
+    })
 }
 
 /// Parses `.ark/specs/project/INDEX.md`.
@@ -214,6 +222,7 @@ fn parse_project_index(layout: &Layout) -> Result<Vec<SpecRow>> {
             (!name.is_empty()).then(|| SpecRow {
                 name,
                 path: PathBuf::from(spec_path),
+                feature_path: Vec::new(),
                 scope: cells.get(1).cloned().unwrap_or_default(),
                 promoted: None,
             })
@@ -221,27 +230,198 @@ fn parse_project_index(layout: &Layout) -> Result<Vec<SpecRow>> {
         .collect())
 }
 
-/// Parses `.ark/specs/features/INDEX.md`.
+/// Parses `.ark/specs/features/` recursively, descending into subtree
+/// `INDEX.md` files via the managed block's row classification.
 ///
-/// Extracts rows from the `ARK:FEATURES` managed block as a 3-column GFM table.
-fn parse_features_index(layout: &Layout) -> Result<Vec<SpecRow>> {
-    let Some(body) = read_managed_block(layout.specs_features_index(), FEATURES_MARKER)? else {
-        return Ok(Vec::new());
-    };
-    Ok(gfm_table_rows(&body)
-        .filter_map(|cells| {
-            if cells.len() < 3 {
-                return None;
+/// At each level, leaf rows (bare or `<seg>/SPEC.md` first cell) yield one
+/// [`SpecRow`]; branch rows (`<seg>/INDEX.md` first cell) trigger a
+/// recursive descent into the named subdirectory. Single-segment paths
+/// produce the legacy flat shape bit-for-bit. Symlinks are not followed;
+/// depth is bounded.
+///
+/// Returns `(rows, warnings)` — drift between the on-disk filesystem and
+/// the INDEX rows is surfaced as [`GatherWarning`] values instead of being
+/// silently dropped (per the iteration-02 design pivot).
+fn parse_features_index(layout: &Layout) -> Result<(Vec<SpecRow>, Vec<GatherWarning>)> {
+    let mut rows = Vec::new();
+    let mut warnings = Vec::new();
+    let mut visited_children: Vec<(Vec<String>, std::collections::HashSet<String>)> = Vec::new();
+    walk_features_index(
+        layout,
+        &mut Vec::new(),
+        &mut rows,
+        &mut warnings,
+        &mut visited_children,
+        0,
+    )?;
+    detect_orphans(layout, &visited_children, &mut warnings)?;
+    Ok((rows, warnings))
+}
+
+/// Walks every visited subtree's children and emits a warning for any
+/// on-disk `SPEC.md` or subtree directory that the parent INDEX did not
+/// row. Symlinks are not followed.
+fn detect_orphans(
+    layout: &Layout,
+    visited: &[(Vec<String>, std::collections::HashSet<String>)],
+    warnings: &mut Vec<GatherWarning>,
+) -> Result<()> {
+    for (prefix, visited_set) in visited {
+        let mut dir = layout.specs_features_dir();
+        for seg in prefix {
+            dir.push(seg);
+        }
+        let entries = match dir.read_dir() {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let file_type = match entry.file_type() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            if file_type.is_symlink() {
+                continue;
             }
-            let (name, _) = normalize_spec_cell(&cells[0]);
-            (!name.is_empty()).then(|| SpecRow {
-                name: name.clone(),
-                path: PathBuf::from(format!(".ark/specs/features/{name}/SPEC.md")),
-                scope: cells[1].clone(),
-                promoted: Some(cells[2].clone()),
-            })
-        })
-        .collect())
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name == "INDEX.md" || name.starts_with('.') {
+                continue;
+            }
+            if visited_set.contains(&name) {
+                continue;
+            }
+            // Not rowed in the parent INDEX — classify by what's on disk.
+            let path = entry.path();
+            if file_type.is_dir() {
+                let leaf = path.join("SPEC.md");
+                if leaf.exists() {
+                    warnings.push(GatherWarning::OrphanLeaf {
+                        path: project_relative(layout, &leaf),
+                    });
+                } else {
+                    warnings.push(GatherWarning::OrphanSubtree {
+                        path: project_relative(layout, &path),
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Strips the project root from `path`, producing the same project-root-
+/// relative `PathBuf` shape used elsewhere in [`SpecRow`].
+fn project_relative(layout: &Layout, path: &Path) -> PathBuf {
+    path.strip_prefix(layout.root())
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Maximum recursion depth for the features INDEX walk; guards against
+/// pathological / cyclic layouts. Eight levels is the documented bound.
+const FEATURES_WALK_MAX_DEPTH: usize = 8;
+
+/// Recursive walker for the features INDEX tree.
+///
+/// `prefix` carries the segments accumulated by parent recursive calls.
+/// `out` is appended in row order; at each level, rows are emitted in the
+/// order they appear in the parent `INDEX.md`'s managed block.
+/// `warnings` collects drift signals (`MissingChild` for stale rows). The
+/// child set the row walk visited at each level is recorded in `visited`
+/// so the later orphan-detection pass can find on-disk entries the rows
+/// did not name.
+fn walk_features_index(
+    layout: &Layout,
+    prefix: &mut Vec<String>,
+    out: &mut Vec<SpecRow>,
+    warnings: &mut Vec<GatherWarning>,
+    visited: &mut Vec<(Vec<String>, std::collections::HashSet<String>)>,
+    depth: usize,
+) -> Result<()> {
+    if depth >= FEATURES_WALK_MAX_DEPTH {
+        return Ok(());
+    }
+    let mut index_path = layout.specs_features_dir();
+    for seg in prefix.iter() {
+        index_path.push(seg);
+    }
+    index_path.push("INDEX.md");
+
+    let Some(body) = read_managed_block(&index_path, FEATURES_MARKER)? else {
+        return Ok(());
+    };
+
+    let mut local_visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for cells in gfm_table_rows(&body) {
+        if cells.len() < 3 {
+            continue;
+        }
+        let raw = cells[0].trim().trim_matches('`').trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let scope = cells[1].clone();
+        let promoted = Some(cells[2].clone());
+
+        // Classify by target suffix; row text identifies leaf vs branch.
+        // Accepted shapes: `<seg>`, `<seg>/SPEC.md` (leaf); `<seg>/INDEX.md` (branch).
+        if let Some(seg) = raw.strip_suffix("/INDEX.md") {
+            let seg_owned = seg.to_string();
+            local_visited.insert(seg_owned.clone());
+            // Verify the child INDEX exists on disk; if not, emit a warning
+            // and skip the recursion (no rows from this row).
+            let mut child_path = layout.specs_features_dir();
+            for s in prefix.iter() {
+                child_path.push(s);
+            }
+            child_path.push(&seg_owned);
+            child_path.push("INDEX.md");
+            if !child_path.exists() {
+                warnings.push(GatherWarning::MissingChild {
+                    row: raw.to_string(),
+                    expected_path: project_relative(layout, &child_path),
+                });
+                continue;
+            }
+            prefix.push(seg_owned);
+            walk_features_index(layout, prefix, out, warnings, visited, depth + 1)?;
+            prefix.pop();
+        } else {
+            let seg = raw.strip_suffix("/SPEC.md").unwrap_or(raw).to_string();
+            local_visited.insert(seg.clone());
+            // Verify the leaf SPEC exists on disk; if not, emit a warning
+            // and skip the row.
+            let mut feature_path = prefix.clone();
+            feature_path.push(seg.clone());
+            let mut leaf_abs = layout.specs_features_dir();
+            for s in &feature_path {
+                leaf_abs.push(s);
+            }
+            leaf_abs.push("SPEC.md");
+            if !leaf_abs.exists() {
+                warnings.push(GatherWarning::MissingChild {
+                    row: raw.to_string(),
+                    expected_path: project_relative(layout, &leaf_abs),
+                });
+                continue;
+            }
+            let mut path = PathBuf::from(".ark/specs/features");
+            for s in &feature_path {
+                path.push(s);
+            }
+            path.push("SPEC.md");
+            out.push(SpecRow {
+                name: seg,
+                path,
+                feature_path,
+                scope,
+                promoted,
+            });
+        }
+    }
+    visited.push((prefix.clone(), local_visited));
+    Ok(())
 }
 
 /// Locates the byte offset of the first index table line.
@@ -554,11 +734,148 @@ mod tests {
                   <!-- ARK:FEATURES:END -->\n",
             )
             .unwrap();
+        // Materialize on-disk leaves so the INDEX-strict walker accepts them.
+        let features_dir = layout.specs_features_dir();
+        features_dir.join("foo").ensure_dir().unwrap();
+        features_dir.join("foo/SPEC.md").write_bytes(b"x").unwrap();
+        features_dir.join("bar-baz").ensure_dir().unwrap();
+        features_dir
+            .join("bar-baz/SPEC.md")
+            .write_bytes(b"x")
+            .unwrap();
+
         let ctx = gather_context(&layout).unwrap();
         assert_eq!(ctx.specs.features.len(), 2);
         assert_eq!(ctx.specs.features[0].name, "foo");
         assert_eq!(ctx.specs.features[1].name, "bar-baz");
         assert!(ctx.specs.features[0].promoted.is_some());
+        // Single-segment feature_path for legacy flat leaves.
+        assert_eq!(ctx.specs.features[0].feature_path, vec!["foo".to_string()]);
+        assert_eq!(
+            ctx.specs.features[0].path,
+            std::path::PathBuf::from(".ark/specs/features/foo/SPEC.md"),
+        );
+        // No drift: every INDEX row matches an on-disk leaf, no orphans.
+        assert!(ctx.specs.features_warnings.is_empty());
+    }
+
+    /// Verifies the recursive walk: root INDEX has a branch row pointing at
+    /// `xemu/INDEX.md`; the subtree INDEX lists a leaf `csr/SPEC.md`. Both
+    /// the nested `feature_path` and `path` come out correctly.
+    #[test]
+    fn gather_features_index_recurses_into_subtree() {
+        let tmp = arked_tempdir();
+        let layout = Layout::new(tmp.path());
+        layout
+            .specs_features_index()
+            .write_bytes(
+                b"<!-- ARK:FEATURES:START -->\n\
+                  | Feature | Scope | Promoted |\n\
+                  |---------|-------|----------|\n\
+                  | `klib` | shared lib | 2026-05-01 |\n\
+                  | `xemu/INDEX.md` | xemu subtree | 2026-05-10 |\n\
+                  <!-- ARK:FEATURES:END -->\n",
+            )
+            .unwrap();
+        let subtree = layout.specs_features_dir().join("xemu").join("INDEX.md");
+        subtree.parent().unwrap().ensure_dir().unwrap();
+        subtree
+            .write_bytes(
+                b"<!-- ARK:FEATURES:START -->\n\
+                  | Feature | Scope | Promoted |\n\
+                  |---------|-------|----------|\n\
+                  | `csr` | CSR file | 2026-05-11 |\n\
+                  <!-- ARK:FEATURES:END -->\n",
+            )
+            .unwrap();
+        // Materialize on-disk leaves.
+        let features_dir = layout.specs_features_dir();
+        features_dir.join("klib").ensure_dir().unwrap();
+        features_dir.join("klib/SPEC.md").write_bytes(b"x").unwrap();
+        features_dir.join("xemu/csr").ensure_dir().unwrap();
+        features_dir
+            .join("xemu/csr/SPEC.md")
+            .write_bytes(b"x")
+            .unwrap();
+
+        let ctx = gather_context(&layout).unwrap();
+        // Order: klib leaf first, then csr (from xemu subtree).
+        assert_eq!(ctx.specs.features.len(), 2);
+        assert_eq!(ctx.specs.features[0].name, "klib");
+        assert_eq!(ctx.specs.features[0].feature_path, vec!["klib".to_string()]);
+        assert_eq!(ctx.specs.features[1].name, "csr");
+        assert_eq!(
+            ctx.specs.features[1].feature_path,
+            vec!["xemu".to_string(), "csr".to_string()],
+        );
+        assert_eq!(
+            ctx.specs.features[1].path,
+            std::path::PathBuf::from(".ark/specs/features/xemu/csr/SPEC.md"),
+        );
+        assert_eq!(ctx.specs.features[1].scope, "CSR file");
+        assert!(ctx.specs.features_warnings.is_empty());
+    }
+
+    /// An INDEX row whose target is missing on disk surfaces as
+    /// `GatherWarning::MissingChild`; no `SpecRow` is emitted.
+    #[test]
+    fn gather_emits_missing_child_warning_for_stale_row() {
+        let tmp = arked_tempdir();
+        let layout = Layout::new(tmp.path());
+        layout
+            .specs_features_index()
+            .write_bytes(
+                b"<!-- ARK:FEATURES:START -->\n\
+                  | Feature | Scope | Promoted |\n\
+                  |---------|-------|----------|\n\
+                  | `ghost` | row points at missing SPEC | 2026-05-01 |\n\
+                  <!-- ARK:FEATURES:END -->\n",
+            )
+            .unwrap();
+        let ctx = gather_context(&layout).unwrap();
+        assert!(
+            ctx.specs.features.is_empty(),
+            "stale row must not yield a row"
+        );
+        assert_eq!(ctx.specs.features_warnings.len(), 1);
+        match &ctx.specs.features_warnings[0] {
+            crate::commands::context::model::GatherWarning::MissingChild { row, .. } => {
+                assert_eq!(row, "ghost");
+            }
+            other => panic!("expected MissingChild, got {other:?}"),
+        }
+    }
+
+    /// An on-disk `features/<seg>/SPEC.md` not rowed in the parent INDEX
+    /// surfaces as `GatherWarning::OrphanLeaf`.
+    #[test]
+    fn gather_emits_orphan_leaf_warning_for_unrowed_spec() {
+        let tmp = arked_tempdir();
+        let layout = Layout::new(tmp.path());
+        layout
+            .specs_features_index()
+            .write_bytes(
+                b"<!-- ARK:FEATURES:START -->\n\
+                  | Feature | Scope | Promoted |\n\
+                  |---------|-------|----------|\n\
+                  <!-- ARK:FEATURES:END -->\n",
+            )
+            .unwrap();
+        let features_dir = layout.specs_features_dir();
+        features_dir.join("orphan").ensure_dir().unwrap();
+        features_dir
+            .join("orphan/SPEC.md")
+            .write_bytes(b"x")
+            .unwrap();
+        let ctx = gather_context(&layout).unwrap();
+        assert!(ctx.specs.features.is_empty());
+        assert_eq!(ctx.specs.features_warnings.len(), 1);
+        match &ctx.specs.features_warnings[0] {
+            crate::commands::context::model::GatherWarning::OrphanLeaf { path } => {
+                assert!(path.ends_with(".ark/specs/features/orphan/SPEC.md"));
+            }
+            other => panic!("expected OrphanLeaf, got {other:?}"),
+        }
     }
 
     #[test]

@@ -10,6 +10,8 @@ pub mod discard;
 pub mod new;
 /// Moves tasks through legal lifecycle phases.
 pub mod phase;
+/// PRD parsers (e.g. `[**SPEC Path**]`).
+pub mod prd;
 /// Promotes tasks between workflow tiers.
 pub mod promote;
 /// Resumes an active task as this session's focus.
@@ -26,6 +28,7 @@ pub use new::{TaskNewOptions, TaskNewSummary, TaskNewWorktree, TaskNewWorktreeSu
 pub use phase::{
     TaskPhaseOptions, TaskPhaseSummary, task_execute, task_plan, task_review, task_verify,
 };
+pub use prd::parse_spec_path;
 pub use promote::{TaskPromoteOptions, TaskPromoteSummary, task_promote};
 pub use resume::{TaskResumeOptions, TaskResumeSummary, task_resume};
 pub use worktree::{

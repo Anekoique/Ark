@@ -65,9 +65,11 @@ fn is_section_header_line(line: &str) -> bool {
     line.contains("**]")
 }
 
-/// Scans for `specs/features/<slug>/SPEC.md` substrings.
+/// Scans for `specs/features/<seg>(/<seg>)*<slug>/SPEC.md` substrings.
 ///
-/// The slug pattern is case-sensitive `[a-z0-9_-]+`.
+/// Each segment is case-sensitive `[a-z0-9][a-z0-9_-]*`; `/` is the segment
+/// separator. The match consumes everything up to and including the trailing
+/// `/SPEC.md` suffix.
 fn scan_paths(slice: &str) -> Vec<String> {
     let mut found = Vec::new();
     let bytes = slice.as_bytes();
@@ -79,10 +81,29 @@ fn scan_paths(slice: &str) -> Vec<String> {
         };
         let start = i + rel;
         let after_prefix = start + PATH_PREFIX.len();
-        // consume slug bytes
+        // Consume `<seg>(/<seg>)*` up to where `/SPEC.md` begins. Each segment
+        // must start with a slug byte and contain only slug bytes.
         let mut j = after_prefix;
-        while j < bytes.len() && is_slug_byte(bytes[j]) {
-            j += 1;
+        loop {
+            // segment must start with a slug byte
+            if j >= bytes.len() || !is_slug_byte(bytes[j]) {
+                break;
+            }
+            // consume the segment body
+            while j < bytes.len() && is_slug_byte(bytes[j]) {
+                j += 1;
+            }
+            // /SPEC.md ends the path
+            if slice[j..].starts_with(PATH_SUFFIX) {
+                break;
+            }
+            // otherwise, accept a `/` separator and continue with another segment
+            if j < bytes.len() && bytes[j] == b'/' {
+                j += 1;
+                continue;
+            }
+            // anything else terminates without a match
+            break;
         }
         if j > after_prefix && slice[j..].starts_with(PATH_SUFFIX) {
             let end = j + PATH_SUFFIX.len();
@@ -184,5 +205,60 @@ some prose mentioning [**Related Specs**] inline
             extract(prd),
             vec!["specs/features/real/SPEC.md".to_string()]
         );
+    }
+
+    /// Nested PRD paths (`specs/features/xemu/csr/SPEC.md`) parse end-to-end.
+    /// Single-segment paths continue to work.
+    #[test]
+    fn extracts_nested_path() {
+        let prd = "[**Related Specs**]\n- `specs/features/xemu/csr/SPEC.md` — note\n";
+        assert_eq!(
+            extract(prd),
+            vec!["specs/features/xemu/csr/SPEC.md".to_string()]
+        );
+    }
+
+    /// Three-segment nested path parses; multi-segment with explicit
+    /// separators between each segment.
+    #[test]
+    fn extracts_three_segment_nested_path() {
+        let prd = "[**Related Specs**]\n- `specs/features/core/runtime/scheduler/SPEC.md`\n";
+        assert_eq!(
+            extract(prd),
+            vec!["specs/features/core/runtime/scheduler/SPEC.md".to_string()]
+        );
+    }
+
+    /// Mixed flat + nested paths in the same section both surface, in
+    /// first-seen order, deduped.
+    #[test]
+    fn extracts_mixed_flat_and_nested() {
+        let prd = "\
+[**Related Specs**]
+- `specs/features/klib/SPEC.md` — flat
+- `specs/features/xemu/csr/SPEC.md` — nested
+- `specs/features/klib/SPEC.md` — dup
+";
+        assert_eq!(
+            extract(prd),
+            vec![
+                "specs/features/klib/SPEC.md".to_string(),
+                "specs/features/xemu/csr/SPEC.md".to_string(),
+            ],
+        );
+    }
+
+    /// Path that ends with `/` without `SPEC.md` is rejected.
+    #[test]
+    fn rejects_path_without_spec_suffix() {
+        let prd = "[**Related Specs**]\n- `specs/features/xemu/`\n";
+        assert!(extract(prd).is_empty());
+    }
+
+    /// Path with an uppercase segment is rejected (kebab-case alphabet).
+    #[test]
+    fn rejects_uppercase_in_nested_path() {
+        let prd = "[**Related Specs**]\n- `specs/features/Xemu/csr/SPEC.md`\n";
+        assert!(extract(prd).is_empty());
     }
 }

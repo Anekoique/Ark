@@ -36,9 +36,9 @@ pub use commands::{
             TaskNewWorktree, TaskNewWorktreeSummary, TaskPhaseOptions, TaskPhaseSummary,
             TaskPromoteOptions, TaskPromoteSummary, TaskResumeOptions, TaskResumeSummary,
             VerifyPendingCounts, WorktreeCleanupOptions, WorktreeCleanupSummary, WorktreeConfig,
-            WorktreeListOptions, WorktreeListSummary, WorktreeRow, task_archive_move, task_commit,
-            task_discard, task_execute, task_new, task_plan, task_promote, task_resume,
-            task_review, task_verify, worktree_cleanup, worktree_list,
+            WorktreeListOptions, WorktreeListSummary, WorktreeRow, parse_spec_path,
+            task_archive_move, task_commit, task_discard, task_execute, task_new, task_plan,
+            task_promote, task_resume, task_review, task_verify, worktree_cleanup, worktree_list,
         },
         workspace::{
             DeveloperRegisterOptions, DeveloperRegisterSummary, DeveloperTouchOptions, Identity,

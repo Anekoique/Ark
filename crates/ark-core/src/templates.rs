@@ -90,6 +90,32 @@ pub const CODEX_CONFIG_TOML: &str = include_str!("../../../templates/codex/confi
 pub const OPENCODE_ARK_CONTEXT_TS: &str =
     include_str!("../../../templates/opencode/plugins/ark-context.ts");
 
+/// Whole-file body for auto-created subtree feature INDEX files.
+///
+/// Seeded by `spec_register`'s leaf-to-root upsert when a subtree `INDEX.md`
+/// does not yet exist. Carries `<!-- ARK:FEATURES:START -->` /
+/// `<!-- ARK:FEATURES:END -->` markers byte-identical to the root
+/// `features/INDEX.md`'s managed-block delimiters; the existing
+/// `read_managed_block` / `update_managed_block` helpers apply unchanged.
+///
+/// Embedded directly rather than living under `.ark/templates/` — that tree
+/// is reserved for workflow artifact templates (PRD, PLAN, REVIEW, SPEC,
+/// VERIFY), not infrastructure helpers.
+pub const FEATURE_SUBTREE_INDEX_MD: &str = "\
+# Feature Specs
+
+Subtree index. Rows are managed by `ark agent task commit`'s leaf-to-root
+walk. Edit prose outside the markers freely; the rows between the markers
+are auto-maintained.
+
+## Index
+
+<!-- ARK:FEATURES:START -->
+| Feature | Scope | Promoted |
+|---------|-------|----------|
+<!-- ARK:FEATURES:END -->
+";
+
 /// A file to be extracted from a template tree, with its destination path.
 pub struct Extracted<'a> {
     /// Path relative to the template tree root.

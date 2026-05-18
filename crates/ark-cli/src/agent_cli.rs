@@ -519,6 +519,7 @@ impl SpecCommand {
                 render(spec_extract(SpecExtractOptions {
                     project_root: root,
                     slug,
+                    feature_path: vec![],
                     plan_override: a.plan,
                     task_dir_override: None,
                 })?);
@@ -530,9 +531,10 @@ impl SpecCommand {
                         .map_err(|e| anyhow::anyhow!("invalid --date `{s}`: {e}"))?,
                     None => chrono::Utc::now().date_naive(),
                 };
+                let feature_path: Vec<String> = a.feature.split('/').map(str::to_string).collect();
                 render(spec_import(SpecImportOptions {
                     project_root: root,
-                    feature: a.feature,
+                    feature_path,
                     scope: a.scope,
                     from_file: a.from_file,
                     from_commit: a.from_commit,
@@ -546,9 +548,10 @@ impl SpecCommand {
                         .map_err(|e| anyhow::anyhow!("invalid --date `{s}`: {e}"))?,
                     None => chrono::Utc::now().date_naive(),
                 };
+                let feature_path: Vec<String> = a.feature.split('/').map(str::to_string).collect();
                 render(spec_register(SpecRegisterOptions {
                     project_root: root,
-                    feature: a.feature,
+                    feature_path,
                     scope: a.scope,
                     from_task: a.from_task,
                     date,

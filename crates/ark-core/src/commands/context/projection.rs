@@ -188,10 +188,18 @@ fn apply_phase_filter(
     specs: SpecsState,
     archive: ArchiveState,
 ) {
-    let SpecsState { project, features } = specs;
+    let SpecsState {
+        project,
+        features,
+        features_warnings,
+    } = specs;
     match phase {
         PhaseFilter::Design => {
-            out.specs = Some(SpecsState { project, features });
+            out.specs = Some(SpecsState {
+                project,
+                features,
+                features_warnings,
+            });
             out.archive = Some(archive);
         }
         PhaseFilter::Plan | PhaseFilter::Review => {
@@ -204,6 +212,7 @@ fn apply_phase_filter(
             out.specs = Some(SpecsState {
                 project,
                 features: filtered,
+                features_warnings,
             });
         }
         // Execute / Verify / Commit all want project specs only (no
@@ -215,6 +224,7 @@ fn apply_phase_filter(
             out.specs = Some(SpecsState {
                 project,
                 features: Vec::new(),
+                features_warnings: Vec::new(),
             });
         }
     }
@@ -273,6 +283,7 @@ mod tests {
         SpecRow {
             name: name.to_string(),
             path: PathBuf::from(format!(".ark/specs/features/{name}/SPEC.md")),
+            feature_path: vec![name.to_string()],
             scope: format!("scope of {name}"),
             promoted: None,
         }
@@ -284,6 +295,7 @@ mod tests {
             SpecsState {
                 project: vec![row("p1")],
                 features: vec![row("f1"), row("f2")],
+                features_warnings: Vec::new(),
             },
             None,
         );
@@ -299,6 +311,7 @@ mod tests {
             SpecsState {
                 project: vec![row("p1")],
                 features: vec![row("f1"), row("f2")],
+                features_warnings: Vec::new(),
             },
             None,
         );
@@ -322,6 +335,7 @@ mod tests {
             SpecsState {
                 project: vec![row("p1")],
                 features: vec![row("foo"), row("bar"), row("baz")],
+                features_warnings: Vec::new(),
             },
             Some(ct),
         );
@@ -339,6 +353,7 @@ mod tests {
             SpecsState {
                 project: vec![row("p1")],
                 features: vec![row("f1")],
+                features_warnings: Vec::new(),
             },
             None,
         );
@@ -361,6 +376,7 @@ mod tests {
             SpecsState {
                 project: vec![row("p1")],
                 features: vec![row("foo"), row("bar")],
+                features_warnings: Vec::new(),
             },
             Some(ct),
         );
@@ -375,6 +391,7 @@ mod tests {
             SpecsState {
                 project: vec![row("p1")],
                 features: vec![row("f1")],
+                features_warnings: Vec::new(),
             },
             None,
         );
@@ -393,6 +410,7 @@ mod tests {
             SpecsState {
                 project: vec![row("p1")],
                 features: vec![row("f1")],
+                features_warnings: Vec::new(),
             },
             None,
         );
@@ -428,6 +446,7 @@ mod tests {
             SpecsState {
                 project: vec![row("p1")],
                 features: vec![row("foo")],
+                features_warnings: Vec::new(),
             },
             Some(ct),
         );

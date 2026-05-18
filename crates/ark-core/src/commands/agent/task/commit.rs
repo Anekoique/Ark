@@ -172,22 +172,34 @@ pub fn task_commit(opts: TaskCommitOptions) -> Result<TaskCommitSummary> {
     let mut guard = RollbackGuard::new(&task_cwd);
 
     let deep = prev_toml.tier == Tier::Deep;
-    let spec_path = layout.specs_feature_dir(&opts.slug).join("SPEC.md");
-    let features_index_path = layout.specs_features_index();
+    // Deep tier requires a `[**SPEC Path**]` block in the latest PRD; quick
+    // and standard tiers default to the legacy single-segment `[slug]` path.
+    let prd_path = task_dir.join("PRD.md");
+    let feature_segments: Vec<String> = if deep {
+        let prd_text = prd_path.read_text()?;
+        crate::commands::agent::task::prd::parse_spec_path(&prd_text, &opts.slug, &prd_path)?
+    } else {
+        vec![opts.slug.clone()]
+    };
+    let seg_refs: Vec<&str> = feature_segments.iter().map(String::as_str).collect();
+    let spec_dir = layout.specs_feature_dir(&seg_refs, &prd_path)?;
+    let spec_path = spec_dir.join("SPEC.md");
+    let intermediate_indexes = intermediate_index_paths(&layout, &feature_segments);
 
     if deep {
         guard.snapshot_spec(&spec_path)?;
-        guard.snapshot_features_index(&features_index_path)?;
+        guard.snapshot_features_indexes(&intermediate_indexes)?;
         let now = Utc::now();
         spec_extract(SpecExtractOptions {
             project_root: opts.project_root.clone(),
             slug: opts.slug.clone(),
+            feature_path: feature_segments.clone(),
             plan_override: None,
             task_dir_override: Some(task_dir.clone()),
         })?;
         spec_register(SpecRegisterOptions {
             project_root: opts.project_root.clone(),
-            feature: opts.slug.clone(),
+            feature_path: feature_segments.clone(),
             scope: prev_toml.title.clone(),
             from_task: opts.slug.clone(),
             date: now.date_naive(),
@@ -231,13 +243,14 @@ pub fn task_commit(opts: TaskCommitOptions) -> Result<TaskCommitSummary> {
     })?;
 
     // Stage Ark-managed files: task.toml, plus (deep tier) the promoted
-    // SPEC and the features INDEX, plus any workspace paths that
-    // `record_workspace_journal` populated. The user's work is already staged.
+    // SPEC and every INDEX along the leaf-to-root path, plus any workspace
+    // paths that `record_workspace_journal` populated. The user's work is
+    // already staged.
     let ark_files = ark_files_for_first_commit(
         &task_dir,
         deep,
         &spec_path,
-        &features_index_path,
+        &intermediate_indexes,
         &guard.workspace_paths.clone(),
     );
     guard.record_staged(ark_files.clone());
@@ -373,17 +386,42 @@ fn ark_files_for_first_commit(
     task_dir: &Path,
     deep: bool,
     spec_path: &Path,
-    features_index_path: &Path,
+    intermediate_indexes: &[PathBuf],
     workspace_files: &[PathBuf],
 ) -> Vec<PathBuf> {
-    let mut files = Vec::with_capacity(3 + workspace_files.len());
+    let mut files = Vec::with_capacity(2 + intermediate_indexes.len() + workspace_files.len());
     files.push(task_dir.join("task.toml"));
     if deep {
         files.push(spec_path.to_path_buf());
-        files.push(features_index_path.to_path_buf());
+        for p in intermediate_indexes {
+            files.push(p.clone());
+        }
     }
     files.extend(workspace_files.iter().cloned());
     files
+}
+
+/// Returns every INDEX path that the leaf-to-root upsert may touch, ordered
+/// leaf-to-root.
+///
+/// For segments `[a, b, c]`:
+///   - leaf level: `.ark/specs/features/a/b/INDEX.md` (carries the `c` leaf row)
+///   - mid level:  `.ark/specs/features/a/INDEX.md`   (carries the `b/INDEX.md` row)
+///   - root level: `.ark/specs/features/INDEX.md`     (carries the `a/INDEX.md` row)
+///
+/// For a single-segment path `[c]`, only the root `.ark/specs/features/INDEX.md`
+/// is returned so the legacy flat layout is preserved bit-for-bit.
+pub fn intermediate_index_paths(layout: &Layout, segments: &[String]) -> Vec<PathBuf> {
+    let mut paths = Vec::with_capacity(segments.len());
+    for i in (0..segments.len()).rev() {
+        let mut p = layout.specs_features_dir();
+        for seg in &segments[..i] {
+            p.push(seg);
+        }
+        p.push("INDEX.md");
+        paths.push(p);
+    }
+    paths
 }
 
 /// Parses a VERIFY.md document and counts unresolved checklist items + findings.
@@ -558,7 +596,10 @@ struct RollbackGuard {
     task_cwd: PathBuf,
     prev_toml: Option<TaskToml>,
     spec_file: Option<SpecFileSnapshot>,
-    features_index: Option<FeaturesIndexSnapshot>,
+    /// Snapshots for every INDEX that may be mutated during the leaf-to-root
+    /// upsert. `prev_bytes: None` means the INDEX did not exist pre-mutation,
+    /// so rollback unlinks it. Restore iterates in reverse insertion order.
+    features_indexes: Vec<FeaturesIndexSnapshot>,
     /// Adopted workspace snapshots, replayed in reverse adoption order on
     /// rollback. Each one's `rollback` does suffix-check truncate +
     /// `write_atomic` restore of the personal and top-level indices.
@@ -577,7 +618,8 @@ struct SpecFileSnapshot {
 
 struct FeaturesIndexSnapshot {
     path: PathBuf,
-    prev_bytes: Vec<u8>,
+    /// `None` means the INDEX did not exist pre-mutation; rollback unlinks it.
+    prev_bytes: Option<Vec<u8>>,
 }
 
 impl RollbackGuard {
@@ -587,7 +629,7 @@ impl RollbackGuard {
             task_cwd: task_cwd.to_path_buf(),
             prev_toml: None,
             spec_file: None,
-            features_index: None,
+            features_indexes: Vec::new(),
             record_snapshots: Vec::new(),
             workspace_paths: Vec::new(),
             ark_files: Vec::new(),
@@ -635,16 +677,28 @@ impl RollbackGuard {
         Ok(())
     }
 
+    /// Snapshots one INDEX path; pushes onto `features_indexes` (multiple
+    /// snapshots accumulate; restore is reverse insertion order).
     fn snapshot_features_index(&mut self, path: &Path) -> Result<()> {
         let prev_bytes = if path.exists() {
-            path.read_bytes()?
+            Some(path.read_bytes()?)
         } else {
-            Vec::new()
+            None
         };
-        self.features_index = Some(FeaturesIndexSnapshot {
+        self.features_indexes.push(FeaturesIndexSnapshot {
             path: path.to_path_buf(),
             prev_bytes,
         });
+        Ok(())
+    }
+
+    /// Snapshots every INDEX along the leaf-to-root path before any
+    /// mutation. Called once per `task_commit` after `parse_spec_path`
+    /// produces the segments.
+    fn snapshot_features_indexes(&mut self, paths: &[PathBuf]) -> Result<()> {
+        for p in paths {
+            self.snapshot_features_index(p)?;
+        }
         Ok(())
     }
 
@@ -711,13 +765,20 @@ impl RollbackGuard {
             }
         }
 
-        if let Some(snap) = &self.features_index
-            && let Err(e) = snap.path.write_bytes(&snap.prev_bytes)
-        {
-            eprintln!(
-                "rollback: features INDEX restore at {:?} failed: {e}",
-                snap.path
-            );
+        for snap in self.features_indexes.iter().rev() {
+            match &snap.prev_bytes {
+                Some(bytes) => {
+                    if let Err(e) = snap.path.write_bytes(bytes) {
+                        eprintln!(
+                            "rollback: features INDEX restore at {:?} failed: {e}",
+                            snap.path
+                        );
+                    }
+                }
+                None => {
+                    let _ = std::fs::remove_file(&snap.path);
+                }
+            }
         }
 
         if let Some(toml) = &self.prev_toml {
@@ -827,8 +888,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let layout = Layout::new(tmp.path());
         let task_dir = layout.task_dir("foo");
-        let spec_path = layout.specs_feature_dir("foo").join("SPEC.md");
-        let features_index = layout.specs_features_index();
+        let prd = task_dir.join("PRD.md");
+        let spec_path = layout
+            .specs_feature_dir(&["foo"], &prd)
+            .unwrap()
+            .join("SPEC.md");
+        let features_index = vec![layout.specs_features_index()];
         let no_workspace: &[PathBuf] = &[];
 
         let standard =
@@ -849,6 +914,42 @@ mod tests {
             &[PathBuf::from(".ark/workspace/alice/journal-1.md")],
         );
         assert_eq!(with_ws.len(), 4);
+    }
+
+    /// `intermediate_index_paths` returns leaf-to-root order.
+    #[test]
+    fn intermediate_index_paths_leaf_to_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        let segs = vec!["xemu".to_string(), "csr".to_string()];
+        let paths = intermediate_index_paths(&layout, &segs);
+        assert_eq!(paths.len(), 2);
+        assert!(paths[0].ends_with("specs/features/xemu/INDEX.md"));
+        assert!(paths[1].ends_with("specs/features/INDEX.md"));
+    }
+
+    /// Single-segment path → only root INDEX (preserves the legacy flat layout).
+    #[test]
+    fn intermediate_index_paths_single_segment_is_root_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        let segs = vec!["klib".to_string()];
+        let paths = intermediate_index_paths(&layout, &segs);
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("specs/features/INDEX.md"));
+    }
+
+    /// Three-segment path → three INDEXes, leaf to root.
+    #[test]
+    fn intermediate_index_paths_three_segments() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        let segs = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let paths = intermediate_index_paths(&layout, &segs);
+        assert_eq!(paths.len(), 3);
+        assert!(paths[0].ends_with("specs/features/a/b/INDEX.md"));
+        assert!(paths[1].ends_with("specs/features/a/INDEX.md"));
+        assert!(paths[2].ends_with("specs/features/INDEX.md"));
     }
 }
 
@@ -1259,6 +1360,12 @@ mod e2e {
             worktree: None,
         })
         .unwrap();
+        // Add a `[**SPEC Path**]` block to the seeded PRD; required on deep
+        // tier for `task_commit` to know where to land the promoted SPEC.
+        tmp.path()
+            .join(".ark/tasks/deep/PRD.md")
+            .write_bytes(b"[**SPEC Path**]\n\ndeep\n")
+            .unwrap();
         task_plan(TaskPhaseOptions {
             project_root: tmp.path().to_path_buf(),
             slug: "deep".into(),

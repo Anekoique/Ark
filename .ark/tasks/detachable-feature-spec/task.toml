@@ -1,0 +1,14 @@
+id = "detachable-feature-spec"
+title = "support detachable feature SPEC"
+tier = "deep"
+phase = "committed"
+iteration = 2
+max_iterations = 3
+created_at = "2026-05-18T07:47:53.080142Z"
+updated_at = "2026-05-18T13:52:47.322265Z"
+committed_at = "2026-05-18T13:52:47.322265Z"
+branch = "feat/detachable-feature-spec"
+worktree_path = ".ark/worktrees/feat/detachable-feature-spec"
+base_branch = "main"
+start_head = "5186b2aa377b3e7311864b86e4bc0c280b969ea7"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

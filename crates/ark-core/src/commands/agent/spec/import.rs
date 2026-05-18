@@ -12,7 +12,7 @@ use std::{fmt, path::PathBuf};
 use chrono::NaiveDate;
 
 use crate::{
-    commands::agent::spec::register::{sanitize_table_field, upsert_index_row},
+    commands::agent::spec::register::{sanitize_table_field, upsert_index_rows_leaf_to_root},
     error::{Error, Result},
     io::PathExt,
     layout::Layout,
@@ -27,8 +27,10 @@ pub const EXTRACTED_SENTINEL: &str = "extracted";
 pub struct SpecImportOptions {
     /// Project root containing the Ark installation.
     pub project_root: PathBuf,
-    /// Feature slug; doubles as the SPEC directory name.
-    pub feature: String,
+    /// Feature path segments relative to `.ark/specs/features/`; last segment
+    /// doubles as the SPEC directory name. Single-segment input reproduces
+    /// the legacy flat layout bit-for-bit.
+    pub feature_path: Vec<String>,
     /// Short scope rendered into the features index row.
     pub scope: String,
     /// Path to the authored SPEC body (raw, without provenance entry).
@@ -70,16 +72,30 @@ impl fmt::Display for SpecImportSummary {
 /// the target SPEC path already exists; [`Error::Io`] when the source body
 /// cannot be read or the target cannot be written.
 pub fn spec_import(opts: SpecImportOptions) -> Result<SpecImportSummary> {
-    let feature = sanitize_table_field("feature", &opts.feature)?;
+    if opts.feature_path.is_empty() {
+        return Err(Error::InvalidSpecField {
+            field: "feature_path".to_string(),
+            reason: "must not be empty",
+        });
+    }
+    let segments: Vec<String> = opts
+        .feature_path
+        .iter()
+        .map(|s| sanitize_table_field("feature_path", s))
+        .collect::<Result<_>>()?;
     let scope = sanitize_table_field("scope", &opts.scope)?;
     let from_commit = sanitize_table_field("from_commit", &opts.from_commit)?;
 
     let layout = Layout::new(&opts.project_root);
-    let target_dir = layout.specs_feature_dir(&feature);
+    let seg_refs: Vec<&str> = segments.iter().map(String::as_str).collect();
+    // Use the features INDEX path as the `source_path` sentinel; import is
+    // not PRD-anchored.
+    let target_dir = layout.specs_feature_dir(&seg_refs, layout.specs_features_index())?;
     let spec_path = target_dir.join("SPEC.md");
+    let feature_name = segments.last().cloned().unwrap_or_default();
     if spec_path.exists() {
         return Err(Error::SpecAlreadyExists {
-            feature: opts.feature,
+            feature: feature_name.clone(),
             path: spec_path,
         });
     }
@@ -90,16 +106,16 @@ pub fn spec_import(opts: SpecImportOptions) -> Result<SpecImportSummary> {
     target_dir.ensure_dir()?;
     spec_path.write_bytes(composed.as_bytes())?;
 
-    let _was_update = upsert_index_row(
+    let _ = upsert_index_rows_leaf_to_root(
         &opts.project_root,
-        &feature,
+        &segments,
         &scope,
         EXTRACTED_SENTINEL,
         opts.date,
     )?;
 
     Ok(SpecImportSummary {
-        feature: opts.feature,
+        feature: feature_name,
         spec_path,
         index_path: layout.specs_features_index(),
     })
@@ -242,7 +258,7 @@ mod tests {
 
         let summary = spec_import(SpecImportOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "copy-on-write".into(),
+            feature_path: vec!["copy-on-write".to_string()],
             scope: "memory subsystem COW".into(),
             from_file: body,
             from_commit: "abc1234".into(),
@@ -274,7 +290,7 @@ mod tests {
 
         let err = spec_import(SpecImportOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "cow".into(),
+            feature_path: vec!["cow".to_string()],
             scope: "x".into(),
             from_file: body,
             from_commit: "abc".into(),
@@ -292,7 +308,7 @@ mod tests {
 
         let err = spec_import(SpecImportOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "cow".into(),
+            feature_path: vec!["cow".to_string()],
             scope: "   ".into(),
             from_file: body,
             from_commit: "abc".into(),
@@ -309,7 +325,7 @@ mod tests {
 
         let err = spec_import(SpecImportOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "cow".into(),
+            feature_path: vec!["cow".to_string()],
             scope: "x".into(),
             from_file: tmp.path().join("does-not-exist.md"),
             from_commit: "abc".into(),
@@ -322,7 +338,7 @@ mod tests {
     #[test]
     fn summary_display_renders_one_line() {
         let s = SpecImportSummary {
-            feature: "cow".into(),
+            feature: "cow".to_string(),
             spec_path: PathBuf::from("/x/.ark/specs/features/cow/SPEC.md"),
             index_path: PathBuf::from("/x/.ark/specs/features/INDEX.md"),
         };
@@ -344,7 +360,7 @@ mod tests {
         crate::commands::agent::spec::spec_register(
             crate::commands::agent::spec::SpecRegisterOptions {
                 project_root: tmp.path().to_path_buf(),
-                feature: "billing".into(),
+                feature_path: vec!["billing".to_string()],
                 scope: "billing svc".into(),
                 from_task: "billing".into(),
                 date: date(),
@@ -355,7 +371,7 @@ mod tests {
         let body = write_body(tmp.path(), "[**Goals**]\n\n- G-1: x\n");
         spec_import(SpecImportOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "cow".into(),
+            feature_path: vec!["cow".to_string()],
             scope: "memory cow".into(),
             from_file: body,
             from_commit: "abc1234".into(),

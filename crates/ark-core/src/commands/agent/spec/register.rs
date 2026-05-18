@@ -23,8 +23,9 @@ use crate::{
 pub struct SpecRegisterOptions {
     /// Project root containing the Ark installation.
     pub project_root: PathBuf,
-    /// Feature slug or name to upsert.
-    pub feature: String,
+    /// Feature path segments relative to `.ark/specs/features/`. Single-segment
+    /// `["slug"]` reproduces the legacy flat layout bit-for-bit.
+    pub feature_path: Vec<String>,
     /// Short scope description rendered in the index table.
     pub scope: String,
     /// Task slug that promoted the feature SPEC.
@@ -36,10 +37,12 @@ pub struct SpecRegisterOptions {
 /// Summary of a feature SPEC registration.
 #[derive(Debug, Clone)]
 pub struct SpecRegisterSummary {
-    /// Feature slug or name that was registered.
-    pub feature: String,
-    /// Reports whether an existing index row was replaced.
+    /// Feature path segments that were registered.
+    pub feature_path: Vec<String>,
+    /// Reports whether the leaf row was replaced.
     pub was_update: bool,
+    /// INDEX files touched, ordered leaf-to-root.
+    pub indexes_touched: Vec<PathBuf>,
 }
 
 impl fmt::Display for SpecRegisterSummary {
@@ -49,46 +52,123 @@ impl fmt::Display for SpecRegisterSummary {
         } else {
             "registered"
         };
-        write!(f, "{verb} feature `{}` in features INDEX", self.feature)
+        write!(
+            f,
+            "{verb} feature `{}` in features INDEX (touched {} index file(s))",
+            self.feature_path.join("/"),
+            self.indexes_touched.len(),
+        )
     }
 }
 
-/// Registers or updates one feature row in the feature index.
+/// Registers or updates one feature row in the recursive features INDEX tree.
+///
+/// Walks leaf-to-root, upserting a row at each level: leaf row points at the
+/// SPEC file, branch rows point at the child INDEX. Missing intermediate
+/// INDEX files are seeded from `FEATURE_SUBTREE_INDEX.md`.
 pub fn spec_register(opts: SpecRegisterOptions) -> Result<SpecRegisterSummary> {
-    let feature = sanitize_table_field("feature", &opts.feature)?;
+    if opts.feature_path.is_empty() {
+        return Err(Error::InvalidSpecField {
+            field: "feature_path".to_string(),
+            reason: "must not be empty",
+        });
+    }
+    let segments: Vec<String> = opts
+        .feature_path
+        .iter()
+        .map(|s| sanitize_table_field("feature_path", s))
+        .collect::<Result<_>>()?;
     let scope = sanitize_table_field("scope", &opts.scope)?;
     let from_task = sanitize_table_field("from_task", &opts.from_task)?;
 
-    let was_update = upsert_index_row(&opts.project_root, &feature, &scope, &from_task, opts.date)?;
+    let (was_update, indexes_touched) = upsert_index_rows_leaf_to_root(
+        &opts.project_root,
+        &segments,
+        &scope,
+        &from_task,
+        opts.date,
+    )?;
 
     Ok(SpecRegisterSummary {
-        feature: opts.feature,
+        feature_path: opts.feature_path,
         was_update,
+        indexes_touched,
     })
 }
 
-/// Upserts a feature row in `specs/features/INDEX.md`.
+/// Upserts rows from leaf to root in the recursive features INDEX tree.
 ///
 /// Shared between `spec_register` (deep-tier promotion) and `spec_import`
 /// (brownfield extraction). Inputs are assumed pre-sanitized.
-pub(crate) fn upsert_index_row(
+///
+/// For segments `[a, b, c]`:
+/// - `features/a/b/INDEX.md`: row `c/SPEC.md` (leaf)
+/// - `features/a/INDEX.md`:   row `b/INDEX.md` (branch)
+/// - `features/INDEX.md`:     row `a/INDEX.md` (branch)
+///
+/// Returns `(was_update_at_leaf, indexes_touched_leaf_to_root)`. Each missing
+/// intermediate INDEX is seeded from `FEATURE_SUBTREE_INDEX.md` before its
+/// row is upserted.
+pub(crate) fn upsert_index_rows_leaf_to_root(
     project_root: &Path,
-    feature: &str,
+    segments: &[String],
     scope: &str,
     from_task: &str,
     date: NaiveDate,
-) -> Result<bool> {
+) -> Result<(bool, Vec<PathBuf>)> {
     let layout = Layout::new(project_root);
-    let index_path = layout.specs_features_index();
+    let mut indexes_touched = Vec::with_capacity(segments.len());
+    let mut leaf_was_update = false;
+
+    for i in (0..segments.len()).rev() {
+        let mut parent_dir = layout.specs_features_dir();
+        for seg in &segments[..i] {
+            parent_dir.push(seg);
+        }
+        let index_path = parent_dir.join("INDEX.md");
+        let child = &segments[i];
+        let is_leaf = i == segments.len() - 1;
+
+        ensure_subtree_index(&index_path)?;
+
+        // Leaf rows render with the bare segment so single-segment paths
+        // preserve the legacy flat on-disk shape bit-for-bit; branch rows
+        // carry the `<seg>/INDEX.md` suffix so the gather walker's
+        // `strip_suffix("/INDEX.md")` discriminator descends into the
+        // subtree.
+        let row_feature = if is_leaf {
+            child.clone()
+        } else {
+            format!("{child}/INDEX.md")
+        };
+
+        let existing_body = read_managed_block(&index_path, FEATURES_MARKER)?.unwrap_or_default();
+        let (new_body, was_update) =
+            upsert_row_with_target(&existing_body, &row_feature, "", scope, from_task, date);
+        update_managed_block(&index_path, FEATURES_MARKER, &new_body)?;
+
+        if is_leaf {
+            leaf_was_update = was_update;
+        }
+        indexes_touched.push(index_path);
+    }
+
+    Ok((leaf_was_update, indexes_touched))
+}
+
+/// Seeds an `INDEX.md` from the embedded subtree template if missing.
+///
+/// The root `features/INDEX.md` is shipped by `ark init`; only subtree
+/// `INDEX.md` files need lazy creation here. Existing files are left alone
+/// (the managed-block helper handles row upsert).
+fn ensure_subtree_index(index_path: &Path) -> Result<()> {
     if let Some(parent) = index_path.parent() {
         parent.ensure_dir()?;
     }
-
-    let existing_body = read_managed_block(&index_path, FEATURES_MARKER)?.unwrap_or_default();
-    let (new_body, was_update) = upsert_row(&existing_body, feature, scope, from_task, date);
-    update_managed_block(&index_path, FEATURES_MARKER, &new_body)?;
-
-    Ok(was_update)
+    if !index_path.exists() {
+        index_path.write_bytes(crate::templates::FEATURE_SUBTREE_INDEX_MD.as_bytes())?;
+    }
+    Ok(())
 }
 
 /// Sanitizes a markdown table field.
@@ -118,12 +198,16 @@ const HEADER: [&str; 2] = [
     "|---------|-------|----------|",
 ];
 
-/// Upserts a markdown table row for `feature` in `body`.
+/// Upserts a markdown table row for `feature` in `body`. The `target` field
+/// is rendered into the row body (currently the SPEC scope column carries
+/// the textual scope, but readers can derive the on-disk target from the
+/// feature name + the INDEX's own location).
 ///
 /// Preserves rows for other features. Returns `(new_body, was_update)`.
-fn upsert_row(
+fn upsert_row_with_target(
     body: &str,
     feature: &str,
+    _target: &str,
     scope: &str,
     from_task: &str,
     date: NaiveDate,
@@ -194,7 +278,7 @@ mod tests {
 
         let s = spec_register(SpecRegisterOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "oauth".into(),
+            feature_path: vec!["oauth".to_string()],
             scope: "OAuth integration".into(),
             from_task: "oauth".into(),
             date: NaiveDate::from_ymd_opt(2026, 4, 24).unwrap(),
@@ -216,7 +300,7 @@ mod tests {
         project_with_empty_index(tmp.path());
         let opts = |scope: &str| SpecRegisterOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "oauth".into(),
+            feature_path: vec!["oauth".to_string()],
             scope: scope.into(),
             from_task: "oauth".into(),
             date: NaiveDate::from_ymd_opt(2026, 4, 24).unwrap(),
@@ -240,7 +324,7 @@ mod tests {
         for (f, sc) in [("oauth", "A"), ("billing", "B")] {
             spec_register(SpecRegisterOptions {
                 project_root: tmp.path().to_path_buf(),
-                feature: f.into(),
+                feature_path: vec![f.to_string()],
                 scope: sc.into(),
                 from_task: f.into(),
                 date: NaiveDate::from_ymd_opt(2026, 4, 24).unwrap(),
@@ -262,7 +346,7 @@ mod tests {
         project_with_empty_index(tmp.path());
         let err = spec_register(SpecRegisterOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "oa|uth".into(),
+            feature_path: vec!["oa|uth".to_string()],
             scope: "ok".into(),
             from_task: "oauth".into(),
             date: NaiveDate::from_ymd_opt(2026, 4, 24).unwrap(),
@@ -271,14 +355,87 @@ mod tests {
         assert!(matches!(err, Error::InvalidSpecField { .. }));
     }
 
+    /// Nested register produces a branch row whose first cell carries the
+    /// `<seg>/INDEX.md` discriminator, and a leaf row at the subtree INDEX
+    /// with a bare-slug first cell. Verifies the row text that the gather
+    /// walker keys off.
+    #[test]
+    fn nested_register_writes_branch_discriminator_row() {
+        let tmp = tempfile::tempdir().unwrap();
+        project_with_empty_index(tmp.path());
+
+        spec_register(SpecRegisterOptions {
+            project_root: tmp.path().to_path_buf(),
+            feature_path: vec!["xemu".to_string(), "csr".to_string()],
+            scope: "CSR file".into(),
+            from_task: "csr".into(),
+            date: NaiveDate::from_ymd_opt(2026, 5, 18).unwrap(),
+        })
+        .unwrap();
+
+        // Root features INDEX gains a branch row `xemu/INDEX.md`.
+        let root_idx = tmp
+            .path()
+            .join(".ark/specs/features/INDEX.md")
+            .read_text()
+            .unwrap();
+        assert!(
+            root_idx.contains("| `xemu/INDEX.md` |"),
+            "root INDEX must carry branch discriminator; got:\n{root_idx}",
+        );
+
+        // Subtree INDEX exists and has a leaf row (bare slug).
+        let subtree_idx = tmp
+            .path()
+            .join(".ark/specs/features/xemu/INDEX.md")
+            .read_text()
+            .unwrap();
+        assert!(
+            subtree_idx.contains("| `csr` |"),
+            "subtree INDEX must carry bare-slug leaf row; got:\n{subtree_idx}",
+        );
+        assert!(
+            !subtree_idx.contains("| `csr/SPEC.md` |"),
+            "leaf rows must be bare-slug so single-segment paths preserve the legacy flat layout",
+        );
+    }
+
+    /// Single-segment register preserves the legacy flat layout bit-for-bit
+    /// (no branch discriminator, no subtree INDEX).
+    #[test]
+    fn single_segment_register_preserves_flat_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        project_with_empty_index(tmp.path());
+
+        spec_register(SpecRegisterOptions {
+            project_root: tmp.path().to_path_buf(),
+            feature_path: vec!["klib".to_string()],
+            scope: "shared lib".into(),
+            from_task: "klib".into(),
+            date: NaiveDate::from_ymd_opt(2026, 5, 18).unwrap(),
+        })
+        .unwrap();
+
+        let idx = tmp
+            .path()
+            .join(".ark/specs/features/INDEX.md")
+            .read_text()
+            .unwrap();
+        assert!(idx.contains("| `klib` |"), "got:\n{idx}");
+        assert!(
+            !idx.contains("INDEX.md` |"),
+            "single-segment must not produce a branch discriminator",
+        );
+    }
+
     #[test]
     fn rejects_newline_in_scope() {
         let tmp = tempfile::tempdir().unwrap();
         project_with_empty_index(tmp.path());
         let err = spec_register(SpecRegisterOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "oauth".into(),
-            scope: "line1\nline2".into(),
+            feature_path: vec!["oauth".to_string()],
+            scope: "line1\nline2".to_string(),
             from_task: "oauth".into(),
             date: NaiveDate::from_ymd_opt(2026, 4, 24).unwrap(),
         })
@@ -292,7 +449,7 @@ mod tests {
         project_with_empty_index(tmp.path());
         let err = spec_register(SpecRegisterOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "   ".into(),
+            feature_path: vec!["   ".to_string()],
             scope: "ok".into(),
             from_task: "oauth".into(),
             date: NaiveDate::from_ymd_opt(2026, 4, 24).unwrap(),
@@ -311,7 +468,7 @@ mod tests {
 
         let err = spec_register(SpecRegisterOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "oauth".into(),
+            feature_path: vec!["oauth".to_string()],
             scope: "ok".into(),
             from_task: "oauth".into(),
             date: NaiveDate::from_ymd_opt(2026, 4, 24).unwrap(),

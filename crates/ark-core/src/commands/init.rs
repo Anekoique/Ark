@@ -409,7 +409,7 @@ mod tests {
 
         spec_register(SpecRegisterOptions {
             project_root: tmp.path().to_path_buf(),
-            feature: "alpha".into(),
+            feature_path: vec!["alpha".to_string()],
             scope: "first".into(),
             from_task: "alpha".into(),
             date: chrono::NaiveDate::from_ymd_opt(2026, 4, 24).unwrap(),

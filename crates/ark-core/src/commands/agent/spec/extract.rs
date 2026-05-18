@@ -29,6 +29,10 @@ pub struct SpecExtractOptions {
     pub project_root: PathBuf,
     /// Task slug whose plan contains the SPEC section.
     pub slug: String,
+    /// Feature path segments relative to `.ark/specs/features/`; last segment
+    /// must equal `slug`. Defaults to `vec![slug.clone()]` (single-segment
+    /// root-level leaf) when callers want the legacy flat layout.
+    pub feature_path: Vec<String>,
     /// Optional explicit plan path; defaults to highest-NN `NN_PLAN.md`.
     pub plan_override: Option<PathBuf>,
     /// Optional task directory override.
@@ -93,7 +97,17 @@ pub fn spec_extract(opts: SpecExtractOptions) -> Result<SpecExtractSummary> {
         plan_path: plan_path.clone(),
     })?;
 
-    let target_dir = layout.specs_feature_dir(&opts.slug);
+    // Default to single-segment when caller did not pass a path (preserves
+    // legacy flat layout). PRD-anchored callers (deep-tier `task_commit`)
+    // populate `feature_path` from `parse_spec_path`.
+    let segments: Vec<String> = if opts.feature_path.is_empty() {
+        vec![opts.slug.clone()]
+    } else {
+        opts.feature_path.clone()
+    };
+    let seg_refs: Vec<&str> = segments.iter().map(String::as_str).collect();
+    let prd_path = task_dir.join("PRD.md");
+    let target_dir = layout.specs_feature_dir(&seg_refs, &prd_path)?;
     target_dir.ensure_dir()?;
     let target_path = target_dir.join("SPEC.md");
     let was_update = target_path.exists();
@@ -253,6 +267,7 @@ mod tests {
         let s = spec_extract(SpecExtractOptions {
             project_root: tmp.path().to_path_buf(),
             slug: "demo".into(),
+            feature_path: vec![],
             plan_override: None,
             task_dir_override: None,
         })
@@ -273,6 +288,7 @@ mod tests {
         spec_extract(SpecExtractOptions {
             project_root: tmp.path().to_path_buf(),
             slug: "demo".into(),
+            feature_path: vec![],
             plan_override: None,
             task_dir_override: None,
         })
@@ -286,6 +302,7 @@ mod tests {
         let s = spec_extract(SpecExtractOptions {
             project_root: tmp.path().to_path_buf(),
             slug: "demo".into(),
+            feature_path: vec![],
             plan_override: None,
             task_dir_override: None,
         })
@@ -311,6 +328,7 @@ mod tests {
         let err = spec_extract(SpecExtractOptions {
             project_root: tmp.path().to_path_buf(),
             slug: "demo".into(),
+            feature_path: vec![],
             plan_override: None,
             task_dir_override: None,
         })
@@ -331,10 +349,40 @@ mod tests {
         let err = spec_extract(SpecExtractOptions {
             project_root: tmp.path().to_path_buf(),
             slug: "demo".into(),
+            feature_path: vec![],
             plan_override: None,
             task_dir_override: None,
         })
         .unwrap_err();
         assert!(matches!(err, Error::SpecSectionMissing { .. }));
+    }
+
+    /// Nested feature path writes the SPEC at the nested location and
+    /// auto-creates the directory chain.
+    #[test]
+    fn spec_extract_writes_to_nested_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_deep_with_plan_body(
+            tmp.path(),
+            "## Spec\n\n[**Goals**]\n- G-1: nested\n\n## Runtime\n",
+        );
+
+        let s = spec_extract(SpecExtractOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+            feature_path: vec!["xemu".to_string(), "demo".to_string()],
+            plan_override: None,
+            task_dir_override: None,
+        })
+        .unwrap();
+        assert!(!s.was_update);
+        assert!(
+            s.target_path
+                .ends_with(".ark/specs/features/xemu/demo/SPEC.md"),
+            "target_path: {:?}",
+            s.target_path,
+        );
+        let spec = s.target_path.read_text().unwrap();
+        assert!(spec.contains("G-1: nested"));
     }
 }

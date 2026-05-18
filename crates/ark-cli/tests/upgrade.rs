@@ -359,7 +359,7 @@ fn spec_register_then_upgrade_is_noop() {
     init_ark(tmp.path());
     spec_register(SpecRegisterOptions {
         project_root: tmp.path().to_path_buf(),
-        feature: "demo".into(),
+        feature_path: vec!["demo".to_string()],
         scope: "demo scope".into(),
         from_task: "demo-task".into(),
         date: NaiveDate::from_ymd_opt(2026, 4, 24).unwrap(),
