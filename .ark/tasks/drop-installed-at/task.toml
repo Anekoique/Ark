@@ -1,0 +1,10 @@
+id = "drop-installed-at"
+title = "drop installed_at from .installed.json manifest"
+tier = "quick"
+phase = "committed"
+iteration = 0
+created_at = "2026-05-18T14:17:08.541236Z"
+updated_at = "2026-05-18T14:22:11.549777Z"
+committed_at = "2026-05-18T14:22:11.549777Z"
+start_head = "395ba8d500f1105518408b99500fc75b379df725"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

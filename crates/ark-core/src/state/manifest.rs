@@ -8,7 +8,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -24,8 +23,6 @@ pub const MANIFEST_RELATIVE_PATH: &str = ".ark/.installed.json";
 pub struct Manifest {
     /// Ark version that wrote the manifest.
     pub version: String,
-    /// Timestamp when the installation was recorded.
-    pub installed_at: DateTime<Utc>,
     /// Project-relative files managed by Ark.
     pub files: Vec<PathBuf>,
     /// Managed text blocks installed by Ark.
@@ -49,7 +46,6 @@ impl Manifest {
     pub fn new() -> Self {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
-            installed_at: Utc::now(),
             files: Vec::new(),
             managed_blocks: Vec::new(),
             hashes: BTreeMap::new(),

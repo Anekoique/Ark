@@ -460,3 +460,30 @@ Generalize `specs/features/` into a recursive tree; deep-tier PRDs declare a req
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 18: drop installed_at from manifest
+
+**Date**: 2026-05-18
+**Slug**: drop-installed-at
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `395ba8d`
+**Closing Commit**: <PENDING:drop-installed-at>
+
+### Summary
+
+Drop `installed_at` from `.installed.json` so no-op upgrades stop churning the manifest diff; serde ignores the legacy field on read.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| manifest | Remove `Manifest.installed_at` + `chrono::{DateTime, Utc}` import from `state/manifest.rs` |
+| upgrade | Drop `manifest.installed_at = Utc::now()` and unused `chrono::Utc` import in `commands/upgrade/mod.rs` |
+| spec | `features/ark-upgrade/SPEC.md` pipeline diagram + Manifest struct lose the field |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

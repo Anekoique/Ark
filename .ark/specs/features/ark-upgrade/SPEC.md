@@ -43,7 +43,6 @@ upgrade(opts, prompter)
   ├── update_managed_block(CLAUDE.md, "ARK", MANAGED_BLOCK_BODY)
   ├── update_settings_hook(.claude/settings.json, ark_session_start_hook_entry())
   ├── manifest.version = CARGO_PKG_VERSION
-  ├── manifest.installed_at = Utc::now()
   ├── manifest.write()                                     ← durable BEFORE deletions
   ├── apply_deletions()                                    (Delete, DropManifestEntry)
   ├── manifest.write() again iff deletions mutated the manifest
@@ -57,7 +56,6 @@ upgrade(opts, prompter)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     pub version: String,
-    pub installed_at: DateTime<Utc>,
     pub files: Vec<PathBuf>,
     pub managed_blocks: Vec<ManagedBlock>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

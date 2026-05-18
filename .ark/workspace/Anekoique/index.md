@@ -24,6 +24,7 @@
 | 15 | 2026-05-11 | rfc001-arkos | `rfc001-arkos` | `docs/rfc001-arkos` | <PENDING:rfc001-arkos> | `journal-1.md` |
 | 16 | 2026-05-11 | guard journal stamp contract | `guard-journal-stamp` | `feat/guard-journal-stamp` | <PENDING:guard-journal-stamp> | `journal-1.md` |
 | 17 | 2026-05-18 | support detachable feature SPEC | `detachable-feature-spec` | `feat/detachable-feature-spec` | <PENDING:detachable-feature-spec> | `journal-1.md` |
+| 18 | 2026-05-18 | drop installed_at from manifest | `drop-installed-at` | `main` | <PENDING:drop-installed-at> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

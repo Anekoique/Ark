@@ -15,8 +15,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::Utc;
-
 use crate::{
     error::{Error, Result},
     io::{PathExt, merge_managed_blocks},
@@ -349,7 +347,6 @@ pub fn upgrade(opts: UpgradeOptions, prompter: &mut dyn Prompter) -> Result<Upgr
 
     // Durable manifest write BEFORE any delete can fail.
     manifest.version = cli_version;
-    manifest.installed_at = Utc::now();
     manifest.write(layout.root())?;
 
     let mut manifest_mutated = false;
