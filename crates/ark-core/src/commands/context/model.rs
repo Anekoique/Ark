@@ -184,20 +184,60 @@ pub struct SpecsState {
     pub project: Vec<SpecRow>,
     /// Feature SPEC rows.
     pub features: Vec<SpecRow>,
+    /// Drift warnings emitted by the recursive features INDEX walk. Empty
+    /// in healthy projects; populated when on-disk SPECs and INDEX rows
+    /// disagree.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub features_warnings: Vec<GatherWarning>,
 }
 
 /// One row from a SPEC index.
 #[derive(Debug, Clone, Serialize)]
 pub struct SpecRow {
-    /// SPEC name.
+    /// SPEC name (last path segment / leaf slug).
     pub name: String,
-    /// SPEC file path.
+    /// SPEC file path, project-root-relative (e.g.
+    /// `.ark/specs/features/<...>/SPEC.md`). Preserved unchanged across the
+    /// recursive-tree refactor for back-compat.
     pub path: PathBuf,
+    /// Segments relative to `.ark/specs/features/`, e.g. `["xemu", "csr"]`.
+    /// Empty for project SPEC rows. Single-segment for legacy flat layout.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub feature_path: Vec<String>,
     /// Scope text from the index row.
     pub scope: String,
     /// Promotion provenance for feature SPEC rows.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub promoted: Option<String>,
+}
+
+/// Drift warning emitted by the recursive features INDEX walk.
+///
+/// `gather::parse_features_index` is INDEX-strict (rows declare traversal),
+/// so any mismatch between rows and the filesystem surfaces as a warning
+/// instead of being silently dropped. Consumers can ignore the field
+/// (it serializes only when non-empty) or treat warnings as advisory
+/// signals for index repair.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum GatherWarning {
+    /// An INDEX row points at a child file that does not exist on disk.
+    MissingChild {
+        /// The row's first cell verbatim.
+        row: String,
+        /// The expected on-disk path of the missing child.
+        expected_path: PathBuf,
+    },
+    /// An on-disk leaf `SPEC.md` is not rowed in any parent INDEX.
+    OrphanLeaf {
+        /// On-disk path of the orphan leaf.
+        path: PathBuf,
+    },
+    /// An on-disk subtree directory is not rowed in its parent INDEX.
+    OrphanSubtree {
+        /// On-disk path of the orphan subtree.
+        path: PathBuf,
+    },
 }
 
 /// Recent archive state.

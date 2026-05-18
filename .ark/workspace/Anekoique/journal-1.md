@@ -431,3 +431,32 @@ CLI now refuses `task commit` when the journal's last `## Session` heading is al
 | Hash | Message |
 |------|---------|
 | `cd50a33` | feat(rfc): add rfc001-arkos |
+
+
+## Session 17: support detachable feature SPEC
+
+**Date**: 2026-05-18
+**Slug**: detachable-feature-spec
+**Branch**: `feat/detachable-feature-spec`
+**Base Branch**: `main`
+**Start Head**: `5186b2a`
+**Closing Commit**: <PENDING:detachable-feature-spec>
+
+### Summary
+
+Generalize `specs/features/` into a recursive tree; deep-tier PRDs declare a required `[**SPEC Path**]` that `task commit` reads to land the SPEC and walk INDEXes leaf-to-root.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| spec | PRD `[**SPEC Path**]` parser + `Layout::specs_feature_dir(&[&str]) -> Result<PathBuf>`; leaf-to-root INDEX upsert with branch discriminator `<seg>/INDEX.md` |
+| context | `SpecRow.feature_path` + `GatherWarning` (MissingChild / OrphanLeaf / OrphanSubtree); recursive INDEX-strict walk with depth bound |
+| commit | `RollbackGuard.features_indexes: Vec<_>` snapshots every level pre-mutation; reverse-order restore |
+| docs | recursive `features/` tree documented; new EXECUTE rule keeps Ark workflow context out of shipped source |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

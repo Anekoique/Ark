@@ -20,6 +20,7 @@ The table below is managed by `ark agent spec register` — new rows appear when
 | `ark-workflow-refactor`    | refactor ark-workflow                     | 2026-05-02 from task `ark-workflow-refactor`    |
 | `workspace` | add workspace support | 2026-05-02 from task `workspace` |
 | `subagent-support` | add researcher/reviewer/verifier subagents across claude/codex/opencode | 2026-05-10 from task `subagent-support` |
+| `detachable-feature-spec` | support detachable feature SPEC | 2026-05-18 from task `detachable-feature-spec` |
 
 <!-- ARK:FEATURES:END -->
 

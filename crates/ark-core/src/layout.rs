@@ -266,9 +266,38 @@ impl Layout {
         self.root.join(SPECS_FEATURES_DIR)
     }
 
-    /// Returns the feature-spec directory for `feature`.
-    pub fn specs_feature_dir(&self, feature: &str) -> PathBuf {
-        self.specs_features_dir().join(feature)
+    /// Returns the feature-spec directory for a `/`-joined segments path.
+    ///
+    /// Revalidates every segment against the kebab-case alphabet
+    /// (`^[a-z0-9][a-z0-9_-]*$`); rejects `.`, `..`, empty segments, and
+    /// case-insensitive reserved names `index` / `spec`. `parse_spec_path`
+    /// and this method are the two `Result`-returning constructors of a
+    /// validated feature path (cf. `Layout::resolve_safe` precedent).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidFeaturePath`] if any segment fails
+    /// validation. `source_path` is set to the caller-provided origin so
+    /// the error carries provenance.
+    pub fn specs_feature_dir(
+        &self,
+        segments: &[&str],
+        source_path: impl Into<PathBuf>,
+    ) -> Result<PathBuf> {
+        let source_path = source_path.into();
+        if segments.is_empty() {
+            return Err(Error::InvalidFeaturePath {
+                source_path,
+                value: String::new(),
+                reason: "empty SPEC path",
+            });
+        }
+        let mut out = self.specs_features_dir();
+        for seg in segments {
+            validate_feature_path_segment(seg, &source_path)?;
+            out.push(seg);
+        }
+        Ok(out)
     }
 
     /// Returns the feature-spec index path.
@@ -494,6 +523,48 @@ impl Layout {
     }
 }
 
+/// Validates one feature-path segment against the kebab-case alphabet plus
+/// reserved-name rules. Shared by `Layout::specs_feature_dir` and
+/// `parse_spec_path` so the two constructors stay consistent.
+pub(crate) fn validate_feature_path_segment(seg: &str, source_path: &Path) -> Result<()> {
+    let invalid = |reason: &'static str| -> Error {
+        Error::InvalidFeaturePath {
+            source_path: source_path.to_path_buf(),
+            value: seg.to_string(),
+            reason,
+        }
+    };
+    if seg.is_empty() {
+        return Err(invalid("empty segment"));
+    }
+    if seg == "." {
+        return Err(invalid("segment contains `.`"));
+    }
+    if seg == ".." {
+        return Err(invalid("segment contains `..`"));
+    }
+    let lower = seg.to_ascii_lowercase();
+    if lower == "index" || lower == "spec" {
+        return Err(invalid("reserved segment name"));
+    }
+    let mut bytes = seg.bytes();
+    let Some(first) = bytes.next() else {
+        // Already rejected at the `is_empty()` guard above; defensive fallback.
+        return Err(invalid("empty segment"));
+    };
+    if !(first.is_ascii_lowercase() || first.is_ascii_digit()) {
+        return Err(invalid("segment must start with lowercase letter or digit"));
+    }
+    for b in bytes {
+        if !(b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_') {
+            return Err(invalid(
+                "segment must be kebab-case (`^[a-z0-9][a-z0-9_-]*$`)",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn classify_unsafe(path: &Path) -> Option<&'static str> {
     if path.as_os_str().is_empty() {
         return Some("empty path");
@@ -519,6 +590,67 @@ mod tests {
 
     fn layout() -> Layout {
         Layout::new("/project")
+    }
+
+    fn fake_prd() -> PathBuf {
+        PathBuf::from("/project/.ark/tasks/x/PRD.md")
+    }
+
+    /// Verifies happy-path joining of 1/2/3-segment feature paths.
+    #[test]
+    fn specs_feature_dir_joins_segments() {
+        let l = layout();
+        assert_eq!(
+            l.specs_feature_dir(&["klib"], fake_prd()).unwrap(),
+            PathBuf::from("/project/.ark/specs/features/klib"),
+        );
+        assert_eq!(
+            l.specs_feature_dir(&["xemu", "csr"], fake_prd()).unwrap(),
+            PathBuf::from("/project/.ark/specs/features/xemu/csr"),
+        );
+        assert_eq!(
+            l.specs_feature_dir(&["core", "runtime", "scheduler"], fake_prd())
+                .unwrap(),
+            PathBuf::from("/project/.ark/specs/features/core/runtime/scheduler"),
+        );
+    }
+
+    /// Empty segments slice is rejected (`InvalidFeaturePath`).
+    #[test]
+    fn specs_feature_dir_rejects_empty_segments() {
+        let err = layout().specs_feature_dir(&[], fake_prd()).unwrap_err();
+        assert!(matches!(err, Error::InvalidFeaturePath { .. }));
+    }
+
+    /// Reserved segment names and bad alphabets are rejected.
+    #[test]
+    fn specs_feature_dir_rejects_reserved_and_bad_alphabet() {
+        for bad in ["INDEX", "index", "SPEC", "spec", ".", ".."] {
+            let err = layout().specs_feature_dir(&[bad], fake_prd()).unwrap_err();
+            assert!(
+                matches!(err, Error::InvalidFeaturePath { .. }),
+                "case `{bad}`"
+            );
+        }
+        for bad in ["Xemu", "-csr", "x csr", "xemu/csr", "xemu.csr", ""] {
+            let err = layout().specs_feature_dir(&[bad], fake_prd()).unwrap_err();
+            assert!(
+                matches!(err, Error::InvalidFeaturePath { .. }),
+                "case `{bad}`"
+            );
+        }
+    }
+
+    /// Validation runs per segment; only the offending one is reported.
+    #[test]
+    fn specs_feature_dir_reports_first_bad_segment() {
+        let err = layout()
+            .specs_feature_dir(&["xemu", "Bad"], fake_prd())
+            .unwrap_err();
+        let Error::InvalidFeaturePath { value, .. } = err else {
+            panic!("wrong variant");
+        };
+        assert_eq!(value, "Bad");
     }
 
     #[test]

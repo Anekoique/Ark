@@ -485,7 +485,10 @@ mod tests {
             "archive must not modify the features INDEX"
         );
         assert!(
-            !layout.specs_feature_dir("qd").exists(),
+            !layout
+                .specs_feature_dir(&["qd"], PathBuf::from(""))
+                .unwrap()
+                .exists(),
             "archive must not create a SPEC dir for the slug"
         );
     }
