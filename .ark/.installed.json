@@ -1,5 +1,5 @@
 {
-  "version": "0.1.5",
+  "version": "0.1.6",
   "files": [
     ".ark/.gitignore",
     ".ark/workflow.md",
@@ -57,7 +57,7 @@
   "hashes": {
     ".ark/.gitignore": "be619e7da0436ad2054164edae1960361e431d8e69a6e4e00c54c7545d1b9afb",
     ".ark/specs/INDEX.md": "04926b580be21fc0ca5553254e2fff40136ac3fda507052edf41b9c96ff906f3",
-    ".ark/specs/features/INDEX.md": "df582ca55c09b8333f6fc3b9bcfa074a01a2f9a105db19a1315b0ce4ea0cb8e7",
+    ".ark/specs/features/INDEX.md": "4a7bf46d46711478b7c4bd7ba717098ad59e6770dfa21a6103e76f2f9a0170fa",
     ".ark/templates/PLAN.md": "02f71fceba992ad44ffc2e3cabbd11e91bc87f405e946fee813cc2b9454ea9d5",
     ".ark/templates/PRD.md": "f95b14d683aed0992949b51de159067640dbf195d777beddc250e07cb8e18d8f",
     ".ark/templates/REVIEW.md": "b9991316a1f0c8a4208f2ffd37ad59a2eff6febaed17eb8ad1512d886390300e",

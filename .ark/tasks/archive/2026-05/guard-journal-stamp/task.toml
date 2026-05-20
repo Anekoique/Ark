@@ -1,10 +1,11 @@
 id = "guard-journal-stamp"
 title = "guard journal stamp contract"
 tier = "standard"
-phase = "committed"
+phase = "archived"
 iteration = 0
 created_at = "2026-05-11T06:12:50.593190Z"
-updated_at = "2026-05-11T06:41:32.517960Z"
+updated_at = "2026-05-20T12:06:58.701668Z"
+archived_at = "2026-05-20T12:06:58.701668Z"
 committed_at = "2026-05-11T06:41:32.517960Z"
 branch = "feat/guard-journal-stamp"
 worktree_path = ".ark/worktrees/feat/guard-journal-stamp"

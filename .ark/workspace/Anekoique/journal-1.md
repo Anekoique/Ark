@@ -281,7 +281,7 @@ Non-targeted task verbs now resolve via a single per-checkout `[focus]` field in
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `ab40c67`
-**Closing Commit**: <PENDING:recursive-verify-seeding>
+**Closing Commit**: 8372470
 
 ### Summary
 
@@ -299,7 +299,7 @@ Seeded VERIFY's `Project Spec Compliance` walks `specs/project/INDEX.md` recursi
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `8372470` | feat(workflow): add recursive VERIFY seeding |
 
 ## Session 12: Scaffold workspace files during ark init
 
@@ -308,7 +308,7 @@ Seeded VERIFY's `Project Spec Compliance` walks `specs/project/INDEX.md` recursi
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `8372470`
-**Closing Commit**: <PENDING:fix-workspace-init>
+**Closing Commit**: f14837c
 
 ### Summary
 
@@ -326,7 +326,7 @@ Seeded VERIFY's `Project Spec Compliance` walks `specs/project/INDEX.md` recursi
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `f14837c` | fix: init workspace correctly |
 
 ## Session 13: ark-agent support
 
@@ -335,7 +335,7 @@ Seeded VERIFY's `Project Spec Compliance` walks `specs/project/INDEX.md` recursi
 **Branch**: `feat/subagent-support`
 **Base Branch**: `main`
 **Start Head**: `8372470`
-**Closing Commit**: <PENDING:subagent-support>
+**Closing Commit**: 258f187
 
 ### Summary
 
@@ -354,7 +354,8 @@ Three Ark subagents (researcher / reviewer / verifier) ship across Claude / Code
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `258f187` | feat(workflow): add ark-agent support |
+| `f14837c` | fix: init workspace correctly |
 
 ## Session 14: ark cleanup
 
@@ -363,7 +364,7 @@ Three Ark subagents (researcher / reviewer / verifier) ship across Claude / Code
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `f14837c`
-**Closing Commit**: <PENDING:ark-cleanup>
+**Closing Commit**: e0e8499
 
 ### Summary
 
@@ -381,6 +382,7 @@ Three Ark subagents (researcher / reviewer / verifier) ship across Claude / Code
 
 | Hash | Message |
 |------|---------|
+| `e0e8499` | feat(cli): add `ark cleanup` |
 | `ec56fc0` | fix: fix historical workspace record |
 | `258f187` | feat(workflow): add ark-agent support |
 
@@ -391,7 +393,7 @@ Three Ark subagents (researcher / reviewer / verifier) ship across Claude / Code
 **Branch**: `docs/rfc001-arkos`
 **Base Branch**: `main`
 **Start Head**: `e0e8499`
-**Closing Commit**: <PENDING:rfc001-arkos>
+**Closing Commit**: cd50a33
 
 ### Summary
 
@@ -412,7 +414,7 @@ RFC 001 positions ArkOS as a workflow substrate for agents — peer to Ark, work
 **Branch**: `feat/guard-journal-stamp`
 **Base Branch**: `main`
 **Start Head**: `fcfd341`
-**Closing Commit**: <PENDING:guard-journal-stamp>
+**Closing Commit**: 8071272
 
 ### Summary
 
@@ -432,7 +434,6 @@ CLI now refuses `task commit` when the journal's last `## Session` heading is al
 |------|---------|
 | `cd50a33` | feat(rfc): add rfc001-arkos |
 
-
 ## Session 17: support detachable feature SPEC
 
 **Date**: 2026-05-18
@@ -440,7 +441,7 @@ CLI now refuses `task commit` when the journal's last `## Session` heading is al
 **Branch**: `feat/detachable-feature-spec`
 **Base Branch**: `main`
 **Start Head**: `5186b2a`
-**Closing Commit**: <PENDING:detachable-feature-spec>
+**Closing Commit**: 395ba8d
 
 ### Summary
 
@@ -459,7 +460,7 @@ Generalize `specs/features/` into a recursive tree; deep-tier PRDs declare a req
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `395ba8d` | feat(spec): support detachable feature SPEC |
 
 ## Session 18: drop installed_at from manifest
 
@@ -468,7 +469,7 @@ Generalize `specs/features/` into a recursive tree; deep-tier PRDs declare a req
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `395ba8d`
-**Closing Commit**: <PENDING:drop-installed-at>
+**Closing Commit**: fc1078f
 
 ### Summary
 
@@ -486,7 +487,7 @@ Drop `installed_at` from `.installed.json` so no-op upgrades stop churning the m
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `fc1078f` | feat(manifest): drop timestamp at .installed.json |
 
 ## Session 19: add `ark research`
 
@@ -495,7 +496,7 @@ Drop `installed_at` from `.installed.json` so no-op upgrades stop churning the m
 **Branch**: `feat/ark-research`
 **Base Branch**: `main`
 **Start Head**: `fc1078f`
-**Closing Commit**: <PENDING:ark-research>
+**Closing Commit**: 60e3221
 
 ### Summary
 
@@ -514,4 +515,5 @@ Introduce a fourth workflow tier whose deliverable is a curated reference corpus
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `60e3221` | feat(workflow): add `ark research` |
+

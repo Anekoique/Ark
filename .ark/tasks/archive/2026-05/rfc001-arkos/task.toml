@@ -1,10 +1,11 @@
 id = "rfc001-arkos"
 title = "add RFC 0001: ArkOS positioning and two-stage evolution"
 tier = "standard"
-phase = "committed"
+phase = "archived"
 iteration = 0
 created_at = "2026-05-10T13:18:59.195027Z"
-updated_at = "2026-05-11T05:54:03.266221Z"
+updated_at = "2026-05-20T12:06:58.730358Z"
+archived_at = "2026-05-20T12:06:58.730358Z"
 committed_at = "2026-05-11T05:54:03.266221Z"
 branch = "docs/rfc001-arkos"
 worktree_path = ".ark/worktrees/docs/rfc001-arkos"

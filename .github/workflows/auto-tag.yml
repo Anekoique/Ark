@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - Cargo.toml
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -21,21 +22,30 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: true
+          # PAT (RELEASE_PAT) so the tag push is attributed to a user
+          # account and can trigger release.yml. GITHUB_TOKEN-pushed tags
+          # do NOT fire downstream `on: push: tags` workflows.
+          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Detect version change
         id: version
         run: |
           set -euo pipefail
 
-          new=$(awk '
-            /^\[workspace\.package\]/ { in_section=1; next }
-            /^\[/ && !/^\[workspace\.package\]/ { in_section=0 }
-            in_section && /^version[[:space:]]*=/ {
-              gsub(/.*"|".*/, "")
-              print
-              exit
-            }
-          ' Cargo.toml)
+          extract_version() {
+            awk '
+              /^\[workspace\.package\]/ { in_section=1; next }
+              /^\[/                     { in_section=0 }
+              in_section && /^version[[:space:]]*=/ {
+                if (match($0, /"[^"]*"/)) {
+                  print substr($0, RSTART+1, RLENGTH-2)
+                  exit
+                }
+              }
+            '
+          }
+
+          new=$(extract_version < Cargo.toml)
 
           if [ -z "$new" ]; then
             echo "no version found in [workspace.package]; skipping"
@@ -43,15 +53,7 @@ jobs:
             exit 0
           fi
 
-          old=$(git show HEAD~1:Cargo.toml 2>/dev/null | awk '
-            /^\[workspace\.package\]/ { in_section=1; next }
-            /^\[/ && !/^\[workspace\.package\]/ { in_section=0 }
-            in_section && /^version[[:space:]]*=/ {
-              gsub(/.*"|".*/, "")
-              print
-              exit
-            }
-          ' || echo "")
+          old=$(git show HEAD~1:Cargo.toml 2>/dev/null | extract_version || echo "")
 
           echo "old=$old"
           echo "new=$new"
@@ -77,7 +79,7 @@ jobs:
         uses: lewagon/wait-on-check-action@v1.3.4
         with:
           ref: ${{ github.sha }}
-          check-name: CI
+          check-name: build
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 20
           allowed-conclusions: success

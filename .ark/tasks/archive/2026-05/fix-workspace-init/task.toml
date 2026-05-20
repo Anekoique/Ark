@@ -1,10 +1,11 @@
 id = "fix-workspace-init"
 title = "scaffold workspace files during ark init"
 tier = "quick"
-phase = "committed"
+phase = "archived"
 iteration = 0
 created_at = "2026-05-10T09:26:00.946230Z"
-updated_at = "2026-05-10T09:33:21.566374Z"
+updated_at = "2026-05-20T12:06:58.686608Z"
+archived_at = "2026-05-20T12:06:58.686608Z"
 committed_at = "2026-05-10T09:33:21.566374Z"
 start_head = "8372470e978059fee9fc30121b9c0952749b2829"
 journal_path = ".ark/workspace/Anekoique/journal-1.md"

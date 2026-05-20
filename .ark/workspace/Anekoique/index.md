@@ -17,16 +17,15 @@
 | 8 | 2026-05-08 | tight docs | `doc-tighten` | `main` | e169239 | `journal-1.md` |
 | 9 | 2026-05-08 | Brownfield SPEC import via `/ark:extract-spec` | `extract-spec-cmd` | `main` | 7d0ae82 | `journal-1.md` |
 | 10 | 2026-05-08 | per-checkout `[focus]` replaces session-keyed map | `session-focus-bind` | `main` | 79500fd | `journal-1.md` |
-| 11 | 2026-05-08 | recursive VERIFY seeding for nested project INDEX.md | `recursive-verify-seeding` | `main` | <PENDING:recursive-verify-seeding> | `journal-1.md` |
-| 12 | 2026-05-10 | Scaffold workspace files during ark init | `fix-workspace-init` | `main` | <PENDING:fix-workspace-init> | `journal-1.md` |
-| 13 | 2026-05-10 | ark-agent support | `subagent-support` | `feat/subagent-support` | <PENDING:subagent-support> | `journal-1.md` |
-| 14 | 2026-05-10 | ark cleanup | `ark-cleanup` | `main` | <PENDING:ark-cleanup> | `journal-1.md` |
-| 15 | 2026-05-11 | rfc001-arkos | `rfc001-arkos` | `docs/rfc001-arkos` | <PENDING:rfc001-arkos> | `journal-1.md` |
-| 16 | 2026-05-11 | guard journal stamp contract | `guard-journal-stamp` | `feat/guard-journal-stamp` | <PENDING:guard-journal-stamp> | `journal-1.md` |
-| 17 | 2026-05-18 | support detachable feature SPEC | `detachable-feature-spec` | `feat/detachable-feature-spec` | <PENDING:detachable-feature-spec> | `journal-1.md` |
-| 18 | 2026-05-18 | drop installed_at from manifest | `drop-installed-at` | `main` | <PENDING:drop-installed-at> | `journal-1.md` |
-| 19 | 2026-05-20 | add `ark research` | `ark-research` | `feat/ark-research` | <PENDING:ark-research> | `journal-1.md` |
-
+| 11 | 2026-05-08 | recursive VERIFY seeding for nested project INDEX.md | `recursive-verify-seeding` | `main` | 8372470 | `journal-1.md` |
+| 12 | 2026-05-10 | Scaffold workspace files during ark init | `fix-workspace-init` | `main` | f14837c | `journal-1.md` |
+| 13 | 2026-05-10 | ark-agent support | `subagent-support` | `feat/subagent-support` | 258f187 | `journal-1.md` |
+| 14 | 2026-05-10 | ark cleanup | `ark-cleanup` | `main` | e0e8499 | `journal-1.md` |
+| 15 | 2026-05-11 | rfc001-arkos | `rfc001-arkos` | `docs/rfc001-arkos` | cd50a33 | `journal-1.md` |
+| 16 | 2026-05-11 | guard journal stamp contract | `guard-journal-stamp` | `feat/guard-journal-stamp` | 8071272 | `journal-1.md` |
+| 17 | 2026-05-18 | support detachable feature SPEC | `detachable-feature-spec` | `feat/detachable-feature-spec` | 395ba8d | `journal-1.md` |
+| 18 | 2026-05-18 | drop installed_at from manifest | `drop-installed-at` | `main` | fc1078f | `journal-1.md` |
+| 19 | 2026-05-20 | add `ark research` | `ark-research` | `feat/ark-research` | 60e3221 | `journal-1.md` |
 <!-- ARK:SESSIONS:END -->
 
 ---
