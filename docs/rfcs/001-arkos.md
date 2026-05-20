@@ -8,7 +8,9 @@
 
 ## Summary
 
-ArkOS is a **substrate for agents** — a workflow-native common runtime that provides services (lifecycle, task tree, memory, SPEC storage, grounding-signal hooks, recursion discipline) to coding agents and the LLMs that drive them. The "OS" framing is a positioning metaphor — *substrate that agents run on* — not a technical mapping to POSIX concepts. ArkOS is **not** an autonomous orchestrator, **not** a product, and **not** a coding agent; it is the layer those things would run on. Ark and ArkOS are siblings at the same architectural layer (workflow primitives) with different audiences: Ark for humans, intentionally gated; ArkOS for agents, designed to be operable without human intervention. ArkOS the substrate is itself capable of self-improvement, with workload outcomes as the grounding signal — agents' success or failure on real tasks drive substrate evolution. POSIX-OS-passing-LTP is one example workload that could run on ArkOS; it is not what ArkOS *is*.
+ArkOS is a **substrate for agents** — a workflow-native common runtime that provides services (lifecycle, task tree, memory, SPEC storage, context surfaces, event logs, grounding-signal hooks, recursion discipline) to coding agents and the LLMs that drive them. The "OS" framing is a positioning metaphor — *substrate that agents run on* — not a technical mapping to POSIX concepts. ArkOS is **not** an autonomous orchestrator, **not** a product, and **not** a coding agent; it is the layer those things would run on. Ark and ArkOS are siblings at the same architectural layer (workflow primitives) with different audiences: Ark for humans, intentionally gated; ArkOS for agents, designed to be operable without human intervention. ArkOS the substrate is itself capable of self-improvement, with workload outcomes as the grounding signal — agents' success or failure on real tasks drive substrate evolution. POSIX-OS-passing-LTP is one example workload that could run on ArkOS; it is not what ArkOS *is*.
+
+The completed `agent-harness-infra` research strengthens the original RFC's core claim. The decisive variable is not just model capability; it is the harness around the model. The field is converging on portable agent-facing substrate formats (MCP for tools, AGENTS.md for project context, skills for behavior packs), durable structured artifacts over ephemeral memory, codemaps over vector-only code RAG, and benchmark-grounded evaluation of harness changes. ArkOS should treat those not as optional integrations, but as the first concrete shape of the substrate.
 
 ## Motivation
 
@@ -19,6 +21,23 @@ Every coding agent today runs in an ad-hoc, vendor-specific harness. Claude Code
 What Ark does for humans, no one does for agents. When an agent needs to spawn a sub-agent for research, when an orchestrator needs to maintain memory across sessions, when a self-improving system needs SPEC storage that doesn't degrade under self-generation pressure — there is no common substrate. Each application reinvents what should be a service.
 
 ArkOS proposes that this substrate is worth building as a thing in itself, independent of any specific orchestrator or workload. The substrate's value is not in *what it builds*; it is in *what it makes possible to build*.
+
+### What the harness research changed
+
+The first version of this RFC was written from ArkOS-first positioning: clarify that ArkOS is a substrate, not an orchestrator, and keep Ark's human-gated identity intact. The later `agent-harness-infra` corpus adds sharper evidence for *why* that substrate matters.
+
+Its strongest finding is that harness quality is load-bearing. The same model can vary materially across SWE-bench-style tasks depending on scaffold, tools, context discipline, and review loop. That means ArkOS's value is not a vague "agent OS" claim; it is the durable, measurable part of agent performance that sits between model and workload.
+
+The corpus also narrows the likely substrate interfaces:
+
+- **MCP** is the practical agent-to-tool protocol ArkOS should speak first.
+- **AGENTS.md** is the portable project-context contract ArkOS should understand and emit.
+- **Skills / SKILL.md-style behavior packs** are the portable way to package workflow behavior across host agents.
+- **Structured artifacts** (`PRD.md`, `PLAN.md`, `SPEC.md`, `VERIFY.md`, journals) are more reliable substrate state than conversation memory.
+- **Event logs** are the natural backing store for audit, replay, dispatch recovery, and future learning.
+- **Codemaps and just-in-time context loading** fit codebases better than embedding-first RAG as ArkOS's default context strategy.
+
+This RFC therefore tightens ArkOS's stage-1 direction: expose workflow primitives as portable substrate services through the standards the field is already converging on, then validate changes against workloads rather than by self-description.
 
 ### Why a written RFC now, before ArkOS code exists
 
@@ -72,7 +91,7 @@ Two things this diagram makes explicit:
 
 Ark is a CLI agent harness for humans, intentionally human-in-the-loop. Every gate in Ark's workflow (PRD review, PLAN ⇄ REVIEW iteration on deep tier, VERIFY's PENDING enforcement, staged-by-user-then-commit closure) exists because human judgment is load-bearing for the cases Ark serves. Ark will not grow autonomous-orchestration features as a long-term direction: that work belongs in ArkOS.
 
-This is a positioning statement, not an absolute. Ark may add ergonomic affordances that *reduce* human friction (better context surfacing, better error messages, faster session-start). Ark will not *remove* the gates: a Ark task that closes without human acknowledgment is a regression, not a feature.
+This is a positioning statement, not an absolute. Ark may add ergonomic affordances that *reduce* human friction (better context surfacing, better error messages, faster session-start). Ark will not *remove* the gates: an Ark task that closes without human acknowledgment is a regression, not a feature.
 
 When Ark and ArkOS share primitives in the future (see *Two-stage evolution*), the shared primitives must remain compatible with Ark's human-gated mode. ArkOS does not get a vote on Ark removing gates; if a primitive cannot be human-gated, it does not belong in Ark.
 
@@ -84,6 +103,8 @@ ArkOS is the substrate that provides workflow primitives as services to agents. 
 - Track parent/child task relationships across recursive decomposition (task tree as a service)
 - Remember what it learned in prior sessions, both project-specific and cross-project (memory as a service)
 - Read and write SPECs as living, anchored artifacts with drift detection (SPEC storage as a service)
+- Project concise, structured context to agents without forcing whole-repository loading (context surface as a service)
+- Record workflow events in an append-only stream for audit, replay, metrics, and recovery (event log as a service)
 - Register and evaluate against grounding signals — tests, fitness functions, external evaluators — without grading itself (grounding-signal hooks as a service)
 - Operate under recursion discipline that prevents loops, budget overruns, and unbounded depth (recursion discipline as a substrate property)
 
@@ -102,8 +123,11 @@ The substrate services ArkOS would expose (named at the conceptual level; implem
 |---|---|
 | **Lifecycle** | A structured shape for doing work — PRD → PLAN → REVIEW → EXECUTE → VERIFY. The same shape Ark provides for humans, exposed as a service rather than as a sequence of CLI commands. Tiers (quick / standard / deep) survive into ArkOS; whether an agent picks a tier or ArkOS infers it from workload shape is ArkOS's design choice. |
 | **Task tree** | Recursive task structure with parent/child relationships, focus tracking, isolation between branches. Conceptually worktree-shaped; concretely whatever isolation primitive ArkOS chooses. Sibling-task interference is a substrate concern, not an application concern. |
-| **Memory** | Working / episodic / semantic / procedural separation; cross-session continuity. Anchored references that don't degrade under self-generation pressure (the *Self-improvement* section explains why this matters). |
+| **Memory** | Working / episodic / semantic / procedural separation; cross-session continuity. Anchored references that don't degrade under self-generation pressure (the *Self-improvement* section explains why this matters). Structured artifacts are first-class memory; conversation summaries are cache, not source of truth. |
 | **SPEC storage** | Storage and lifecycle for SPECs (project conventions, feature contracts). Anchored versioning, drift detection, gating events on SPEC mutation. Critical: SPECs that drift continuously without anchored snapshots have no drift signal. ArkOS makes the gating event a substrate primitive, not a per-application choice. |
+| **Context surfaces** | Agent-readable projections of project state: AGENTS.md, current-task context, related SPECs, codemaps, and just-in-time file/symbol loading. ArkOS should prefer deterministic, inspectable context over embedding-only retrieval. |
+| **Event log** | Append-only workflow events: lifecycle transitions, sub-agent dispatches, tool calls where allowed, grounding checks, commits, rollbacks, and cost/latency metrics. Replay and audit derive from this stream instead of from lossy chat history. |
+| **Portable integration** | MCP tools/resources/prompts for programmatic hosts; AGENTS.md for project-context portability; skill-style behavior packs for host-specific workflow instructions. Stage-1 ArkOS should avoid depending on one vendor's command shape. |
 | **Grounding-signal hooks** | A way to register "what counts as success" for a task — test runs, fitness functions, external evaluators (human, different-family LLM panel, mechanical checks). ArkOS enforces the signal; the agent does not grade itself. Why this is load-bearing is in *Self-improvement*. |
 | **Recursion discipline** | Budget, depth, halting. Inherited as a substrate property; applications don't have to re-invent halting per orchestrator. Concretely informed by ADaPT's failure-driven decomposition (decompose iff the executor fails) and Ark's existing recursion-guard discipline. |
 
@@ -112,6 +136,7 @@ The substrate does **not** provide:
 - Decomposition algorithms. How an orchestrator splits a task is an application choice; ArkOS provides the task-tree primitive, not the splitting policy.
 - LLM-call semantics. Whether to call Claude or Codex, what context to send, how to compose prompts — application concern, not substrate.
 - Workload-specific knowledge. ArkOS does not know how to build a POSIX OS. The application running on ArkOS does (or doesn't, and fails its grounding signal).
+- Benchmark ownership. ArkOS can run against SWE-bench-style and workload-specific evaluators, but the benchmark remains outside the substrate's self-editable region.
 
 The boundary is: **substrate services are workflow shape, application code is workflow content.**
 
@@ -171,14 +196,16 @@ ArkOS as a substrate cannot be built fully native on day one. The realistic path
 
 ### Stage 1 — bootstrap on existing agent runtimes
 
-ArkOS hosts existing coding-agent runtimes (Claude Code, Codex, OpenCode) as the agent-runtime layer beneath it. The substrate services ArkOS provides (lifecycle, task tree, memory, SPEC storage, grounding hooks, recursion discipline) are bootstrapped — at stage 1, some of them may be implemented by borrowing Ark's harness primitives directly (Ark's `.ark/` layout, task lifecycle, SPEC format, worktree-per-task isolation are all proven substrate-shaped patterns). ArkOS in stage 1 is best understood as **Ark's harness primitives re-exposed as a service to agents rather than to humans**, plus the substrate-only services Ark does not provide (autonomous-operable recursion discipline, multi-session memory across runs, grounding-signal hooks).
+ArkOS hosts existing coding-agent runtimes (Claude Code, Codex, OpenCode) as the agent-runtime layer beneath it. The substrate services ArkOS provides (lifecycle, task tree, memory, SPEC storage, context surfaces, event log, grounding hooks, recursion discipline) are bootstrapped — at stage 1, some of them may be implemented by borrowing Ark's harness primitives directly (Ark's `.ark/` layout, task lifecycle, SPEC format, worktree-per-task isolation, context projection, and subagent discipline are all proven substrate-shaped patterns). ArkOS in stage 1 is best understood as **Ark's harness primitives re-exposed as a service to agents rather than to humans**, plus the substrate-only services Ark does not provide (autonomous-operable recursion discipline, multi-session memory across runs, grounding-signal hooks, event-log-backed replay).
 
 Stage-1 ArkOS depends on:
 - Claude Code / Codex / OpenCode at the runtime layer. These are not ArkOS components; they are the runtimes ArkOS hosts. If Anthropic / OpenAI deprecate them, ArkOS reroutes.
+- MCP as the first programmatic substrate surface, so hosts call workflow primitives without binding to Ark's hidden CLI or one platform's slash-command syntax.
+- AGENTS.md and skill-style behavior packs as portable context and behavior artifacts where host runtimes support them.
 - Possibly Ark's `ark-core` library at the substrate-implementation layer (TBD; this is an open question, not a commitment).
 - The host POSIX environment for filesystem, git, process isolation.
 
-Stage-1 is sufficient to demonstrate ArkOS's value: an agent can run a real workload (e.g. a multi-task implementation effort) through ArkOS, the substrate enforces recursion discipline and grounding, and workload outcomes drive substrate evolution. Stage-1 is *not* sufficient for ArkOS to be runtime-independent.
+Stage-1 is sufficient to demonstrate ArkOS's value: an agent can run a real workload (e.g. a multi-task implementation effort) through ArkOS, the substrate enforces recursion discipline and grounding, the event log records the trajectory, and workload outcomes drive substrate evolution. Stage-1 is *not* sufficient for ArkOS to be runtime-independent.
 
 ### Stage 2 — native runtime capacity
 
@@ -186,6 +213,7 @@ Stage 2 grows ArkOS's own native runtime, reducing dependency on vendored coding
 
 - Native coding-agent implementations that run *under* ArkOS's substrate without requiring Claude Code / Codex / OpenCode.
 - Native primitives for substrate services that no longer borrow from Ark's harness, if and where divergence proves necessary.
+- Native trajectory and evaluation infrastructure, so ArkOS can compare substrate revisions under fixed workload suites without relying on a vendor host's private telemetry.
 - Possibly: Ark's CLI becomes a *client* of ArkOS in some installation configurations, not a peer. This is one direction; the inverse (Ark and ArkOS remain peers, sharing nothing) is another. Stage 2 does not commit to which.
 
 Stage 2 is multi-year and assumes the LLM-runtime layer continues to evolve in ways that make native implementation economically tractable (METR's time-horizon data suggests agent capabilities double every ~4 months; the runway for stage 2 partially depends on whether the runtime layer becomes commoditized).
@@ -211,7 +239,7 @@ The relationship is **peer, not stack**. Neither is built on the other.
 What may happen over time:
 
 - **Shared `ark-core`-style library.** Both Ark and ArkOS may depend on a common core that implements the workflow primitives (task tree, SPEC storage, managed-block editing, layout discovery). Today `ark-core` is Ark's library; whether ArkOS adopts it or forks is a stage-1 design choice.
-- **Cross-pollination.** Patterns proven in Ark (worktree-per-task, deep-tier SPEC promotion, recursive VERIFY seeding) inform ArkOS design. Patterns proven in ArkOS (workload-grounded primitive evolution, heterogeneous-evaluator panels) may inform Ark's future quality bar.
+- **Cross-pollination.** Patterns proven in Ark (worktree-per-task, deep-tier SPEC promotion, recursive VERIFY seeding, research-tier corpus building, subagent context isolation) inform ArkOS design. Patterns proven in ArkOS (workload-grounded primitive evolution, heterogeneous-evaluator panels, event-log replay) may inform Ark's future quality bar.
 - **Divergence where audience demands.** Ark's gates are not ArkOS's gates; ArkOS's autonomy primitives are not Ark's. Shared core stops where the audience model differs.
 
 What will **not** happen (Ark's commitment):
@@ -293,6 +321,28 @@ Substrate-level disciplines available:
 
 The choice is a substrate primitive, not a workload concern.
 
+### Q7. Portable substrate interface
+
+The harness research points strongly toward MCP as the tool/resource/prompt surface, AGENTS.md as the project-context surface, and skills as behavior packaging. That convergence does not answer the exact ArkOS contract:
+
+- Does ArkOS expose all workflow services as MCP tools/resources first, with host-specific commands as thin adapters?
+- Are AGENTS.md and skills generated from one canonical substrate description, or are they hand-written per host?
+- How does ArkOS version these artifacts so an agent can tell which behavior contract it is running under?
+
+The wrong answer is to bind stage-1 ArkOS to one vendor's slash-command shape. The open question is how much canonicalization ArkOS must own on day one.
+
+### Q8. Harness-level validation
+
+If harness quality is the load-bearing variable, ArkOS needs a harness-level benchmark discipline. The benchmark research recommends SWE-bench Verified Mini for pilots, SWE-bench Verified for main comparisons, and SWE-bench Live or another fresh slice as contamination control.
+
+Open design questions:
+
+- Which ArkOS substrate changes require benchmark validation before being called improvements?
+- What is the minimal event-log schema needed to compare substrate revisions on cost, latency, regressions, and plan stability?
+- How does ArkOS keep the benchmark harness outside the region the substrate can self-modify?
+
+This is the operational version of the self-improvement discipline: substrate claims should become paired, repeatable workload comparisons, not prose claims.
+
 ## Prior art
 
 Detailed surveys live in this task's research files (see *References*). Concentrated summary of the closest analogues:
@@ -302,6 +352,10 @@ Detailed surveys live in this task's research files (see *References*). Concentr
 - **MemGPT / Letta** ([GitHub](https://github.com/letta-ai/letta)). Memory tiering for agents (working / episodic / semantic / procedural). Production-ready. ArkOS's memory service would either depend on or reimplement these primitives.
 
 - **OpenHands SDK** ([arXiv:2407.16741](https://arxiv.org/abs/2407.16741)). Separates agent logic, execution environment, and interface — a step toward substrate-shaped agent runtimes. Stage-1 ArkOS may host OpenHands the way it hosts Claude Code.
+
+- **MCP, AGENTS.md, and skills.** The 2025-2026 agent-harness landscape is converging on three practical portability layers: MCP for agent-to-tool calls, AGENTS.md for repository-level agent context, and skill-style behavior packs for repeatable workflow instructions. None is a full substrate, but together they describe the first credible substrate interface surface.
+
+- **SWE-agent, Aider, Continue, and codemap-first harnesses.** The strongest coding-agent systems treat harness design as a first-class variable: tool affordances, edit discipline, test feedback, and codebase maps change solve rates. ArkOS should inherit the lesson and expose context and evaluation as substrate services, not leave them as prompt folklore.
 
 - **AlphaEvolve** ([DeepMind 2025](https://deepmind.google/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/), [arXiv:2506.13131](https://arxiv.org/abs/2506.13131)). Closest published precedent for genuine LLM-driven self-improvement, on cheap-fitness-function domains. The pattern (evolutionary search + external evaluator) is exactly what ArkOS's workload-grounded substrate evolution generalizes — but generalizing it to *substrate primitives* rather than algorithm code is new ground.
 
@@ -322,12 +376,13 @@ The honest read: **no published system has built a workflow-substrate for agents
 | Phase | Scope | Status |
 |---|---|---|
 | **0. This RFC** | Position ArkOS as workflow substrate for agents. Pin Ark's identity. Name open questions honestly. | In progress (this document). |
-| **1. ArkOS repo bootstrap** | `Anekoique/arkos` repo exists with its own RFC (longer-form ArkOS design document, derived from this RFC's positioning), README, and minimal scaffolding. ArkOS's own RFC names the substrate-API shape, the answers to the open questions Q1–Q6, and the implementation phasing. | Next, after this RFC stabilizes. |
-| **2. Stage-1 substrate** | ArkOS hosts Claude Code / Codex / OpenCode; substrate services bootstrapped from Ark's harness primitives where applicable; first workload runs end-to-end. | ArkOS-side implementation, post-bootstrap. |
+| **0.5. Harness-research alignment** | Fold the `agent-harness-infra` findings into the positioning: MCP-first surface, AGENTS.md / skills portability, structured artifacts as memory, event log as backing store, codemap-first context, benchmark-grounded validation. | This polish. |
+| **1. ArkOS repo bootstrap** | `Anekoique/arkos` repo exists with its own RFC (longer-form ArkOS design document, derived from this RFC's positioning), README, and minimal scaffolding. ArkOS's own RFC names the substrate-API shape, the answers to the open questions Q1–Q8, and the implementation phasing. | Next, after this RFC stabilizes. |
+| **2. Stage-1 substrate** | ArkOS hosts Claude Code / Codex / OpenCode; substrate services bootstrapped from Ark's harness primitives where applicable; MCP-facing workflow primitives; first workload runs end-to-end with event-log-backed metrics. | ArkOS-side implementation, post-bootstrap. |
 | **3. Stage-2 substrate** | Native runtime capacity. Reduced vendor dependency. Multi-year. | Open. |
 | **4. Convergence / divergence with Ark** | Whether Ark and ArkOS share `ark-core`-style library, whether one becomes a client of the other, whether they remain pure peers. | Out of scope until stage-3 evidence accumulates. |
 
-This RFC commits Ark only to phase 0. Phase 1 onward happens in `Anekoique/arkos`.
+This RFC commits Ark only to phases 0 and 0.5. Phase 1 onward happens in `Anekoique/arkos`.
 
 ## References
 
@@ -335,9 +390,19 @@ This RFC commits Ark only to phase 0. Phase 1 onward happens in `Anekoique/arkos
 
 These persist in the task archive as part of `rfc001-arkos`'s deliverable. They are the substantive evidence behind the *Self-improvement*, *Open questions*, and *Prior art* sections:
 
-- `.ark/tasks/rfc001-arkos/research/self-improving-agents.md` — survey of ~20 self-improving agent systems, grounding-signal hierarchy, anti-patterns, eight open questions for first-of-its-kind work at OS scale.
-- `.ark/tasks/rfc001-arkos/research/recursive-decomposition.md` — survey of classical (HTN, WBS, FDD, INVEST/SPIDR) and LLM-era (Plan-and-Solve, ToT, ADaPT, MetaGPT, ChatDev, SWE-agent, OpenHands, AgentOrchestra, Cognition / Anthropic positions) decomposition; what's never been done at OS scale.
-- `.ark/tasks/rfc001-arkos/research/self-generating-specs.md` — the load-bearing dichotomy between behavioral/mechanical rules (tractable with external fitness) and architectural rules (no public system has solved without external grounding); Ark's current rule L-4 as the conservative response.
+- `.ark/tasks/archive/2026-05/rfc001-arkos/research/self-improving-agents.md` — survey of ~20 self-improving agent systems, grounding-signal hierarchy, anti-patterns, eight open questions for first-of-its-kind work at OS scale.
+- `.ark/tasks/archive/2026-05/rfc001-arkos/research/recursive-decomposition.md` — survey of classical (HTN, WBS, FDD, INVEST/SPIDR) and LLM-era (Plan-and-Solve, ToT, ADaPT, MetaGPT, ChatDev, SWE-agent, OpenHands, AgentOrchestra, Cognition / Anthropic positions) decomposition; what's never been done at OS scale.
+- `.ark/tasks/archive/2026-05/rfc001-arkos/research/self-generating-specs.md` — the load-bearing dichotomy between behavioral/mechanical rules (tractable with external fitness) and architectural rules (no public system has solved without external grounding); Ark's current rule L-4 as the conservative response.
+
+### Follow-up harness research
+
+These files post-date the original RFC and are the reason for this polish:
+
+- `.ark/tasks/agent-harness-infra/research/99_directions/SYNTHESIS.md` — cross-corpus findings: harness quality is load-bearing; MCP / AGENTS.md / skills are converging surfaces; structured artifacts beat ephemeral memory; subagents are context management; codemap + JIT beats embedding-first RAG; event logs are the natural backing store; tiered ceremony is Ark's differentiator.
+- `.ark/tasks/agent-harness-infra/research/99_directions/benchmarks-for-ark-validation.md` — benchmark plan for validating review-loop and harness changes with SWE-bench Verified Mini / Verified / Live, paired comparisons, cost/latency/regression logging, and plan-churn metrics.
+- `.ark/tasks/agent-harness-infra/research/02_infra_primitives/mcp-and-tool-registries.md` — MCP and tool-registry context for the programmatic substrate surface.
+- `.ark/tasks/agent-harness-infra/research/03_context_engineering/codemaps-and-repo-structure-summaries.md` — codemap-first context direction.
+- `.ark/tasks/agent-harness-infra/research/08_emergent/trajectory-and-event-log-architecture.md` — event-log rationale for audit, replay, and learning.
 
 ### Primary citations
 

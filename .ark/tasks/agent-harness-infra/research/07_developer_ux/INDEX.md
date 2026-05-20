@@ -1,0 +1,13 @@
+# Section 07: Developer UX
+
+Each file ~400-700 lines, ends with **Directions for Ark** — 3-5 concrete candidates the main task can adopt or critique.
+
+| File | One-line takeaway |
+| ---- | ----------------- |
+| `onboarding-and-first-five-minutes.md` | Established CLI onboarding patterns (`git init`, `npm init -y`, `cargo new`, `next create`) split on whether to ask zero questions or eight; agent harnesses cluster around two extremes (`aider`: zero scaffold / runtime config; Ark + spec-kit: heavy scaffold with `<!-- ARK -->` blocks). Ark's current TTY prompts for platforms + developer identity are defensible but undersold in error paths. |
+| `scaffolding-philosophy.md` | Minimal-vs-opinionated scaffolding is a real axis (`cargo new` vs `create-react-app`); Ark sits firmly on the opinionated side, but uses the **managed-block pattern** (`<!-- ARK:START -->` / `<!-- ARK:END -->`) so opinionated content lives inside user-owned files. That hybrid is rare and the right answer for brownfield repos. |
+| `install-upgrade-uninstall-lifecycle.md` | `load`/`unload`/`remove`/`upgrade` as a four-verb reversibility model is genuinely unusual in this space; the closest peers are dotfile managers (`chezmoi diff`/`apply`/`merge`, `stow -D`). Hash-tracked conflict resolution with `--force`/`--skip-modified`/`--create-new` mirrors chezmoi merge UX. |
+| `brownfield-adoption.md` | Existing-repo adoption is the harder onboarding case than greenfield. OpenSpec is explicitly brownfield-first; Ark's `ark agent spec import` and the managed-block pattern serve the same end. The 100k-line-repo path is mostly about extracting conventions into `specs/project/`, not regenerating code. |
+| `learning-curve-and-discoverability.md` | Discovery typically happens through `--help`, slash listings, docs sites (mdBook for Rust tools, Docusaurus for Aider), and tutorials. Ark's `docs/book/` mdBook is fine; the under-served surface is `ark --help` (mostly arg-shaped, not workflow-shaped) and the fact that the workflow lives in a separate file the user has to read. |
+| `error-messages-and-recovery.md` | Ark's named errors (`NothingStaged`, `VerifyIncomplete`, `NoFocus`, `IllegalPhaseTransition`, `TaskNotFound`) already cite the recovery command in-line — this is unusually good. The remaining gap is "what command do I run now?" inline suggestions on success paths (after `task new`, after `task commit`). |
+| `pricing-cost-and-budget-ux.md` | Aider's `/tokens`, Claude Code's `/cost`, Cursor's spend limits, Continue's per-model selection — cost surfaces are now table-stakes. Ark is silent on cost today because it brokers no model calls. The plan-execute split is a structural cost-control lever Ark's REVIEW gate already approximates. |

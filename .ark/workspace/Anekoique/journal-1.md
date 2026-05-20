@@ -517,3 +517,31 @@ Introduce a fourth workflow tier whose deliverable is a curated reference corpus
 |------|---------|
 | `60e3221` | feat(workflow): add `ark research` |
 
+## Session 20: research on agent harness and agent infra
+
+**Date**: 2026-05-21
+**Slug**: agent-harness-infra
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `7b5d107`
+**Closing Commit**: <PENDING:agent-harness-infra>
+
+### Summary
+
+78-file reference corpus mapping 2026 agent-harness / agent-infra landscape; synthesis ranks `ark-mcp` as the highest-leverage next move.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| corpus | 10 sections × per-topic markdown under `research/`; 13.8K lines; INDEX.md per section with cross-refs |
+| prior art | 18 peer profiles (Aider, Cline, OpenHands, Devin, Cursor, Zed, agent-platforms survey, ...) using a fixed template |
+| synthesis | 11 cross-cutting findings (F1–F11); A/B/C/D direction ranking; Q3'26–Q2'27 roadmap sketch |
+| process | mixed dispatch + main-session writes: 9 parallel `ark-researcher` subagents; 4 stalled on watchdog; recovered via disk-as-truth |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |
+

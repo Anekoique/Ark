@@ -26,6 +26,8 @@
 | 17 | 2026-05-18 | support detachable feature SPEC | `detachable-feature-spec` | `feat/detachable-feature-spec` | 395ba8d | `journal-1.md` |
 | 18 | 2026-05-18 | drop installed_at from manifest | `drop-installed-at` | `main` | fc1078f | `journal-1.md` |
 | 19 | 2026-05-20 | add `ark research` | `ark-research` | `feat/ark-research` | 60e3221 | `journal-1.md` |
+| 20 | 2026-05-21 | research on agent harness and agent infra | `agent-harness-infra` | `main` | <PENDING:agent-harness-infra> | `journal-1.md` |
+
 <!-- ARK:SESSIONS:END -->
 
 ---
