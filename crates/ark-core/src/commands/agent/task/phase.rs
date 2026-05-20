@@ -115,7 +115,14 @@ fn transition(opts: TaskPhaseOptions, to: Phase) -> Result<TaskPhaseSummary> {
 /// Standard tier never iterates the plan, so its lone PLAN is named
 /// `PLAN.md` (parallel to `VERIFY.md`). Deep tier keeps the `NN_PLAN.md`
 /// form to support the iteration loop. Quick tier never enters Plan.
+///
+/// Research tier never seeds any artifact: the head-of-function early-return
+/// defends against any future refactor that might reorder `transition()` so
+/// the artifact seed runs before `check_transition`.
 fn artifact_for(phase: Phase, tier: Tier, iteration: u32) -> Option<(&'static str, String)> {
+    if matches!(tier, Tier::Research) {
+        return None;
+    }
     match phase {
         Phase::Plan => {
             let name = match tier {
@@ -297,5 +304,55 @@ mod tests {
         let s = task_review(o(&slug)).unwrap();
         assert_eq!((s.from, s.to), (Phase::Plan, Phase::Review));
         assert!(tmp.path().join(".ark/tasks/demo/00_REVIEW.md").exists());
+    }
+
+    /// Verifies the research-tier early-return in `artifact_for`.
+    ///
+    /// Even when called directly with a phase that would normally seed an
+    /// artifact (Plan / Review / Verify), the tier check fires first and
+    /// returns `None`. Defends against a future refactor that might reorder
+    /// `transition()` so the artifact seed runs before `check_transition`.
+    #[test]
+    fn artifact_for_research_tier_returns_none() {
+        for phase in [Phase::Plan, Phase::Review, Phase::Verify] {
+            assert!(
+                artifact_for(phase, Tier::Research, 0).is_none(),
+                "expected None for (phase={phase:?}, tier=Research, iter=0)",
+            );
+        }
+    }
+
+    /// Illegal phase transitions on a research-tier task surface
+    /// `IllegalPhaseTransition` AND leave no plan / review / verify artifact
+    /// on disk. The early-return in `artifact_for` is what guarantees the
+    /// second half.
+    #[test]
+    fn research_tier_illegal_transition_writes_no_artifact() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slug = fresh(tmp.path(), Tier::Research);
+        let task_dir = tmp.path().join(".ark/tasks/demo");
+        let before = task_dir.join("task.toml").read_bytes().unwrap();
+
+        for verb in [task_plan, task_review, task_execute, task_verify] {
+            let err = verb(TaskPhaseOptions {
+                project_root: tmp.path().to_path_buf(),
+                slug: slug.clone(),
+            })
+            .unwrap_err();
+            assert!(
+                matches!(err, Error::IllegalPhaseTransition { .. }),
+                "expected IllegalPhaseTransition, got {err:?}",
+            );
+        }
+
+        // task.toml is byte-identical pre/post — no phase mutation.
+        let after = task_dir.join("task.toml").read_bytes().unwrap();
+        assert_eq!(before, after, "task.toml must not be mutated");
+
+        // No plan / review / verify artifact was seeded.
+        assert!(!task_dir.join("PLAN.md").exists());
+        assert!(!task_dir.join("00_PLAN.md").exists());
+        assert!(!task_dir.join("00_REVIEW.md").exists());
+        assert!(!task_dir.join("VERIFY.md").exists());
     }
 }

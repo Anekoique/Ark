@@ -20,6 +20,10 @@ pub enum Tier {
     Standard,
     /// Deep lifecycle with review iterations and feature SPEC promotion.
     Deep,
+    /// Research lifecycle: gather a reference corpus. No PLAN/REVIEW/VERIFY;
+    /// no SPEC promotion. The corpus under `<task_dir>/research/` is the
+    /// deliverable.
+    Research,
 }
 
 /// Lifecycle phase recorded in a task's `task.toml`.
@@ -40,6 +44,9 @@ pub enum Phase {
     Committed,
     /// Terminal archived phase.
     Archived,
+    /// Research tier's working phase: corpus is being curated; only legal
+    /// outgoing transition is to `Committed`.
+    Research,
 }
 
 /// Derived from [`Phase`]. Not persisted; computed on demand.
@@ -152,33 +159,37 @@ impl TaskToml {
 /// - Quick:    Design → Execute → Committed → Archived
 /// - Standard: Design → Plan → Execute → Verify → Committed → Archived
 /// - Deep:     Design → Plan ⇄ Review → Execute → Verify → Committed → Archived
+/// - Research: Research → Committed → Archived
 ///
 /// `Review → Plan` is the "iterate" transition (deep tier only). `Archived`
 /// is reachable only from `Committed`; the legacy direct
 /// `Verify → Archived` / `Execute → Archived` transitions were removed by
 /// the workflow refactor.
 pub fn can_transition(tier: Tier, from: Phase, to: Phase) -> bool {
-    use Phase::*;
-    use Tier::*;
+    // `Tier::Research` and `Phase::Research` share the name `Research`. Using
+    // glob imports here would shadow one with the other, so we qualify both.
     match (tier, from, to) {
         // Quick
-        (Quick, Design, Execute) => true,
-        (Quick, Execute, Committed) => true,
-        (Quick, Committed, Archived) => true,
+        (Tier::Quick, Phase::Design, Phase::Execute) => true,
+        (Tier::Quick, Phase::Execute, Phase::Committed) => true,
+        (Tier::Quick, Phase::Committed, Phase::Archived) => true,
         // Standard
-        (Standard, Design, Plan) => true,
-        (Standard, Plan, Execute) => true,
-        (Standard, Execute, Verify) => true,
-        (Standard, Verify, Committed) => true,
-        (Standard, Committed, Archived) => true,
+        (Tier::Standard, Phase::Design, Phase::Plan) => true,
+        (Tier::Standard, Phase::Plan, Phase::Execute) => true,
+        (Tier::Standard, Phase::Execute, Phase::Verify) => true,
+        (Tier::Standard, Phase::Verify, Phase::Committed) => true,
+        (Tier::Standard, Phase::Committed, Phase::Archived) => true,
         // Deep
-        (Deep, Design, Plan) => true,
-        (Deep, Plan, Review) => true,
-        (Deep, Review, Plan) => true, // iterate
-        (Deep, Review, Execute) => true,
-        (Deep, Execute, Verify) => true,
-        (Deep, Verify, Committed) => true,
-        (Deep, Committed, Archived) => true,
+        (Tier::Deep, Phase::Design, Phase::Plan) => true,
+        (Tier::Deep, Phase::Plan, Phase::Review) => true,
+        (Tier::Deep, Phase::Review, Phase::Plan) => true, // iterate
+        (Tier::Deep, Phase::Review, Phase::Execute) => true,
+        (Tier::Deep, Phase::Execute, Phase::Verify) => true,
+        (Tier::Deep, Phase::Verify, Phase::Committed) => true,
+        (Tier::Deep, Phase::Committed, Phase::Archived) => true,
+        // Research
+        (Tier::Research, Phase::Research, Phase::Committed) => true,
+        (Tier::Research, Phase::Committed, Phase::Archived) => true,
         _ => false,
     }
 }
@@ -372,16 +383,95 @@ mod tests {
         assert!(!can_transition(Tier::Deep, Phase::Design, Phase::Review));
     }
 
+    /// Verifies the Research-tier transition table: only
+    /// `Research → Committed → Archived` is legal; every other source/target
+    /// involving research tier is rejected.
+    #[test]
+    fn can_transition_research() {
+        // Legal arms.
+        assert!(can_transition(
+            Tier::Research,
+            Phase::Research,
+            Phase::Committed,
+        ));
+        assert!(can_transition(
+            Tier::Research,
+            Phase::Committed,
+            Phase::Archived,
+        ));
+
+        // Every other (Research, X, Y) tuple is rejected. Cross-product over
+        // the full phase set catches future enum additions silently.
+        let phases = [
+            Phase::Design,
+            Phase::Plan,
+            Phase::Review,
+            Phase::Execute,
+            Phase::Verify,
+            Phase::Research,
+            Phase::Committed,
+            Phase::Archived,
+        ];
+        for &from in &phases {
+            for &to in &phases {
+                let legal = matches!(
+                    (from, to),
+                    (Phase::Research, Phase::Committed) | (Phase::Committed, Phase::Archived),
+                );
+                assert_eq!(
+                    can_transition(Tier::Research, from, to),
+                    legal,
+                    "Research {from:?} → {to:?}",
+                );
+            }
+        }
+    }
+
+    /// Round-trips a `Tier::Research` value through `toml::to_string` /
+    /// `toml::from_str` to confirm the `"research"` serde tag.
+    #[test]
+    fn tier_research_round_trips_as_lowercase() {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct Wrap {
+            tier: Tier,
+        }
+        let w = Wrap {
+            tier: Tier::Research,
+        };
+        let s = toml::to_string(&w).unwrap();
+        assert!(s.contains(r#"tier = "research""#), "{s}");
+        let back: Wrap = toml::from_str(&s).unwrap();
+        assert_eq!(back.tier, Tier::Research);
+    }
+
+    /// Round-trips a `Phase::Research` value through TOML to confirm the
+    /// `"research"` serde tag.
+    #[test]
+    fn phase_research_round_trips_as_lowercase() {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct Wrap {
+            phase: Phase,
+        }
+        let w = Wrap {
+            phase: Phase::Research,
+        };
+        let s = toml::to_string(&w).unwrap();
+        assert!(s.contains(r#"phase = "research""#), "{s}");
+        let back: Wrap = toml::from_str(&s).unwrap();
+        assert_eq!(back.phase, Phase::Research);
+    }
+
     /// Verifies that `Archived` is reachable only from `Committed`, across every tier.
     #[test]
     fn archived_only_reachable_from_committed() {
-        for tier in [Tier::Quick, Tier::Standard, Tier::Deep] {
+        for tier in [Tier::Quick, Tier::Standard, Tier::Deep, Tier::Research] {
             for from in [
                 Phase::Design,
                 Phase::Plan,
                 Phase::Review,
                 Phase::Execute,
                 Phase::Verify,
+                Phase::Research,
             ] {
                 assert!(
                     !can_transition(tier, from, Phase::Archived),
@@ -397,13 +487,14 @@ mod tests {
 
     #[test]
     fn archived_is_terminal() {
-        for tier in [Tier::Quick, Tier::Standard, Tier::Deep] {
+        for tier in [Tier::Quick, Tier::Standard, Tier::Deep, Tier::Research] {
             for to in [
                 Phase::Design,
                 Phase::Plan,
                 Phase::Review,
                 Phase::Execute,
                 Phase::Verify,
+                Phase::Research,
                 Phase::Committed,
                 Phase::Archived,
             ] {

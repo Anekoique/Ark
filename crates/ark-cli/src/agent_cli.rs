@@ -182,7 +182,7 @@ struct TaskNewCliArgs {
     /// One-line title.
     #[arg(long)]
     title: String,
-    /// Task tier (`quick`, `standard`, or `deep`).
+    /// Task tier (`quick`, `standard`, `deep`, or `research`).
     #[arg(long, value_parser = parse_tier)]
     tier: Tier,
     /// Creates a git worktree under `.ark/worktrees/<branch>/`.
@@ -326,9 +326,33 @@ fn parse_tier(s: &str) -> Result<Tier, String> {
         "quick" => Ok(Tier::Quick),
         "standard" => Ok(Tier::Standard),
         "deep" => Ok(Tier::Deep),
+        "research" => Ok(Tier::Research),
         other => Err(format!(
-            "unknown tier `{other}`; expected quick | standard | deep"
+            "unknown tier `{other}`; expected quick | standard | deep | research"
         )),
+    }
+}
+
+#[cfg(test)]
+mod parse_tier_tests {
+    use super::*;
+
+    /// `parse_tier` accepts the four canonical tier names and the error
+    /// message lists every one.
+    #[test]
+    fn parse_tier_accepts_research() {
+        assert_eq!(parse_tier("quick").unwrap(), Tier::Quick);
+        assert_eq!(parse_tier("standard").unwrap(), Tier::Standard);
+        assert_eq!(parse_tier("deep").unwrap(), Tier::Deep);
+        assert_eq!(parse_tier("research").unwrap(), Tier::Research);
+
+        let err = parse_tier("nope").unwrap_err();
+        for canonical in ["quick", "standard", "deep", "research"] {
+            assert!(
+                err.contains(canonical),
+                "error must list `{canonical}`: {err}",
+            );
+        }
     }
 }
 

@@ -1,0 +1,14 @@
+id = "ark-research"
+title = "add research tier and /ark:research slash command"
+tier = "deep"
+phase = "committed"
+iteration = 2
+max_iterations = 3
+created_at = "2026-05-20T09:15:43.673651Z"
+updated_at = "2026-05-20T12:03:05.507966Z"
+committed_at = "2026-05-20T12:03:05.507966Z"
+branch = "feat/ark-research"
+worktree_path = ".ark/worktrees/feat/ark-research"
+base_branch = "main"
+start_head = "fc1078f422dc974db7900e53b1d1c6b317ed6ecd"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

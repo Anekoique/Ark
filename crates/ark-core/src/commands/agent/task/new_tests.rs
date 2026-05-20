@@ -541,3 +541,55 @@ fn worktree_creation_succeeds_when_user_overrides_post_create_to_empty() {
 
     assert!(tmp.path().join(".ark/worktrees/feat/foo").is_dir());
 }
+
+/// `task_new` on the research tier writes `phase = Research` in the
+/// resulting `task.toml` rather than the default `Phase::Design`.
+#[test]
+fn task_new_with_tier_research_starts_in_phase_research() {
+    let tmp = tempfile::tempdir().unwrap();
+    let summary = task_new(TaskNewOptions {
+        project_root: tmp.path().to_path_buf(),
+        slug: "explore".into(),
+        title: "explore options".into(),
+        tier: Tier::Research,
+        worktree: None,
+    })
+    .unwrap();
+
+    assert_eq!(summary.tier, Tier::Research);
+    let task_dir = tmp.path().join(".ark/tasks/explore");
+    let toml = TaskToml::load(&task_dir).unwrap();
+    assert_eq!(toml.tier, Tier::Research);
+    assert_eq!(toml.phase, Phase::Research);
+    // Research tier does not allocate review iterations.
+    assert!(toml.max_iterations.is_none());
+}
+
+/// `task_new` on the research tier with `--worktree` produces the same
+/// worktree topology as deep tier (branch, base, project-relative path).
+#[test]
+fn task_new_research_with_worktree_succeeds() {
+    let tmp = init_repo();
+    let summary = task_new(TaskNewOptions {
+        project_root: tmp.path().to_path_buf(),
+        slug: "lit-review".into(),
+        title: "literature review".into(),
+        tier: Tier::Research,
+        worktree: Some(TaskNewWorktree::default()),
+    })
+    .unwrap();
+
+    let wt = tmp.path().join(".ark/worktrees/feat/lit-review");
+    assert!(wt.is_dir());
+    let wt_task_dir = wt.join(".ark/tasks/lit-review");
+    let toml = TaskToml::load(&wt_task_dir).unwrap();
+    assert_eq!(toml.tier, Tier::Research);
+    assert_eq!(toml.phase, Phase::Research);
+    assert_eq!(toml.branch.as_deref(), Some("feat/lit-review"));
+    assert_eq!(toml.base_branch.as_deref(), Some("main"));
+    assert_eq!(
+        toml.worktree_path.as_deref(),
+        Some(Path::new(".ark/worktrees/feat/lit-review")),
+    );
+    assert!(summary.worktree.is_some());
+}

@@ -242,13 +242,14 @@ pub fn task_commit(opts: TaskCommitOptions) -> Result<TaskCommitSummary> {
         slug: opts.slug.clone(),
     })?;
 
-    // Stage Ark-managed files: task.toml, plus (deep tier) the promoted
-    // SPEC and every INDEX along the leaf-to-root path, plus any workspace
+    // Stage Ark-managed files: task.toml; plus (deep tier) the promoted
+    // SPEC and every INDEX along the leaf-to-root path; plus (research
+    // tier) every file under `<task_dir>/research/`; plus any workspace
     // paths that `record_workspace_journal` populated. The user's work is
     // already staged.
     let ark_files = ark_files_for_first_commit(
         &task_dir,
-        deep,
+        prev_toml.tier,
         &spec_path,
         &intermediate_indexes,
         &guard.workspace_paths.clone(),
@@ -301,11 +302,14 @@ fn clear_focus_if_matches(layout: &Layout, slug: &str) -> Result<()> {
 
 /// Returns `Ok` iff `(tier, phase)` is a legal `task_commit` precondition.
 fn check_phase_for_commit(tier: Tier, phase: Phase) -> Result<()> {
-    use Phase::*;
-    use Tier::*;
+    // `Tier::Research` and `Phase::Research` share the bare name `Research`;
+    // glob imports would shadow one with the other, so qualify both here.
     let ok = matches!(
         (tier, phase),
-        (Quick, Execute) | (Standard, Verify) | (Deep, Verify)
+        (Tier::Quick, Phase::Execute)
+            | (Tier::Standard, Phase::Verify)
+            | (Tier::Deep, Phase::Verify)
+            | (Tier::Research, Phase::Research)
     );
     if ok {
         Ok(())
@@ -375,7 +379,8 @@ fn stage_files(cwd: &Path, files: &[PathBuf]) -> Result<bool> {
 ///
 /// The list is exactly:
 ///   - this task's `task.toml`;
-///   - (deep tier) the promoted SPEC and the features INDEX.
+///   - (deep tier) the promoted SPEC and the features INDEX;
+///   - (research tier) every file under `<task_dir>/research/` recursively.
 ///
 /// The journal file and workspace index are deliberately absent here — they
 /// are appended after the first commit lands and staged for the amend step
@@ -384,21 +389,35 @@ fn stage_files(cwd: &Path, files: &[PathBuf]) -> Result<bool> {
 /// `/ark:commit`.
 fn ark_files_for_first_commit(
     task_dir: &Path,
-    deep: bool,
+    tier: Tier,
     spec_path: &Path,
     intermediate_indexes: &[PathBuf],
     workspace_files: &[PathBuf],
 ) -> Vec<PathBuf> {
     let mut files = Vec::with_capacity(2 + intermediate_indexes.len() + workspace_files.len());
     files.push(task_dir.join("task.toml"));
-    if deep {
+    if matches!(tier, Tier::Deep) {
         files.push(spec_path.to_path_buf());
         for p in intermediate_indexes {
             files.push(p.clone());
         }
     }
+    if matches!(tier, Tier::Research) {
+        files.extend(research_corpus_files(task_dir));
+    }
     files.extend(workspace_files.iter().cloned());
     files
+}
+
+/// Lists every file under `<task_dir>/research/` recursively.
+///
+/// Empty vector when the directory does not exist (research tier may legally
+/// commit with no corpus — the PRD alone is the artifact). Walks via
+/// [`crate::io::fs::walk_files`], so order is unspecified; sort callers if
+/// they need determinism.
+fn research_corpus_files(task_dir: &Path) -> Vec<PathBuf> {
+    let research_dir = task_dir.join("research");
+    crate::io::fs::walk_files(&research_dir).unwrap_or_default()
 }
 
 /// Returns every INDEX path that the leaf-to-root upsert may touch, ordered
@@ -805,12 +824,14 @@ mod tests {
     use crate::commands::agent::state::Tier;
 
     /// Verifies the precondition table: only `(Quick, Execute)`,
-    /// `(Standard, Verify)`, and `(Deep, Verify)` are accepted as commit inputs.
+    /// `(Standard, Verify)`, `(Deep, Verify)`, and `(Research, Research)`
+    /// are accepted as commit inputs.
     #[test]
     fn check_phase_for_commit_accepts_only_legal_inputs() {
         assert!(check_phase_for_commit(Tier::Quick, Phase::Execute).is_ok());
         assert!(check_phase_for_commit(Tier::Standard, Phase::Verify).is_ok());
         assert!(check_phase_for_commit(Tier::Deep, Phase::Verify).is_ok());
+        assert!(check_phase_for_commit(Tier::Research, Phase::Research).is_ok());
 
         for (tier, phase) in [
             (Tier::Quick, Phase::Design),
@@ -820,6 +841,11 @@ mod tests {
             (Tier::Deep, Phase::Plan),
             (Tier::Deep, Phase::Review),
             (Tier::Deep, Phase::Execute),
+            // Research tier rejects every phase except Phase::Research.
+            (Tier::Research, Phase::Design),
+            (Tier::Research, Phase::Plan),
+            (Tier::Research, Phase::Verify),
+            (Tier::Research, Phase::Execute),
         ] {
             assert!(
                 check_phase_for_commit(tier, phase).is_err(),
@@ -882,7 +908,8 @@ mod tests {
     /// The list must be exactly the Ark-managed files: never the working
     /// tree's `src/foo.rs` etc. Quick/standard tier returns just `task.toml`;
     /// deep tier additionally includes the promoted SPEC and the features
-    /// INDEX. Workspace paths (when present) append after the deep-tier set.
+    /// INDEX. Research tier includes the corpus walk (covered by a separate
+    /// test below). Workspace paths (when present) append last.
     #[test]
     fn ark_files_for_first_commit_excludes_user_work() {
         let tmp = tempfile::tempdir().unwrap();
@@ -896,24 +923,101 @@ mod tests {
         let features_index = vec![layout.specs_features_index()];
         let no_workspace: &[PathBuf] = &[];
 
-        let standard =
-            ark_files_for_first_commit(&task_dir, false, &spec_path, &features_index, no_workspace);
+        let standard = ark_files_for_first_commit(
+            &task_dir,
+            Tier::Standard,
+            &spec_path,
+            &features_index,
+            no_workspace,
+        );
         assert_eq!(standard.len(), 1);
         assert!(standard[0].ends_with("task.toml"));
 
-        let deep =
-            ark_files_for_first_commit(&task_dir, true, &spec_path, &features_index, no_workspace);
+        let deep = ark_files_for_first_commit(
+            &task_dir,
+            Tier::Deep,
+            &spec_path,
+            &features_index,
+            no_workspace,
+        );
         assert_eq!(deep.len(), 3);
         assert!(deep.iter().all(|p| p.to_string_lossy().contains(".ark/")));
 
         let with_ws = ark_files_for_first_commit(
             &task_dir,
-            true,
+            Tier::Deep,
             &spec_path,
             &features_index,
             &[PathBuf::from(".ark/workspace/alice/journal-1.md")],
         );
         assert_eq!(with_ws.len(), 4);
+    }
+
+    /// Walks `<task_dir>/research/` recursively (including nested subdirs)
+    /// and returns empty when the directory is absent. Confirms
+    /// `ark_files_for_first_commit` on the research tier includes
+    /// `task.toml` plus every corpus file and excludes SPEC artifacts.
+    #[test]
+    fn research_corpus_files_walks_recursively() {
+        use crate::io::PathExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let task_dir = tmp.path().join("task");
+        task_dir.ensure_dir().unwrap();
+        let layout = Layout::new(tmp.path());
+        let prd = task_dir.join("PRD.md");
+        let spec_path = layout
+            .specs_feature_dir(&["foo"], &prd)
+            .unwrap()
+            .join("SPEC.md");
+        let features_index = vec![layout.specs_features_index()];
+
+        // Absent research/ → empty corpus, ark_files = [task.toml] only.
+        assert!(research_corpus_files(&task_dir).is_empty());
+        let research_no_corpus =
+            ark_files_for_first_commit(&task_dir, Tier::Research, &spec_path, &features_index, &[]);
+        assert_eq!(research_no_corpus.len(), 1);
+        assert!(research_no_corpus[0].ends_with("task.toml"));
+
+        // Populate research/ with a top-level + nested file.
+        let research = task_dir.join("research");
+        research.ensure_dir().unwrap();
+        research.join("topic-a.md").write_bytes(b"a").unwrap();
+        let nested = research.join("subdir");
+        nested.ensure_dir().unwrap();
+        nested.join("topic-b.md").write_bytes(b"b").unwrap();
+
+        let corpus = research_corpus_files(&task_dir);
+        assert_eq!(corpus.len(), 2);
+        assert!(
+            corpus.iter().any(|p| p.ends_with("topic-a.md")),
+            "{corpus:?}"
+        );
+        assert!(
+            corpus.iter().any(|p| p.ends_with("topic-b.md")),
+            "{corpus:?}"
+        );
+
+        // ark_files_for_first_commit threads the corpus through.
+        let research_files =
+            ark_files_for_first_commit(&task_dir, Tier::Research, &spec_path, &features_index, &[]);
+        assert_eq!(research_files.len(), 3);
+        assert!(research_files[0].ends_with("task.toml"));
+        assert!(
+            research_files
+                .iter()
+                .filter(|p| p.to_string_lossy().contains("/research/"))
+                .count()
+                == 2,
+            "{research_files:?}"
+        );
+
+        // SPEC and features INDEX must NOT be staged on research tier.
+        assert!(
+            !research_files
+                .iter()
+                .any(|p| p.to_string_lossy().contains("specs/features/"))
+        );
     }
 
     /// `intermediate_index_paths` returns leaf-to-root order.
@@ -1423,5 +1527,178 @@ mod e2e {
         assert!(head_files.contains(".ark/tasks/deep/task.toml"));
         assert!(head_files.contains(".ark/specs/features/deep/SPEC.md"));
         assert!(head_files.contains(".ark/specs/features/INDEX.md"));
+    }
+
+    /// Drives a research task to a committable state with optional corpus
+    /// files staged.
+    ///
+    /// Creates the task at `(Tier::Research, Phase::Research)`, commits the
+    /// scaffold so subsequent operations have a clean parent, then writes
+    /// the supplied `corpus_files` under `<task>/research/` and updates the
+    /// PRD body (so an empty-corpus case still has *something* staged for
+    /// `task_commit`'s `NothingStaged` precondition).
+    fn research_at_research_with_staged_corpus(
+        tmp: &std::path::Path,
+        slug: &str,
+        corpus_files: &[(&str, &[u8])],
+    ) {
+        task_new(TaskNewOptions {
+            project_root: tmp.to_path_buf(),
+            slug: slug.into(),
+            title: format!("{slug} research"),
+            tier: Tier::Research,
+            worktree: None,
+        })
+        .unwrap();
+        run_git(&["add", "."], tmp).unwrap();
+        run_git(
+            &[
+                "commit",
+                "-m",
+                &format!("chore({slug}): scaffold"),
+                "--quiet",
+            ],
+            tmp,
+        )
+        .unwrap();
+
+        let task_dir = tmp.join(format!(".ark/tasks/{slug}"));
+
+        // Mutate the PRD body so the user-visible "PRD got filled" step shows
+        // up as a staged change. Otherwise the empty-corpus case has nothing
+        // dirty and `task_commit` correctly errors with NothingStaged.
+        let prd_path = task_dir.join("PRD.md");
+        let prd = prd_path.read_text().unwrap_or_default();
+        prd_path
+            .write_bytes(format!("{prd}\n[Test PRD body for {slug}]\n").as_bytes())
+            .unwrap();
+        run_git(&["add", &format!(".ark/tasks/{slug}/PRD.md")], tmp).unwrap();
+
+        if !corpus_files.is_empty() {
+            let research_dir = task_dir.join("research");
+            research_dir.ensure_dir().unwrap();
+            for (rel, body) in corpus_files {
+                let full = research_dir.join(rel);
+                if let Some(parent) = full.parent() {
+                    parent.ensure_dir().unwrap();
+                }
+                full.write_bytes(body).unwrap();
+            }
+            run_git(&["add", &format!(".ark/tasks/{slug}/research")], tmp).unwrap();
+        }
+    }
+
+    /// Research-tier closure: closing commit captures task.toml + corpus;
+    /// focus is released; no SPEC promoted.
+    #[test]
+    fn research_tier_commit_stages_corpus_and_clears_focus() {
+        let tmp = init_repo_with_ark();
+        research_at_research_with_staged_corpus(
+            tmp.path(),
+            "rs",
+            &[("topic-a.md", b"alpha\n"), ("subdir/topic-b.md", b"beta\n")],
+        );
+
+        let summary = task_commit(TaskCommitOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "rs".into(),
+            message: Some("research(rs): corpus".into()),
+            no_commit: false,
+        })
+        .unwrap();
+        assert_eq!(summary.tier, Tier::Research);
+        assert!(summary.head_sha.is_some());
+        assert!(!summary.deep_spec_promoted, "research never promotes SPEC");
+
+        let head_files = run_git(&["show", "--name-only", "--format=", "HEAD"], tmp.path())
+            .unwrap()
+            .stdout;
+        assert!(head_files.contains(".ark/tasks/rs/task.toml"));
+        assert!(head_files.contains(".ark/tasks/rs/research/topic-a.md"));
+        assert!(head_files.contains(".ark/tasks/rs/research/subdir/topic-b.md"));
+        // No SPEC promotion: features/<slug>/SPEC.md must not appear.
+        assert!(
+            !head_files.contains(".ark/specs/features/rs/SPEC.md"),
+            "research tier must not promote a SPEC: {head_files}"
+        );
+
+        let state = crate::state::load_state(&Layout::new(tmp.path())).unwrap();
+        assert!(state.focus.is_none(), "task_commit must clear focus");
+        assert!(state.tasks.active.iter().any(|s| s == "rs"));
+
+        let toml = TaskToml::load(&Layout::new(tmp.path()).task_dir("rs")).unwrap();
+        assert_eq!(toml.tier, Tier::Research);
+        assert_eq!(toml.phase, Phase::Committed);
+        assert!(toml.committed_at.is_some());
+    }
+
+    /// Research tier never reads VERIFY.md and therefore commits cleanly
+    /// even when no VERIFY.md is on disk.
+    #[test]
+    fn research_tier_skips_verify_gate() {
+        let tmp = init_repo_with_ark();
+        research_at_research_with_staged_corpus(tmp.path(), "rs", &[("only.md", b"x\n")]);
+
+        // Explicit assertion: there is no VERIFY.md anywhere in the task dir.
+        let task_dir = tmp.path().join(".ark/tasks/rs");
+        assert!(!task_dir.join("VERIFY.md").exists());
+
+        task_commit(TaskCommitOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "rs".into(),
+            message: Some("research(rs): commit without VERIFY".into()),
+            no_commit: false,
+        })
+        .unwrap();
+    }
+
+    /// Research tier with no `research/` directory at all commits cleanly
+    /// when only PRD is staged: the corpus is optional.
+    #[test]
+    fn research_tier_commit_succeeds_with_empty_corpus() {
+        let tmp = init_repo_with_ark();
+        research_at_research_with_staged_corpus(tmp.path(), "rs", &[]);
+        // PRD is staged by the helper; no research/ subdir exists.
+        assert!(!tmp.path().join(".ark/tasks/rs/research").exists());
+
+        let summary = task_commit(TaskCommitOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "rs".into(),
+            message: Some("research(rs): empty corpus".into()),
+            no_commit: false,
+        })
+        .unwrap();
+        assert!(summary.head_sha.is_some());
+    }
+
+    /// Research-tier task never produces a feature SPEC. After commit, the
+    /// SPEC path is empty AND the features INDEX has no row for the slug.
+    #[test]
+    fn research_tier_commit_does_not_promote_spec() {
+        let tmp = init_repo_with_ark();
+        research_at_research_with_staged_corpus(tmp.path(), "rs", &[("notes.md", b"corpus\n")]);
+
+        task_commit(TaskCommitOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "rs".into(),
+            message: Some("research(rs): no spec".into()),
+            no_commit: false,
+        })
+        .unwrap();
+
+        // No SPEC file landed.
+        let spec_path = tmp.path().join(".ark/specs/features/rs/SPEC.md");
+        assert!(!spec_path.exists(), "research must not promote a SPEC");
+
+        // Features INDEX should not gain a row for the research slug.
+        let features_index = tmp
+            .path()
+            .join(".ark/specs/features/INDEX.md")
+            .read_text()
+            .unwrap_or_default();
+        assert!(
+            !features_index.contains("rs/SPEC.md") && !features_index.contains("rs/INDEX.md"),
+            "research slug must not appear in features INDEX: {features_index}",
+        );
     }
 }

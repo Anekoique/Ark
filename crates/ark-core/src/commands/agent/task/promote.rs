@@ -63,6 +63,16 @@ pub fn task_promote(opts: TaskPromoteOptions) -> Result<TaskPromoteSummary> {
     let mut toml = TaskToml::load(&task_dir)?;
     let from = toml.tier;
 
+    // Research is upstream of tiered implementation, not a sibling tier.
+    // Cross-over between research and quick/standard/deep is by a fresh
+    // `task new` that cites the research slug in its PRD, not by promote.
+    if from == Tier::Research || opts.to == Tier::Research {
+        return Err(Error::WrongTier {
+            expected: from,
+            actual: opts.to,
+        });
+    }
+
     if !phase_exists_in_tier(opts.to, toml.phase) {
         return Err(Error::IllegalPhaseTransition {
             tier: opts.to,
@@ -267,5 +277,64 @@ mod tests {
         })
         .unwrap_err();
         assert!(matches!(err, Error::TaskNotFound { .. }));
+    }
+
+    /// Rejects promoting a research-tier task out to any other tier.
+    ///
+    /// Research is upstream of tiered implementation, not a sibling tier;
+    /// cross-over is by a fresh `task new` whose PRD cites the research
+    /// slug.
+    #[test]
+    fn task_promote_rejects_research_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        task_new(TaskNewOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+            title: "t".into(),
+            tier: Tier::Research,
+            worktree: None,
+        })
+        .unwrap();
+        let task_dir = tmp.path().join(".ark/tasks/demo");
+        let before = task_dir.join("task.toml").read_bytes().unwrap();
+
+        let err = task_promote(TaskPromoteOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+            to: Tier::Standard,
+        })
+        .unwrap_err();
+        assert!(matches!(err, Error::WrongTier { .. }), "got {err:?}");
+
+        // task.toml byte-identical pre/post: no mutation on the rejection path.
+        let after = task_dir.join("task.toml").read_bytes().unwrap();
+        assert_eq!(before, after);
+    }
+
+    /// Rejects promoting any other tier into research.
+    #[test]
+    fn task_promote_rejects_research_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        task_new(TaskNewOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+            title: "t".into(),
+            tier: Tier::Standard,
+            worktree: None,
+        })
+        .unwrap();
+        let task_dir = tmp.path().join(".ark/tasks/demo");
+        let before = task_dir.join("task.toml").read_bytes().unwrap();
+
+        let err = task_promote(TaskPromoteOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+            to: Tier::Research,
+        })
+        .unwrap_err();
+        assert!(matches!(err, Error::WrongTier { .. }), "got {err:?}");
+
+        let after = task_dir.join("task.toml").read_bytes().unwrap();
+        assert_eq!(before, after);
     }
 }

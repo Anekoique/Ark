@@ -710,4 +710,85 @@ mod tests {
             "opencode-support SPEC must reference `subagent-support` in its CHANGELOG"
         );
     }
+
+    /// V-IT-3 (Claude+OpenCode half): the `research.md` bodies under
+    /// `templates/claude/commands/ark/` and `templates/opencode/commands/ark/`
+    /// are byte-identical after stripping their respective frontmatter blocks.
+    #[test]
+    fn research_slash_command_claude_and_opencode_bodies_match() {
+        let claude = CLAUDE_TEMPLATES
+            .get_file("commands/ark/research.md")
+            .expect("claude research.md exists")
+            .contents_utf8()
+            .expect("utf8");
+        let opencode = OPENCODE_TEMPLATES
+            .get_file("ark/research.md")
+            .expect("opencode research.md exists")
+            .contents_utf8()
+            .expect("utf8");
+
+        let claude_body = strip_md_frontmatter(claude);
+        let opencode_body = strip_md_frontmatter(opencode);
+        assert_eq!(
+            claude_body, opencode_body,
+            "Claude and OpenCode research.md bodies must be byte-identical after frontmatter strip",
+        );
+    }
+
+    /// V-IT-3 (Codex half): the Codex `ark-research/SKILL.md` body matches the
+    /// Claude `research.md` body after applying the inverse of C-11's
+    /// substitution map.
+    ///
+    /// Per C-11, the substitution only rewrites slash-command names — i.e.
+    /// `/ark:research`, `/ark:quick`, `/ark:design`, `/ark:commit` — to their
+    /// `ark-<name>` Codex equivalents, plus `$ARGUMENTS → <topic>` and the
+    /// H1 line reshape. The agent subagent name `ark-researcher` is NOT a
+    /// slash command (it never had a `/ark:` form) and is left alone on both
+    /// sides.
+    #[test]
+    fn research_codex_skill_matches_claude_under_inverse_substitution() {
+        let claude = CLAUDE_TEMPLATES
+            .get_file("commands/ark/research.md")
+            .expect("claude research.md exists")
+            .contents_utf8()
+            .expect("utf8");
+        let codex = CODEX_TEMPLATES
+            .get_file("ark-research/SKILL.md")
+            .expect("codex SKILL.md exists")
+            .contents_utf8()
+            .expect("utf8");
+
+        let claude_body = strip_md_frontmatter(claude);
+        let codex_body = strip_md_frontmatter(codex);
+
+        // Apply the inverse substitution to the Codex body. Order matters:
+        // rewrite the H1 line's `ark-research <topic>` to
+        // `/ark:research $ARGUMENTS` before the generic `ark-research` pass,
+        // so we don't double-rewrite. The closed slash-command set is
+        // exactly {research, quick, design, commit} — `ark-researcher`
+        // (the subagent) is deliberately NOT in this set.
+        let codex_normalized = codex_body
+            .replace("ark-research <topic>", "/ark:research $ARGUMENTS")
+            .replace("ark-research`", "/ark:research`")
+            .replace("ark-quick", "/ark:quick")
+            .replace("ark-design", "/ark:design")
+            .replace("ark-commit", "/ark:commit");
+
+        assert_eq!(
+            claude_body, codex_normalized,
+            "Codex SKILL.md body must match Claude research.md after inverse substitution \
+             `/ark:<cmd> → ark-<cmd>` and `$ARGUMENTS → <topic>`",
+        );
+    }
+
+    /// Strips the leading `---\n...\n---\n` markdown frontmatter block.
+    /// Returns the input unchanged if no frontmatter is present.
+    fn strip_md_frontmatter(body: &str) -> String {
+        if let Some(after_open) = body.strip_prefix("---\n")
+            && let Some(end) = after_open.find("\n---\n")
+        {
+            return after_open[end + "\n---\n".len()..].to_string();
+        }
+        body.to_string()
+    }
 }

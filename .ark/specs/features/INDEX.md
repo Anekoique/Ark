@@ -21,6 +21,7 @@ The table below is managed by `ark agent spec register` — new rows appear when
 | `workspace` | add workspace support | 2026-05-02 from task `workspace` |
 | `subagent-support` | add researcher/reviewer/verifier subagents across claude/codex/opencode | 2026-05-10 from task `subagent-support` |
 | `detachable-feature-spec` | support detachable feature SPEC | 2026-05-18 from task `detachable-feature-spec` |
+| `ark-research` | add research tier and /ark:research slash command | 2026-05-20 from task `ark-research` |
 
 <!-- ARK:FEATURES:END -->
 

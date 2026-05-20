@@ -352,7 +352,12 @@ fn build_task_toml(opts: &TaskNewOptions) -> TaskToml {
         id: opts.slug.clone(),
         title: opts.title.clone(),
         tier: opts.tier,
-        phase: Phase::Design,
+        // Research tier starts in its dedicated working phase; every other
+        // tier starts in Design.
+        phase: match opts.tier {
+            Tier::Research => Phase::Research,
+            _ => Phase::Design,
+        },
         iteration: 0,
         max_iterations: match opts.tier {
             Tier::Deep => Some(3),

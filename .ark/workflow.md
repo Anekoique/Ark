@@ -29,6 +29,7 @@ cat .ark/specs/project/<name>/SPEC.md   # one per row
 /ark:quick "<title>"               # trivial, reversible — PRD only
 /ark:design "<title>"              # standard — PRD + PLAN + VERIFY
 /ark:design --deep "<title>"       # deep — adds REVIEW loop + promoted SPEC
+/ark:research "<topic>"            # research — corpus IS the deliverable; follow-up optional
 ```
 
 ---
@@ -40,8 +41,9 @@ Pick the smallest tier that fits.
 - **Quick** — reversible in one commit, no new abstractions. Artifact: `PRD.md`.
 - **Standard** — feature work with testable scope, no API/architecture break. Artifacts: `PRD.md`, `PLAN.md`, `VERIFY.md`.
 - **Deep** — architectural, cross-cutting, or new subsystem. Artifacts: `PRD.md`, `NN_PLAN.md` ⇄ `NN_REVIEW.md` (looped), `VERIFY.md`, promoted `SPEC.md`.
+- **Research** — knowledge-gathering; corpus IS the deliverable; follow-up implementation optional. Artifacts: `PRD.md`, `research/`.
 
-Promote mid-flight when scope grows: `ark agent task promote --to <tier>`. Prior artifacts are preserved.
+Promote mid-flight when scope grows: `ark agent task promote --to <tier>`. Prior artifacts are preserved. **Research tier does not participate in promotion** — cross-over between research and tiered implementation is by a fresh `task new` whose PRD cites the research slug in prose.
 
 When in doubt, pick lower. Promotion is cheap; demotion is awkward.
 
@@ -74,13 +76,14 @@ Each phase: pull context, run the CLI, write the artifact, advance.
 ```
 DESIGN  → PLAN  → [REVIEW ⇄ PLAN]  → EXECUTE  → VERIFY  → COMMIT  → (later) ARCHIVE
             quick skips PLAN/REVIEW/VERIFY; standard skips REVIEW
+RESEARCH → COMMIT → (later) ARCHIVE          research tier (no PLAN/REVIEW/EXECUTE/VERIFY)
 ```
 
 ### DESIGN — write PRD
 
 ```bash
 ark context --scope phase --for design --format json
-ark agent task new --slug <slug> --title "<title>" --tier <quick|standard|deep> [--worktree]
+ark agent task new --slug <slug> --title "<title>" --tier <quick|standard|deep|research> [--worktree]
 ```
 
 - Read every project SPEC and any related feature SPECs from the context output.
@@ -251,6 +254,29 @@ ark archive --dry-run             # list candidates only
 Moves every `phase = Committed` task to `tasks/archive/YYYY-MM/<slug>/`. Month derived from each task's own `committed_at`. Side-effect-free — no SPEC promotion (already happened on commit), no journal writes.
 
 Reopen by hand: move the archived dir back to `.ark/tasks/<slug>/`, set `phase = "verify"`, clear `archived_at`. Refused if a same-slug active task exists.
+
+---
+
+## Research
+
+A research task gathers a reference corpus on a question — the corpus IS the deliverable, follow-up implementation is optional.
+
+**When to use research tier vs. embedded `ark-researcher` dispatch:**
+
+- **Research tier** — you cannot yet write a PRD's What/Why/Outcome. The question is what to build, or whether to build at all. Use `/ark:research`.
+- **Embedded `ark-researcher` (during DESIGN/PLAN of a tiered task)** — you can already write the PRD; you just need to fill in technical unknowns inside it (third-party library shape, prior-art comparison, codebase pattern map). Stays inside the tiered task; the subagent persists to `.ark/tasks/<slug>/research/<topic>.md` of the *parent* task.
+
+**PRD field remap on research tier:**
+
+- **What** — the question / direction being investigated.
+- **Why** — motivation. Not required to lead to implementation.
+- **Outcome** — "Why this corpus is the right next step" (optional; the corpus itself is the deliverable).
+- **Related Specs** — feature SPECs consulted (optional).
+- **SPEC Path** — ignored.
+
+**Lifecycle:** `Research → Committed → Archived`. No PLAN, no VERIFY, no SPEC promotion. `task_commit` stages `task.toml` + `PRD.md` + every file under `research/` recursively.
+
+**Cross-over to implementation:** `task promote` is rejected for any source-or-target involving research tier. When the corpus is ready and you want to build, close the research task and start a fresh `/ark:quick` or `/ark:design` whose PRD references the research slug in prose.
 
 ---
 

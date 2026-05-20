@@ -66,8 +66,8 @@ ark-core/src/
 
 **Responsibilities of this layer:**
 - Create task directories (`task new`) and move them on archive (`task archive`, also reachable as the side-effect-free `task_archive_move` Rust helper) — whenever the operation touches filesystem structure that has to be correct.
-- Transition phases (`task plan` / `review` / `execute` / `verify` / `commit` / `archive`) — the state machine enforces legality per tier.
-- Atomically close a task (`task commit`): VERIFY gate, deep-tier SPEC extract, single git commit covering work + task.toml + (deep) SPEC + features INDEX, with scoped rollback on any pre-commit failure.
+- Transition phases (`task plan` / `review` / `execute` / `verify` / `commit` / `archive`) — the state machine enforces legality per tier. `Tier::Research` adds a fourth tier whose only legal lifecycle is `Research → Committed → Archived` (no PLAN/REVIEW/EXECUTE/VERIFY).
+- Atomically close a task (`task commit`): VERIFY gate (standard/deep), deep-tier SPEC extract, single git commit covering work + task.toml + (deep) SPEC + features INDEX + (research) corpus under `<task>/research/`, with scoped rollback on any pre-commit failure.
 - Extract SPEC bodies from PLANs and upsert rows in `specs/features/INDEX.md`'s managed block.
 
 **Not** this layer's responsibility:

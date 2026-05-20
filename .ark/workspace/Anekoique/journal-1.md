@@ -487,3 +487,31 @@ Drop `installed_at` from `.installed.json` so no-op upgrades stop churning the m
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 19: add `ark research`
+
+**Date**: 2026-05-20
+**Slug**: ark-research
+**Branch**: `feat/ark-research`
+**Base Branch**: `main`
+**Start Head**: `fc1078f`
+**Closing Commit**: <PENDING:ark-research>
+
+### Summary
+
+Introduce a fourth workflow tier whose deliverable is a curated reference corpus under `<task>/research/`, not a code change. Follow-up implementation optional.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| tier | `Tier::Research` + `Phase::Research`; sole legal lifecycle `Research → Committed → Archived` |
+| commit | research-tier branch skips VERIFY gate + SPEC extract; `ark_files_for_first_commit` stages `task.toml` + `research/**` |
+| promote | `task_promote` rejects every source-or-target involving research with `Error::WrongTier` |
+| platforms | `/ark:research` shipped across Claude / Codex / OpenCode (Codex applies closed-form substitution map) |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |
