@@ -177,7 +177,9 @@ pub fn task_commit(opts: TaskCommitOptions) -> Result<TaskCommitSummary> {
     let prd_path = task_dir.join("PRD.md");
     let feature_segments: Vec<String> = if deep {
         let prd_text = prd_path.read_text()?;
-        crate::commands::agent::task::prd::parse_spec_path(&prd_text, &opts.slug, &prd_path)?
+        crate::commands::agent::task::prd::parse_spec_path(
+            &prd_text, &opts.slug, &prd_path, &layout,
+        )?
     } else {
         vec![opts.slug.clone()]
     };

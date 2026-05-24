@@ -1,3 +1,24 @@
+# `improve-ark-context` PLAN `00`
+
+> Status: Draft
+> Feature: `ark-context`
+> Iteration: `00`
+> Owner: Executor
+> Depends on:
+> - Previous Plan: none
+> - Review: none
+
+---
+
+## Summary
+
+Additive growth of `ark context`'s projection surface so a single `--scope phase --for <phase>` call carries the workflow state introduced by features shipped after `ark-context` was first promoted: per-checkout `checkout` (root_kind + branch + focus_slug) on every projection; `specs.features_tree` on session + design; `subagents` (every installed agent stem per detected platform, not just Ark's three) on session + design / plan / review / verify; `record: Some(RecordProjection)` on commit scope. `SCHEMA_VERSION` stays at 1 (additive serde fields). Slash commands `/ark:design`, `/ark:commit`, `/ark:research` across Claude / Codex / OpenCode are updated to consume the new fields. Research tier reuses the design projection — `--for research` is not added, honoring `ark-research` NG-4. The existing SPEC at `specs/features/ark-context/SPEC.md` is updated in place with a `[**CHANGELOG**]` entry on commit; no new SPEC is promoted.
+
+## Log `None in 00_PLAN`
+
+---
+
+## Spec
 
 > This section is the durable design record. On deep-tier commit, it is copied **verbatim** into `specs/features/ark-context/SPEC.md` (overwriting the existing body); a `[**CHANGELOG**]` entry is appended.
 
@@ -25,10 +46,8 @@ crates/
     ├── error.rs                              (Error::GitSpawn)
     ├── layout.rs                             (claude_settings, specs_project_dir,
     │                                           specs_project_index, discover_from)
-    ├── platforms.rs                          (read-only consumer; Platform::agents_dest_dir
-    │                                           is what subagent enumeration scans;
-    │                                           Platform::cli_flag is what SubagentSet.platform
-    │                                           reuses verbatim)
+    ├── platforms.rs                          (Platform::agents_dest_dir is the input
+    │                                           subagent enumeration reads from)
     ├── io/
     │   ├── fs.rs                             (update_settings_hook, remove_settings_hook,
     │   │                                      read_settings_hook, ARK_CONTEXT_HOOK_COMMAND,
@@ -36,8 +55,7 @@ crates/
     │   └── git.rs                            (sole sanctioned `Command::new("git")` site)
     ├── state/snapshot.rs                     (hook_bodies + SnapshotHookBody, #[serde(default)])
     └── commands/context/
-        ├── mod.rs                            (entry, ContextOptions, SessionStart envelope;
-        │                                      hosts ADDITIONAL_CONTEXT_CAP)
+        ├── mod.rs                            (entry, ContextOptions, SessionStart envelope)
         ├── gather.rs                         (single-pass collection; adds checkout,
         │                                      features_tree, subagents enumeration)
         ├── model.rs                          (Context + sub-structs, SCHEMA_VERSION, caps;
@@ -65,18 +83,18 @@ context(opts)
   │     ├── parse specs/project/INDEX.md                             (existing)
   │     ├── parse specs/features/INDEX.md (recursive walk)           (existing)
   │     ├── if focus exists: current_task + related_specs            (existing)
-  │     ├── **checkout::detect_checkout(&layout, branch)** → CheckoutInfo (new)
+  │     ├── **checkout::detect_checkout(&layout)** → CheckoutInfo    (new)
   │     ├── **spec_tree::build_features_tree(&features)** → SpecNode (new)
   │     └── **subagents::enumerate_subagents(&layout)** → Vec<...>   (new)
   ├── projected = projection::project(ctx, opts.scope)
   └── format-dispatch + SessionStart envelope wrapping               (existing)
 ```
 
-`detect_checkout` reads `git rev-parse --show-toplevel` and `git rev-parse --git-common-dir`, classifies `root_kind = Worktree` when the toplevel differs from the common-dir's parent and `root_kind = Main` otherwise. The `branch` arg is the already-resolved `GitState::branch` value threaded in by the caller (no second `git rev-parse --abbrev-ref` call, per C-32). `focus_slug` reads `state.focus` via the existing `load_state(&layout)`.
+`detect_checkout` reads `git rev-parse --show-toplevel` and `git rev-parse --git-common-dir`, classifies `root_kind = Worktree` when the toplevel differs from the common-dir's parent and `root_kind = Main` otherwise. `branch` reuses `GitState::branch` (no extra `run_git` call). `focus_slug` reads `state.focus` via the existing `load_state(&layout)`.
 
 `build_features_tree` is a pure function over the already-collected `Vec<SpecRow>`: it groups by `feature_path[..n]` prefixes, building a `SpecNode` tree whose leaves carry row metadata and whose branches carry the segment name. Returns `None` when `features` is empty.
 
-`enumerate_subagents` walks each `Platform`'s `agents_dest_dir` if present under `layout.root()`. For each, it lists immediate children, filters to files whose extension matches the platform's expected extension (`.md` for Claude / OpenCode; `.toml` for Codex), and emits stems. It does **not** filter to Ark-canonical stems — user-installed agents appear too. Symlinks are not followed.
+`enumerate_subagents` walks each `Platform`'s `agents_dest_dir` if present under `layout.root()`. For each, it lists immediate children and extracts stems per platform layout. It does **not** filter to Ark-canonical stems — user-installed agents appear too. Symlinks are not followed.
 
 [**Data Structure**]
 
@@ -211,8 +229,7 @@ pub enum SpecNode {
 
 /// Installed-agent enumeration for one platform on this checkout's disk.
 pub struct SubagentSet {
-    pub platform: String,                         // verbatim `Platform::cli_flag`
-                                                  // ("claude" | "codex" | "opencode")
+    pub platform: String,                         // "claude" | "codex" | "opencode"
     pub stems: Vec<String>,                       // sorted ascending; may include user agents
 }
 
@@ -317,9 +334,6 @@ pub struct ContextSummary {
 
 pub fn context(opts: ContextOptions) -> Result<ContextSummary>;
 
-// Existing private const that C-45 elevates to a referenced contract:
-const ADDITIONAL_CONTEXT_CAP: usize = 9_500;
-
 // CLI shape (ark-cli/src/main.rs) — unchanged
 
 #[derive(Subcommand)]
@@ -348,7 +362,7 @@ struct ContextArgs {
 
 // NEW pure-function leaves used by gather:
 
-pub fn detect_checkout(layout: &Layout, branch: &str) -> CheckoutInfo;      // checkout.rs
+pub fn detect_checkout(layout: &Layout) -> CheckoutInfo;                    // checkout.rs
 pub fn build_features_tree(rows: &[SpecRow]) -> Option<SpecNode>;           // spec_tree.rs
 pub fn enumerate_subagents(layout: &Layout) -> Vec<SubagentSet>;            // subagents.rs
 ```
@@ -396,18 +410,157 @@ Library re-exports from `ark-core/src/lib.rs` add: `CheckoutInfo`, `CheckoutRoot
 - C-35: `SpecNode` is `Some` iff `gather_context` produced a non-empty `features` Vec **and** the projection selected it (per C-30); `None` otherwise.
 - C-36: `build_features_tree` recursion is bounded by `FEATURES_TREE_MAX_DEPTH = 8`, mirroring `gather`'s walker.
 - C-37: `enumerate_subagents` scans only platform agent directories whose paths exist under `layout.root()`; absent directories produce no `SubagentSet` row (not an empty `stems` row).
-- C-38: `SubagentSet.platform` is `Platform::cli_flag` verbatim — one of `"claude"`, `"codex"`, `"opencode"` — chosen because the `cli_flag` field is the existing normalized short tag (whereas `Platform::id` for Claude is `"claude-code"`, which downstream slash commands would otherwise have to special-case).
+- C-38: `SubagentSet.platform` is one of `"claude"`, `"codex"`, `"opencode"` — lowercase serde tag matches `templates::Platform`'s existing display form.
 - C-39: `SubagentSet.stems` lists every agent stem found, **not** filtered to Ark canonicals; user-installed agents appear alongside `ark-researcher` / `ark-reviewer` / `ark-verifier`. Stems are sorted ascending.
 - C-40: `enumerate_subagents` does not follow symlinks; entries whose `file_type` is symlink are skipped.
-- C-41: Stem derivation per platform: Claude / OpenCode = filename with `.md` stripped (flat `.claude/agents/<name>.md`, `.opencode/agents/<name>.md`); Codex = filename with `.toml` stripped (flat `.codex/agents/<name>.toml`). Files whose extension does not match the platform's expected extension are skipped silently. The Codex *slash-command* layout (`.codex/skills/<name>/SKILL.md`) is out of scope for this scan.
-- C-42: Commit-phase projection's `record` field is populated by reusing the same record-gather helper that powers `Scope::Record`. No duplication of journal-scan logic. The returned `RecordProjection` is always `Some(_)` when the scope is selected; `session_count == 0` means "no journal entries yet for this developer / branch", not "gather skipped" — slash commands branch on individual field values (`identity.is_none()` vs `session_count == 0`), not on the option.
+- C-41: Stem derivation per platform: Claude / OpenCode = filename with trailing `.md` stripped; Codex = subdirectory name (stem of the directory containing `SKILL.md`). Matches `subagent-support` SPEC's per-platform install layout.
+- C-42: Commit-phase projection's `record` field is populated by reusing the same record-gather helper that powers `Scope::Record`. No duplication of journal-scan logic.
 - C-43: SessionStart envelope cap behavior unchanged: drop `archive` first, then truncate `tasks.active` to 5; new additive fields are NOT dropped (they are small and load-bearing for the agent's first message).
-- C-44: `SubagentSet.platform` is derived by reading `Platform::cli_flag` directly — `enumerate_subagents` iterates `PLATFORMS` and emits each `cli_flag` as the platform tag. No hand-rolled mapping table; if `Platform::cli_flag` changes, `SubagentSet.platform` follows automatically.
-- C-45: The SessionStart envelope's byte cap is sourced from the in-code constant `ADDITIONAL_CONTEXT_CAP` in `commands/context/mod.rs` (currently 9,500 bytes — documented as "Claude Code's 10K-character cap with envelope headroom"). The cap is unchanged by this task; new fields fit comfortably for typical projects (≤10 features, ≤6 stems per platform) per V-F-3.
-- C-46: Text-mode `## SPECS` renders both project and feature rows in tree shape — indented branch lines for each directory / feature-path segment, leaves rendered as `<name> — <scope>` with one indent level per segment. There is no separate `## FEATURES TREE` text heading; the JSON `specs.features_tree` field remains the machine-readable nested view, while text mode collapses both surfaces into one `## SPECS` tree to avoid redundancy when features are flat single-segment leaves.
 
 ---
 
-[**CHANGELOG**]
+## Runtime
 
-- 2026-05-24: replaced from 01_PLAN.md (prior body preserved in git history)
+[**Main Flow**]
+
+1. CLI parses `--scope` / `--for` / `--format`; constructs `ContextOptions`.
+2. `context()` resolves `Layout`, errors `NotLoaded` if `.ark/` missing (existing C-14).
+3. `gather_context()` produces a `Context` (single I/O pass — git, tasks, archive, specs walk, current-task focus + related-specs parse, **new**: checkout detect, features tree build, subagents enumerate).
+4. `project()` reduces to `ProjectedContext` per `Scope` — new fields populated per C-30.
+5. Format dispatch: JSON via `serde_json::to_string_pretty` (Session wraps in SessionStart envelope with cap-driven truncation per C-43); Text via `TextSummary` Display.
+6. Single stdout write (C-7).
+
+[**Failure Flow**]
+
+1. `git` spawn failure → `Error::GitSpawn` (C-22). `git` non-zero exit returns `GitOutput { exit_code, .. }`; callers in `gather` interpret per shape (existing soft-fail for branch resolution preserved).
+2. `detect_checkout` failure (non-git checkout, missing parent) defaults `root_kind = Main` (C-31). No error surfaced.
+3. `enumerate_subagents` failure on a single platform directory (permission denied, broken symlink) skips that platform; other platforms still enumerate.
+4. `build_features_tree` on an empty `features` Vec returns `None` (C-35).
+5. Settings-hook write failures surface as `Error::Io { path: claude_settings, source }` (existing).
+
+[**State Transitions**]
+
+- `Context` always populated → `ProjectedContext` selects which Optional fields survive per scope, per C-30. No new lifecycle state.
+
+---
+
+## Implementation
+
+[**Phase 1 — Core types + gather**]
+
+1. Add `CheckoutInfo`, `CheckoutRootKind`, `SpecNode`, `SubagentSet`, `FEATURES_TREE_MAX_DEPTH` to `commands/context/model.rs`. Extend `Context` and `SpecsState` with the new fields.
+2. Write `commands/context/checkout.rs::detect_checkout(&Layout) -> CheckoutInfo` — `git rev-parse --show-toplevel` + `--git-common-dir` comparison; reads `state.focus`. Unit tests via tempdir + injected git (or skip when git missing).
+3. Write `commands/context/spec_tree.rs::build_features_tree(&[SpecRow]) -> Option<SpecNode>` — pure grouping by `feature_path` segments; sorted child Vec. Unit tests cover flat-only, single-subtree, mixed, empty, max-depth.
+4. Write `commands/context/subagents.rs::enumerate_subagents(&Layout) -> Vec<SubagentSet>` — iterates each `Platform`, stats each `agents_dest_dir`, derives stems per C-41. Unit tests cover each platform layout + Ark-canonical mixed with user agents.
+5. Wire all three into `gather::gather_context`. Add to `mod.rs` `pub use`.
+
+[**Phase 2 — Projection + render**]
+
+1. Extend `commands/context/projection.rs::ProjectedContext` with `checkout` (always) and `subagents` (per C-30). Move `SpecsState`'s `features_tree` population through `project()` per C-30 (Session + Design carry it; other scopes set `None`).
+2. Refactor the `Scope::Record` helper out of `mod.rs` into a small free function reachable from `projection.rs` so the Phase(Commit) arm can call it without re-implementing journal scan logic (C-42). Keep the helper's I/O scope identical.
+3. Update `commands/context/render.rs::TextSummary` — add `## CHECKOUT` (always), `## FEATURES TREE` (when present), `## SUBAGENTS` (when non-empty), and ensure commit scope renders `## RECORD` when populated.
+
+[**Phase 3 — Slash commands**]
+
+1. Update `templates/claude/commands/ark/design.md` — reference `checkout` and `subagents` in the `[USER]` "STOP and ask the user which reviewer" prompt so only installed agents are offered.
+2. Update `templates/claude/commands/ark/commit.md` — read `record.identity` / `record.active_journal_path` / `record.session_count` from commit scope instead of separately calling `--scope record`.
+3. Update `templates/claude/commands/ark/research.md` — reference `checkout.focus_slug` in the staging-step preflight.
+4. Mirror the three edits to `templates/opencode/commands/ark/*.md` (byte-identical bodies modulo frontmatter per existing convention).
+5. Mirror the three edits to `templates/codex/skills/ark-*/SKILL.md` (Codex substitution map: `/ark:<name>` → `ark-<name>`).
+6. Update `.ark/workflow.md`'s `## CLI surfaces` block — mention the new fields in the `ark context` paragraph; keep additions ≤6 lines.
+
+[**Phase 4 — SPEC update + verify gate**]
+
+1. Confirm `## Spec` (this section) matches the final shape after any review iteration; `task commit` will overwrite `specs/features/ark-context/SPEC.md` with this body verbatim and append a CHANGELOG entry per `detachable-feature-spec` C-7.
+2. Run smoke test from `CLAUDE.md` (build → load → unload → load → remove).
+3. `cargo fmt --all`; `cargo clippy --workspace --all-targets -- -D warnings`; `cargo test --workspace`.
+
+---
+
+## Trade-offs
+
+- T-1: **Additive vs schema-bump.** Picked additive (kept `SCHEMA_VERSION = 1`). Adv: zero breakage for in-flight slash commands that don't yet read new fields; can ship incrementally per template platform; satisfies the `ark-context` SPEC's stated additive-only contract. Disadv: `ProjectedContext` grows a few `#[serde(skip_serializing_if = ...)]`-gated fields, slightly more shape variation per scope. Mitigated by C-30 which names exactly when each field is populated.
+
+- T-2: **`features_tree` placement — session+design only vs every scope.** Picked session+design. Adv: smallest payload growth where it matters most (orientation + DESIGN navigation); plan/review already filter features down to related, so a tree there is mostly redundant; commit/execute/verify don't navigate features. Disadv: consumers see a shape that varies by scope. Mitigated by C-35 (deterministic `Option<SpecNode>` rule).
+
+- T-3: **Subagent detection — manifest vs filesystem scan.** Picked filesystem scan. Adv: catches user-added agents (e.g., a project-local `code-reviewer` agent under `.claude/agents/`); robust to manifest drift; the slash command's "which reviewer?" prompt sees the truth. Disadv: per-platform stem derivation (C-41); one extra `read_dir` per detected platform. Mitigated by C-37 (skip absent dirs) and C-40 (skip symlinks).
+
+- T-4: **Commit-scope `record` field — reuse `RecordProjection` vs inline minimal fields.** Picked reuse. Adv: one schema, two consumers; `/ark:commit` and `/ark:record` share rendering logic. Disadv: commit-scope payload grows by ~5 fields the slash command may not all read. Negligible (RecordProjection is ~80 bytes JSON).
+
+- T-5: **No `--for research`.** Honored `ark-research` SPEC NG-4. Adv: research-tier slash command keeps using the design projection — no surface area churn for a tier that already lives without PLAN/REVIEW/VERIFY. Disadv: a future request to differentiate (e.g., suppress `archive` for research scope) would need a SPEC amendment first.
+
+- T-6: **In-place SPEC update vs new SPEC.** This task modifies `specs/features/ark-context/SPEC.md` in place; no new feature directory is promoted. `task commit` already handles this via the CHANGELOG-on-overwrite path per `detachable-feature-spec` C-7. Adv: history of the SPEC stays linear at a single location. Disadv: requires the PLAN's `## Spec` to be a self-contained superset of the prior SPEC's body (which it is — every prior `G-*` / `C-*` is preserved or explicitly retired with rationale).
+
+---
+
+## Validation
+
+[**Unit Tests**]
+
+- V-UT-1: `detect_checkout` returns `Main` in a freshly-init'd tempdir + `Worktree` when invoked from inside `.ark/worktrees/<branch>/`.
+- V-UT-2: `detect_checkout` defaults to `Main` when `git` is unavailable (non-git tempdir).
+- V-UT-3: `detect_checkout` populates `focus_slug` from a written `.state.toml` and `None` when absent.
+- V-UT-4: `build_features_tree` over a flat `[ark-context, worktree]` Vec produces two leaf nodes.
+- V-UT-5: `build_features_tree` over a `[klib, xemu/csr, xemu/io/mmio]` Vec produces one leaf (`klib`) and one branch (`xemu`) whose children are a leaf (`csr`) and a sub-branch (`xemu/io` with leaf `mmio`).
+- V-UT-6: `build_features_tree` on empty Vec returns `None`; ordering of input doesn't change tree shape (deterministic sort).
+- V-UT-7: `enumerate_subagents` on a tempdir with `.claude/agents/{ark-reviewer.md, code-reviewer.md}` returns one `SubagentSet { platform: "claude", stems: ["ark-reviewer", "code-reviewer"] }` (sorted, user agent included).
+- V-UT-8: `enumerate_subagents` skips a platform dir that doesn't exist (no row emitted, not an empty stems row).
+- V-UT-9: `enumerate_subagents` derives Codex stems from subdirectory names (`.codex/skills/ark-reviewer/SKILL.md` → stem `ark-reviewer`).
+- V-UT-10: `enumerate_subagents` skips symlinked entries.
+- V-UT-11: `projection::project` sets `checkout` on Session, Phase(Design), Phase(Plan), Phase(Review), Phase(Execute), Phase(Verify), Phase(Commit), Record.
+- V-UT-12: `projection::project` sets `features_tree = Some(_)` on Session + Design only (given a non-empty input); `None` on the other six scopes.
+- V-UT-13: `projection::project` sets `subagents` non-empty on Session and Phase(Design / Plan / Review / Verify); empty Vec on Phase(Execute / Commit) and Record.
+- V-UT-14: `projection::project` sets `record = Some(_)` on Phase(Commit) and Record; `None` elsewhere.
+
+[**Integration Tests**]
+
+- V-IT-1: `ark context --scope session --format json` in a tempdir with seeded `.claude/agents/` emits an envelope whose stringified `additionalContext` contains `"checkout": { "root_kind": "main", ...}` and a non-empty `"subagents"` array.
+- V-IT-2: `ark context --scope phase --for design --format json` in a tempdir with a recursive features tree emits `"specs": { ..., "features_tree": { ... } }` with the expected nested shape.
+- V-IT-3: `ark context --scope phase --for commit --format json` emits `"record": { "identity": ..., "active_journal_path": ..., "session_count": ... }` when a journal exists; emits `"record": { "identity": null, "active_journal_path": null, "session_count": 0, ... }` when none.
+- V-IT-4: `ark context --scope phase --for plan --format json` includes `subagents` but not `features_tree`.
+- V-IT-5: `ark context --scope phase --for execute --format json` includes `checkout` but neither `features_tree` nor `subagents`.
+- V-IT-6: `ark context` text mode includes `## CHECKOUT`, `## SUBAGENTS` (when populated), `## FEATURES TREE` (when present), `## RECORD` (when populated) sub-sections in addition to the existing locked sections.
+- V-IT-7: `commands_no_bare_command_new` source-scan test continues to pass after adding `checkout.rs` / `subagents.rs` / `spec_tree.rs` (C-26 / C-28).
+- V-IT-8: `ark upgrade` round-trip with the new templates produces a byte-identical `.claude/settings.json` (C-29) and writes the updated slash command bodies.
+
+[**Failure / Robustness**]
+
+- V-F-1: `detect_checkout` in a fully non-git tempdir returns `Main`, never panics.
+- V-F-2: `enumerate_subagents` on a platform dir with a broken symlink continues, emitting the rest of the stems.
+- V-F-3: SessionStart envelope cap drops `archive` first; with `checkout` + `subagents` populated, the cap math still fits the documented 9,500-byte ceiling for a typical project (≤10 features, ≤6 stems per platform).
+- V-F-4: An older client deserializing a context payload with new fields it doesn't know about does not error (serde additive-fields contract; covered by a round-trip test).
+
+[**Edge Cases**]
+
+- V-E-1: Empty `features` Vec → `features_tree = None` on every scope.
+- V-E-2: A project with zero installed agents (no `.claude/agents/`, no `.codex/skills/`, etc.) → `subagents = []` on every scope.
+- V-E-3: A worktree whose `state.focus` slug doesn't match any active task → `focus_slug = Some("orphan-slug")` (truthful to disk; reconciliation is a separate task per `task-concurrency-control` G-2).
+- V-E-4: Recursive `features_tree` at exactly `FEATURES_TREE_MAX_DEPTH = 8`; deeper subtrees are flattened or dropped per C-36 (mirrors `gather` walker bound).
+- V-E-5: A platform whose `agents_dest_dir` contains a file with no recognized stem suffix (Claude: not `.md`) is skipped without erroring.
+
+[**Acceptance Mapping**]
+
+| Goal / Constraint | Validation |
+|-------------------|------------|
+| G-1 | V-IT-1, V-IT-2 (JSON snapshot still present) |
+| G-2 | V-IT-1 (session), V-IT-4 (phase=plan), V-IT-3 (record reuse on commit) |
+| G-3 | V-IT-1, V-IT-2 (schema=1 preserved); V-F-4 (additive forward-compat) |
+| G-4 | V-IT-1 (envelope shape unchanged); existing `context_session_json_wraps_in_session_start_envelope` regression covers |
+| G-5 | V-IT-3 (commit projection carries `record` paths, no bodies) |
+| NG-4 | absence of any `--for research` arg in `ContextArgs` + projection match arm; no test fixture invokes that arg |
+| C-7 | existing `ContextSummary` Display contract; one write per invocation |
+| C-30 | V-UT-11, V-UT-12, V-UT-13, V-UT-14 |
+| C-31 | V-UT-1, V-UT-2, V-F-1 |
+| C-32 | code review of `detect_checkout` (branch reads `GitState`, not a fresh `run_git`) |
+| C-33 | V-UT-3 |
+| C-34 | V-UT-5, V-UT-6 |
+| C-35 | V-UT-12, V-E-1 |
+| C-36 | V-E-4 |
+| C-37 | V-UT-8, V-E-2 |
+| C-38 | V-UT-7, V-UT-9 (each platform variant emitted with documented tag) |
+| C-39 | V-UT-7 (code-reviewer alongside ark-reviewer) |
+| C-40 | V-UT-10, V-F-2 |
+| C-41 | V-UT-7 (Claude `.md` stem), V-UT-9 (Codex dir stem) |
+| C-42 | V-IT-3 (commit scope's `record` matches `--scope record` shape byte-for-byte) |
+| C-43 | V-F-3 |
+| C-1 through C-29 | unchanged from prior SPEC; existing regression tests apply |

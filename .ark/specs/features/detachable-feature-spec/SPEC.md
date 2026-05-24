@@ -249,7 +249,7 @@ templates/ark/templates/FEATURE_SUBTREE_INDEX.md   (new file)
 - C-1: `[**SPEC Path**]` body is a single non-empty line; one token (bare path or backticked path); leading/trailing whitespace trimmed. Multi-line or multi-token bodies → `InvalidFeaturePath { reason: "body must be a single token" }`.
 - C-2: Path is split on `/`; each segment matches `^[a-z0-9][a-z0-9_-]*$`.
 - C-2a: `Layout::specs_feature_dir(&[&str]) -> Result<PathBuf>` revalidates every segment against C-2 and returns `Error::InvalidFeaturePath` on a malformed segment; aligns with `Layout::resolve_safe` precedent (project SPEC `rust/ERRORS.md` E-1/E-10).
-- C-3: The last segment of the parsed path MUST equal `task.toml.slug`; mismatch → `InvalidFeaturePath { reason: "last segment must equal task slug" }`.
+- C-3: The last segment of the parsed path MUST equal `task.toml.slug` (new-feature case) **or** the path must point at an existing on-disk feature SPEC at `Layout::specs_feature_dir(&segments)?.join("SPEC.md")` (in-place-update case, where the task slug describes the change rather than the feature). Mismatch with no existing SPEC → `InvalidFeaturePath { reason: "last segment must equal task slug or name an existing feature SPEC" }`.
 - C-4: Absent block, empty body, or a segment failing C-2 → `FeaturePathMissing` / `InvalidFeaturePath` with a single quoted reason.
 - C-5: `task commit` reads `[**SPEC Path**]` from the latest `PRD.md` on every invocation; path changes across iterations are honored.
 - C-6: `parse_spec_path` rejects paths containing `.`, `..`, or empty segments after the split.
@@ -274,5 +274,6 @@ templates/ark/templates/FEATURE_SUBTREE_INDEX.md   (new file)
 [**CHANGELOG**]
 
 - 2026-05-18 `detachable-feature-spec` iteration 02: initial promotion. Establishes recursive `features/` tree, required PRD `[**SPEC Path**]` block, INDEX-strict walk with drift warnings, leaf-to-root INDEX upsert with rollback snapshots, fallible `Layout::specs_feature_dir`.
+- 2026-05-24 `improve-ark-context`: C-3 relaxed to accept the in-place-update case where the parsed path points at an existing on-disk feature SPEC even if its last segment does not equal the task slug. Enables tasks whose slug describes the change (e.g. `improve-ark-context`) to update an existing feature SPEC (`ark-context`) without fragmenting the SPEC across two directories. `parse_spec_path` gains a `&Layout` parameter; the canonical "new feature, slug names it" case is unchanged.
 
 ---

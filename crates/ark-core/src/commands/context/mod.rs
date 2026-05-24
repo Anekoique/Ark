@@ -5,6 +5,8 @@
 //! This is the top-level public command, paired with [`ark agent`] which
 //! handles workflow mutation.
 
+/// Detects the per-checkout location (main vs worktree, focus slug).
+pub mod checkout;
 /// Gathers raw context state from disk and git.
 pub mod gather;
 /// Serializable context model types.
@@ -15,16 +17,24 @@ pub mod projection;
 pub mod related_specs;
 /// Renders context projections as text.
 pub mod render;
+/// Builds the nested feature-SPECs tree from flat rows.
+pub mod spec_tree;
+/// Enumerates installed subagent stems per platform.
+pub mod subagents;
 
 use std::{fmt, path::PathBuf};
 
+pub use checkout::detect_checkout;
 pub use gather::gather_context;
 pub use model::{
-    ArchiveState, ArchivedTask, ArtifactKind, ArtifactSummary, Context, CurrentTask, GitCommit,
-    GitState, SCHEMA_VERSION, SpecRow, SpecsState, TaskSummary, TasksState,
+    ArchiveState, ArchivedTask, ArtifactKind, ArtifactSummary, CheckoutInfo, CheckoutRootKind,
+    Context, CurrentTask, FEATURES_TREE_MAX_DEPTH, GitCommit, GitState, SCHEMA_VERSION, SpecNode,
+    SpecRow, SpecsState, SubagentSet, TaskSummary, TasksState,
 };
 pub use projection::{PhaseFilter, ProjectedContext, RecordProjection, Scope, ScopeTag, project};
 use render::TextSummary;
+pub use spec_tree::build_features_tree;
+pub use subagents::enumerate_subagents;
 
 use crate::{
     error::{Error, Result},
@@ -113,7 +123,14 @@ pub fn context(opts: ContextOptions) -> Result<ContextSummary> {
     }
     let ctx = gather_context(&layout)?;
     let mut projected = project(ctx, opts.scope);
-    if matches!(opts.scope, Scope::Record) {
+    // The pure projector seeds `record: Some(RecordProjection::default())` on
+    // both `Scope::Record` and `Scope::Phase(PhaseFilter::Commit)`. Fill the
+    // body here (the projector is I/O-free); commit scope reuses the same
+    // helper as record scope per C-42.
+    if matches!(
+        opts.scope,
+        Scope::Record | Scope::Phase(PhaseFilter::Commit)
+    ) {
         projected.record = Some(gather_record_projection(&layout));
     }
     match opts.format {
@@ -400,6 +417,7 @@ mod tests {
                 branch: "main".to_string(),
                 ..GitState::default()
             },
+            checkout: crate::commands::context::model::CheckoutInfo::default(),
             tasks: Some(TasksState::default()),
             current_task: Some(CurrentTask {
                 slug: "demo".to_string(),
@@ -410,6 +428,7 @@ mod tests {
             specs: None,
             archive: None,
             record: None,
+            subagents: Vec::new(),
             truncated: None,
         };
         let line = summary_one_line(&projected);
@@ -556,6 +575,18 @@ archived_at = "2026-05-01T00:00:00Z"
             (
                 "commands/context/related_specs.rs",
                 include_str!("./related_specs.rs"),
+            ),
+            (
+                "commands/context/checkout.rs",
+                include_str!("./checkout.rs"),
+            ),
+            (
+                "commands/context/spec_tree.rs",
+                include_str!("./spec_tree.rs"),
+            ),
+            (
+                "commands/context/subagents.rs",
+                include_str!("./subagents.rs"),
             ),
         ];
         for (name, source) in SOURCES {

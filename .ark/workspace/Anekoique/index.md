@@ -27,6 +27,7 @@
 | 18 | 2026-05-18 | drop installed_at from manifest | `drop-installed-at` | `main` | fc1078f | `journal-1.md` |
 | 19 | 2026-05-20 | add `ark research` | `ark-research` | `feat/ark-research` | 60e3221 | `journal-1.md` |
 | 20 | 2026-05-21 | research on agent harness and agent infra | `agent-harness-infra` | `main` | <PENDING:agent-harness-infra> | `journal-1.md` |
+| 21 | 2026-05-24 | improve `ark context` | `improve-ark-context` | `feat/improve-ark-context` | <PENDING:improve-ark-context> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

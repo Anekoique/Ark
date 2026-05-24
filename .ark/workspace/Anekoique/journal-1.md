@@ -545,3 +545,31 @@ Introduce a fourth workflow tier whose deliverable is a curated reference corpus
 |------|---------|
 | _(none)_ |   |
 
+
+## Session 21: improve `ark context`
+
+**Date**: 2026-05-24
+**Slug**: improve-ark-context
+**Branch**: `feat/improve-ark-context`
+**Base Branch**: `main`
+**Start Head**: `0a431b8`
+**Closing Commit**: <PENDING:improve-ark-context>
+
+### Summary
+
+Grow `ark context` projection additively: `checkout`, `subagents`, `features_tree`, commit-scope `record`. Schema stays 1.
+
+### Main Changes
+
+| Area       | Description |
+| ---------- | ----------- |
+| model      | Add `CheckoutInfo`, `SpecNode`, `SubagentSet`; extend `Context` and `SpecsState` with new fields. |
+| gather     | New `checkout.rs` / `spec_tree.rs` / `subagents.rs` leaves; wired into `gather_context`. |
+| projection | Per-scope placement matrix (C-30); commit scope reuses `gather_record_projection`. |
+| render     | `## SPECS` renders project + features in tree shape; new `## CHECKOUT` and `## SUBAGENTS` blocks. |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

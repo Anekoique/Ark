@@ -1,0 +1,14 @@
+id = "improve-ark-context"
+title = "improve ark context"
+tier = "deep"
+phase = "committed"
+iteration = 1
+max_iterations = 3
+created_at = "2026-05-24T07:05:32.604914Z"
+updated_at = "2026-05-24T09:45:59.723335Z"
+committed_at = "2026-05-24T09:45:59.723335Z"
+branch = "feat/improve-ark-context"
+worktree_path = ".ark/worktrees/feat/improve-ark-context"
+base_branch = "main"
+start_head = "0a431b8235d1e79eb82333d611bfed874d8eb5ac"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

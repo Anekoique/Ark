@@ -8,7 +8,8 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::commands::context::model::{
-    ArchiveState, Context, CurrentTask, GitState, SpecRow, SpecsState, TasksState,
+    ArchiveState, CheckoutInfo, Context, CurrentTask, GitState, SpecRow, SpecsState, SubagentSet,
+    TasksState,
 };
 
 /// Top-level scope selector. `Phase` carries the concrete phase filter.
@@ -97,6 +98,9 @@ pub struct ProjectedContext {
     pub project_root: PathBuf,
     /// Git repository state.
     pub git: GitState,
+    /// Per-checkout location info (always populated; mirrors the gather
+    /// pass's `CheckoutInfo`).
+    pub checkout: CheckoutInfo,
     /// Active task state, when included by the projection.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tasks: Option<TasksState>,
@@ -109,9 +113,15 @@ pub struct ProjectedContext {
     /// Archive rows, when included by the projection.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archive: Option<ArchiveState>,
-    /// Workspace record context, when `Scope::Record` is selected.
+    /// Workspace record context, when `Scope::Record` or `Phase(Commit)`
+    /// is selected.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record: Option<RecordProjection>,
+    /// Installed subagent stems per platform. Populated on `Scope::Session`
+    /// and on `Phase(Design / Plan / Review / Verify)`. Empty `Vec` on
+    /// `Phase(Execute / Commit)` and `Scope::Record`.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub subagents: Vec<SubagentSet>,
     /// `Some(true)` when session-envelope wrapping had to drop fields to fit
     /// the host-side context cap (Claude Code documents 10K chars). Absent
     /// otherwise.
@@ -130,6 +140,8 @@ pub fn project(ctx: Context, scope: Scope) -> ProjectedContext {
         specs,
         archive,
         current_task,
+        checkout,
+        subagents,
     } = ctx;
 
     match scope {
@@ -139,11 +151,14 @@ pub fn project(ctx: Context, scope: Scope) -> ProjectedContext {
             generated_at,
             project_root,
             git,
+            checkout,
             tasks: Some(tasks),
             current_task,
             specs: Some(specs),
             archive: Some(archive),
             record: None,
+            // Per C-30: subagents populated on Session.
+            subagents,
             truncated: None,
         },
         Scope::Phase(phase) => {
@@ -153,14 +168,17 @@ pub fn project(ctx: Context, scope: Scope) -> ProjectedContext {
                 generated_at,
                 project_root,
                 git,
+                checkout,
                 tasks: None,
                 current_task,
                 specs: None,
                 archive: None,
                 record: None,
+                // Filled in by `apply_phase_filter` per C-30 placement matrix.
+                subagents: Vec::new(),
                 truncated: None,
             };
-            apply_phase_filter(&mut projected, phase, specs, archive);
+            apply_phase_filter(&mut projected, phase, specs, archive, subagents);
             projected
         }
         Scope::Record => ProjectedContext {
@@ -169,6 +187,7 @@ pub fn project(ctx: Context, scope: Scope) -> ProjectedContext {
             generated_at,
             project_root,
             git,
+            checkout,
             tasks: None,
             current_task: None,
             specs: None,
@@ -177,6 +196,8 @@ pub fn project(ctx: Context, scope: Scope) -> ProjectedContext {
             // the projector is pure (no I/O) and `Record` requires reading
             // the workspace tree.
             record: Some(RecordProjection::default()),
+            // Per C-30: subagents are empty on Scope::Record.
+            subagents: Vec::new(),
             truncated: None,
         },
     }
@@ -187,11 +208,13 @@ fn apply_phase_filter(
     phase: PhaseFilter,
     specs: SpecsState,
     archive: ArchiveState,
+    subagents: Vec<SubagentSet>,
 ) {
     let SpecsState {
         project,
         features,
         features_warnings,
+        features_tree,
     } = specs;
     match phase {
         PhaseFilter::Design => {
@@ -199,8 +222,10 @@ fn apply_phase_filter(
                 project,
                 features,
                 features_warnings,
+                features_tree,
             });
             out.archive = Some(archive);
+            out.subagents = subagents;
         }
         PhaseFilter::Plan | PhaseFilter::Review => {
             let related = out
@@ -213,19 +238,41 @@ fn apply_phase_filter(
                 project,
                 features: filtered,
                 features_warnings,
+                // Plan/Review filter to related; the tree is for orientation
+                // and belongs to Session/Design only (C-30 placement matrix).
+                features_tree: None,
             });
+            out.subagents = subagents;
         }
-        // Execute / Verify / Commit all want project specs only (no
-        // features). Diverge by adding a separate arm if behavior ever needs
-        // to split. Commit is body-free: the slash command reads VERIFY.md
-        // and the latest plan from the path fields the projection already
-        // carries on `current_task`.
-        PhaseFilter::Execute | PhaseFilter::Verify | PhaseFilter::Commit => {
+        PhaseFilter::Verify => {
+            // Verify gets project specs + subagents (the slash command's
+            // "STOP and ask which verifier" prompt needs the installed
+            // agent list). Features are not surfaced.
             out.specs = Some(SpecsState {
                 project,
                 features: Vec::new(),
                 features_warnings: Vec::new(),
+                features_tree: None,
             });
+            out.subagents = subagents;
+        }
+        // Execute / Commit want project specs only. Commit is body-free:
+        // the slash command reads VERIFY.md and the latest plan from the
+        // path fields the projection already carries on `current_task`.
+        // Commit additionally carries `record` (set below).
+        PhaseFilter::Execute | PhaseFilter::Commit => {
+            out.specs = Some(SpecsState {
+                project,
+                features: Vec::new(),
+                features_warnings: Vec::new(),
+                features_tree: None,
+            });
+            if matches!(phase, PhaseFilter::Commit) {
+                // C-42: reuse the same `RecordProjection` shape that powers
+                // `Scope::Record`. The `context()` entry point fills the
+                // body after projection (pure-projector contract).
+                out.record = Some(RecordProjection::default());
+            }
         }
     }
 }
@@ -276,6 +323,8 @@ mod tests {
             specs,
             archive: ArchiveState::default(),
             current_task,
+            checkout: CheckoutInfo::default(),
+            subagents: Vec::new(),
         }
     }
 
@@ -296,6 +345,7 @@ mod tests {
                 project: vec![row("p1")],
                 features: vec![row("f1"), row("f2")],
                 features_warnings: Vec::new(),
+                features_tree: None,
             },
             None,
         );
@@ -312,6 +362,7 @@ mod tests {
                 project: vec![row("p1")],
                 features: vec![row("f1"), row("f2")],
                 features_warnings: Vec::new(),
+                features_tree: None,
             },
             None,
         );
@@ -336,6 +387,7 @@ mod tests {
                 project: vec![row("p1")],
                 features: vec![row("foo"), row("bar"), row("baz")],
                 features_warnings: Vec::new(),
+                features_tree: None,
             },
             Some(ct),
         );
@@ -354,6 +406,7 @@ mod tests {
                 project: vec![row("p1")],
                 features: vec![row("f1")],
                 features_warnings: Vec::new(),
+                features_tree: None,
             },
             None,
         );
@@ -377,6 +430,7 @@ mod tests {
                 project: vec![row("p1")],
                 features: vec![row("foo"), row("bar")],
                 features_warnings: Vec::new(),
+                features_tree: None,
             },
             Some(ct),
         );
@@ -392,6 +446,7 @@ mod tests {
                 project: vec![row("p1")],
                 features: vec![row("f1")],
                 features_warnings: Vec::new(),
+                features_tree: None,
             },
             None,
         );
@@ -411,6 +466,7 @@ mod tests {
                 project: vec![row("p1")],
                 features: vec![row("f1")],
                 features_warnings: Vec::new(),
+                features_tree: None,
             },
             None,
         );
@@ -447,6 +503,7 @@ mod tests {
                 project: vec![row("p1")],
                 features: vec![row("foo")],
                 features_warnings: Vec::new(),
+                features_tree: None,
             },
             Some(ct),
         );

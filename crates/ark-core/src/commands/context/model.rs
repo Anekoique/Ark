@@ -31,6 +31,12 @@ pub const RECENT_COMMITS_CAP: usize = 5;
 /// Maximum number of archive entries in `archive.recent`.
 pub const ARCHIVE_CAP: usize = 5;
 
+/// Maximum recursion depth for `build_features_tree`.
+///
+/// Mirrors the bound on `gather::parse_features_index` so the projected
+/// tree never reaches a level the gather walker refused to descend into.
+pub const FEATURES_TREE_MAX_DEPTH: usize = 8;
+
 /// Full unprojected snapshot. The projection layer reduces this per scope.
 #[derive(Debug, Clone, Serialize)]
 pub struct Context {
@@ -51,6 +57,12 @@ pub struct Context {
     /// Current task details, when `.ark/tasks/.current` resolves.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_task: Option<CurrentTask>,
+    /// Per-checkout location info (main vs worktree, branch, focus slug).
+    pub checkout: CheckoutInfo,
+    /// Installed subagents grouped by platform. Empty `Vec` when no platform
+    /// agent directory exists under `layout.root()`.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub subagents: Vec<SubagentSet>,
 }
 
 /// Git state included in context output.
@@ -189,6 +201,11 @@ pub struct SpecsState {
     /// disagree.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub features_warnings: Vec<GatherWarning>,
+    /// Nested feature-spec tree derived from `features`. `Some` only when
+    /// the projection selects it (Session and Phase(Design)) and the input
+    /// `features` Vec is non-empty.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub features_tree: Option<SpecNode>,
 }
 
 /// One row from a SPEC index.
@@ -260,6 +277,87 @@ pub struct ArchivedTask {
     pub archived_at: DateTime<Utc>,
     /// Path to the archived task directory.
     pub path: PathBuf,
+}
+
+/// Per-checkout location info.
+///
+/// `root_kind` distinguishes the main checkout from a worktree; `branch`
+/// mirrors `GitState::branch` (no extra git call); `focus_slug` reads the
+/// per-checkout `.state.toml` `[focus]` slug.
+#[derive(Debug, Clone, Serialize)]
+pub struct CheckoutInfo {
+    /// Whether this is the main checkout or a git worktree.
+    pub root_kind: CheckoutRootKind,
+    /// Current branch (same string as [`GitState::branch`]).
+    pub branch: String,
+    /// Slug bound to this checkout's `.state.toml` `[focus]`, when set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focus_slug: Option<String>,
+}
+
+impl Default for CheckoutInfo {
+    fn default() -> Self {
+        Self {
+            root_kind: CheckoutRootKind::Main,
+            branch: "unknown".to_string(),
+            focus_slug: None,
+        }
+    }
+}
+
+/// Distinguishes the main git checkout from a worktree checkout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CheckoutRootKind {
+    /// Main git checkout (`git rev-parse --show-toplevel` equals
+    /// `git rev-parse --git-common-dir`'s parent).
+    Main,
+    /// Git worktree (toplevel differs from common-dir's parent).
+    Worktree,
+}
+
+/// One node in the feature-SPECs tree projected from flat [`SpecRow`]s.
+///
+/// Branches carry a `segment` (path component at this depth) and sorted
+/// children; leaves carry the per-row metadata mirrored from `SpecRow`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum SpecNode {
+    /// Non-leaf node grouping children under a `segment` name.
+    Branch {
+        /// Path component at this depth.
+        segment: String,
+        /// Sorted children (branches and leaves intermixed).
+        children: Vec<SpecNode>,
+    },
+    /// Leaf node carrying one SPEC's metadata.
+    Leaf {
+        /// Last `feature_path` segment for this leaf.
+        segment: String,
+        /// Mirrors [`SpecRow::name`].
+        name: String,
+        /// Mirrors [`SpecRow::path`].
+        path: PathBuf,
+        /// Mirrors [`SpecRow::scope`].
+        scope: String,
+        /// Mirrors [`SpecRow::promoted`].
+        #[serde(skip_serializing_if = "Option::is_none")]
+        promoted: Option<String>,
+    },
+}
+
+/// Installed agents for one platform under this checkout's disk layout.
+///
+/// `platform` carries the platform's `cli_flag` verbatim (`claude`, `codex`,
+/// `opencode`). `stems` lists every agent file's stem, sorted ascending,
+/// including user-installed agents alongside Ark canonicals.
+#[derive(Debug, Clone, Serialize)]
+pub struct SubagentSet {
+    /// Platform tag (verbatim `Platform::cli_flag`).
+    pub platform: String,
+    /// Sorted ascending list of agent stems found in the platform's
+    /// `agents_dest_dir`.
+    pub stems: Vec<String>,
 }
 
 #[cfg(test)]

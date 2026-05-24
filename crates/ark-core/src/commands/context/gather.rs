@@ -11,12 +11,15 @@ use crate::{
     commands::{
         agent::state::TaskToml,
         context::{
+            checkout::detect_checkout,
             model::{
                 ARCHIVE_CAP, ArchiveState, ArchivedTask, ArtifactKind, ArtifactSummary, Context,
-                CurrentTask, DIRTY_FILES_CAP, GitCommit, GitState, RECENT_COMMITS_CAP,
-                SCHEMA_VERSION, SpecRow, SpecsState, TaskSummary, TasksState,
+                CurrentTask, DIRTY_FILES_CAP, GatherWarning, GitCommit, GitState,
+                RECENT_COMMITS_CAP, SCHEMA_VERSION, SpecRow, SpecsState, TaskSummary, TasksState,
             },
             related_specs,
+            spec_tree::build_features_tree,
+            subagents::enumerate_subagents,
         },
     },
     error::Result,
@@ -33,6 +36,8 @@ pub fn gather_context(layout: &Layout) -> Result<Context> {
     let archive = gather_archive(layout)?;
     let specs = gather_specs(layout)?;
     let current_task = gather_current_task(layout, &tasks)?;
+    let checkout = detect_checkout(layout, &git.branch);
+    let subagents = enumerate_subagents(layout);
     Ok(Context {
         schema: SCHEMA_VERSION,
         generated_at: Utc::now(),
@@ -42,6 +47,8 @@ pub fn gather_context(layout: &Layout) -> Result<Context> {
         specs,
         archive,
         current_task,
+        checkout,
+        subagents,
     })
 }
 
@@ -191,17 +198,15 @@ fn gather_archive(layout: &Layout) -> Result<ArchiveState> {
     Ok(ArchiveState { recent: all })
 }
 
-/// Imports used by the recursive feature-spec walker. `GatherWarning` lives
-/// in the model module; the gather code emits it alongside `SpecRow`.
-use crate::commands::context::model::GatherWarning;
-
 fn gather_specs(layout: &Layout) -> Result<SpecsState> {
     let project = parse_project_index(layout)?;
     let (features, features_warnings) = parse_features_index(layout)?;
+    let features_tree = build_features_tree(&features);
     Ok(SpecsState {
         project,
         features,
         features_warnings,
+        features_tree,
     })
 }
 

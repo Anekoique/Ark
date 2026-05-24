@@ -9,7 +9,7 @@ use std::path::Path;
 
 use crate::{
     error::{Error, Result},
-    layout::validate_feature_path_segment,
+    layout::{Layout, validate_feature_path_segment},
 };
 
 const SECTION_HEADER: &str = "[**SPEC Path**]";
@@ -18,15 +18,22 @@ const SECTION_HEADER: &str = "[**SPEC Path**]";
 ///
 /// The body must be a single non-empty line carrying one token — bare or
 /// backtick-quoted. Examples: `xemu/csr`, `` `klib` ``, `core/runtime/scheduler`.
-/// The last segment must equal `slug`.
+/// The last segment must equal `slug` (new feature SPEC) **or** the parsed
+/// path must point at an existing on-disk feature SPEC (in-place update by a
+/// task whose slug names the change, not the feature).
 ///
 /// # Errors
 ///
 /// - [`Error::FeaturePathMissing`] — block absent or empty.
 /// - [`Error::InvalidFeaturePath`] — multi-token body, bad alphabet, slug
-///   mismatch, reserved segment, or `.` / `..` segment. `value` carries the
-///   offending substring verbatim.
-pub fn parse_spec_path(prd_text: &str, slug: &str, prd_path: &Path) -> Result<Vec<String>> {
+///   mismatch with no existing SPEC, reserved segment, or `.` / `..` segment.
+///   `value` carries the offending substring verbatim.
+pub fn parse_spec_path(
+    prd_text: &str,
+    slug: &str,
+    prd_path: &Path,
+    layout: &Layout,
+) -> Result<Vec<String>> {
     let body = locate_section(prd_text).ok_or_else(|| Error::FeaturePathMissing {
         source_path: prd_path.to_path_buf(),
     })?;
@@ -59,12 +66,24 @@ pub fn parse_spec_path(prd_text: &str, slug: &str, prd_path: &Path) -> Result<Ve
         validate_feature_path_segment(seg, prd_path)?;
     }
 
+    // Accept either (a) the canonical "new feature, slug names it" case, or
+    // (b) the in-place-update case where the path points at an existing
+    // on-disk feature SPEC and the task slug describes the change rather than
+    // the feature itself (e.g. `improve-ark-context` updates `ark-context`).
     if segments.last() != Some(&slug) {
-        return Err(Error::InvalidFeaturePath {
-            source_path: prd_path.to_path_buf(),
-            value: bare.to_string(),
-            reason: "last segment must equal task slug",
-        });
+        let owned_segments: Vec<String> = segments.iter().map(|s| s.to_string()).collect();
+        let segment_refs: Vec<&str> = owned_segments.iter().map(String::as_str).collect();
+        let existing = layout
+            .specs_feature_dir(&segment_refs, prd_path)
+            .map(|dir| dir.join("SPEC.md").is_file())
+            .unwrap_or(false);
+        if !existing {
+            return Err(Error::InvalidFeaturePath {
+                source_path: prd_path.to_path_buf(),
+                value: bare.to_string(),
+                reason: "last segment must equal task slug or name an existing feature SPEC",
+            });
+        }
     }
 
     Ok(segments.into_iter().map(str::to_string).collect())
@@ -168,11 +187,17 @@ mod tests {
         PathBuf::from("/p/.ark/tasks/x/PRD.md")
     }
 
+    /// Stub layout pointing at an unused tempdir; tests that exercise the
+    /// in-place-update fallback create their own layout with the SPEC on disk.
+    fn stub_layout() -> Layout {
+        Layout::new(std::env::temp_dir().join("ark-prd-stub-layout"))
+    }
+
     /// Single-segment bare path parses and round-trips.
     #[test]
     fn parses_single_segment() {
         let body = "[**What**]\nfoo\n\n[**SPEC Path**]\n\nklib\n\n[**Outcome**]\nx\n";
-        let got = parse_spec_path(body, "klib", &prd()).unwrap();
+        let got = parse_spec_path(body, "klib", &prd(), &stub_layout()).unwrap();
         assert_eq!(got, vec!["klib".to_string()]);
     }
 
@@ -181,12 +206,12 @@ mod tests {
     fn parses_nested_segments() {
         let body = "[**SPEC Path**]\n\nxemu/csr\n";
         assert_eq!(
-            parse_spec_path(body, "csr", &prd()).unwrap(),
+            parse_spec_path(body, "csr", &prd(), &stub_layout()).unwrap(),
             vec!["xemu".to_string(), "csr".to_string()],
         );
         let body = "[**SPEC Path**]\n\ncore/runtime/scheduler\n";
         assert_eq!(
-            parse_spec_path(body, "scheduler", &prd()).unwrap(),
+            parse_spec_path(body, "scheduler", &prd(), &stub_layout()).unwrap(),
             vec![
                 "core".to_string(),
                 "runtime".to_string(),
@@ -200,7 +225,7 @@ mod tests {
     fn parses_backticked_form() {
         let body = "[**SPEC Path**]\n\n`xemu/csr`\n";
         assert_eq!(
-            parse_spec_path(body, "csr", &prd()).unwrap(),
+            parse_spec_path(body, "csr", &prd(), &stub_layout()).unwrap(),
             vec!["xemu".to_string(), "csr".to_string()],
         );
     }
@@ -209,7 +234,7 @@ mod tests {
     #[test]
     fn missing_block_errors() {
         let body = "[**What**]\nfoo\n\n[**Why**]\nbar\n";
-        let err = parse_spec_path(body, "x", &prd()).unwrap_err();
+        let err = parse_spec_path(body, "x", &prd(), &stub_layout()).unwrap_err();
         assert!(matches!(err, Error::FeaturePathMissing { .. }));
     }
 
@@ -217,11 +242,11 @@ mod tests {
     #[test]
     fn empty_or_placeholder_body_errors() {
         let body = "[**SPEC Path**]\n\n\n[**Outcome**]\nx\n";
-        let err = parse_spec_path(body, "x", &prd()).unwrap_err();
+        let err = parse_spec_path(body, "x", &prd(), &stub_layout()).unwrap_err();
         assert!(matches!(err, Error::FeaturePathMissing { .. }));
 
         let body = "[**SPEC Path**]\n\n<path relative to specs/features/...>\n";
-        let err = parse_spec_path(body, "x", &prd()).unwrap_err();
+        let err = parse_spec_path(body, "x", &prd(), &stub_layout()).unwrap_err();
         assert!(matches!(err, Error::FeaturePathMissing { .. }));
     }
 
@@ -230,7 +255,7 @@ mod tests {
     #[test]
     fn multi_line_body_errors() {
         let body = "[**SPEC Path**]\n\nxemu/csr\nklib\n";
-        let err = parse_spec_path(body, "csr", &prd()).unwrap_err();
+        let err = parse_spec_path(body, "csr", &prd(), &stub_layout()).unwrap_err();
         let Error::InvalidFeaturePath { reason, .. } = err else {
             panic!("expected InvalidFeaturePath, got {err:?}");
         };
@@ -242,7 +267,7 @@ mod tests {
     #[test]
     fn multi_token_body_errors() {
         let body = "[**SPEC Path**]\n\n`xemu/csr` `klib`\n";
-        let err = parse_spec_path(body, "csr", &prd()).unwrap_err();
+        let err = parse_spec_path(body, "csr", &prd(), &stub_layout()).unwrap_err();
         let Error::InvalidFeaturePath { reason, .. } = err else {
             panic!("expected InvalidFeaturePath, got {err:?}");
         };
@@ -253,7 +278,7 @@ mod tests {
     #[test]
     fn slug_mismatch_errors() {
         let body = "[**SPEC Path**]\n\nxemu/csr\n";
-        let err = parse_spec_path(body, "foo", &prd()).unwrap_err();
+        let err = parse_spec_path(body, "foo", &prd(), &stub_layout()).unwrap_err();
         let Error::InvalidFeaturePath { value, reason, .. } = err else {
             panic!("wrong variant");
         };
@@ -265,7 +290,7 @@ mod tests {
     #[test]
     fn uppercase_segment_rejected() {
         let body = "[**SPEC Path**]\n\nXemu/csr\n";
-        let err = parse_spec_path(body, "csr", &prd()).unwrap_err();
+        let err = parse_spec_path(body, "csr", &prd(), &stub_layout()).unwrap_err();
         assert!(matches!(err, Error::InvalidFeaturePath { .. }));
     }
 
@@ -273,7 +298,7 @@ mod tests {
     #[test]
     fn leading_hyphen_segment_rejected() {
         let body = "[**SPEC Path**]\n\n-bad/csr\n";
-        let err = parse_spec_path(body, "csr", &prd()).unwrap_err();
+        let err = parse_spec_path(body, "csr", &prd(), &stub_layout()).unwrap_err();
         assert!(matches!(err, Error::InvalidFeaturePath { .. }));
     }
 
@@ -286,7 +311,7 @@ mod tests {
             "[**SPEC Path**]\n\nspec/csr\n",
             "[**SPEC Path**]\n\nSPEC/csr\n",
         ] {
-            let err = parse_spec_path(body, "csr", &prd()).unwrap_err();
+            let err = parse_spec_path(body, "csr", &prd(), &stub_layout()).unwrap_err();
             assert!(
                 matches!(err, Error::InvalidFeaturePath { .. }),
                 "body: {body:?}"
@@ -303,7 +328,7 @@ mod tests {
             "[**SPEC Path**]\n\nxemu/./csr\n",
             "[**SPEC Path**]\n\nxemu/../csr\n",
         ] {
-            let err = parse_spec_path(body, "csr", &prd()).unwrap_err();
+            let err = parse_spec_path(body, "csr", &prd(), &stub_layout()).unwrap_err();
             assert!(
                 matches!(err, Error::InvalidFeaturePath { .. }),
                 "body: {body:?}"
@@ -315,7 +340,7 @@ mod tests {
     #[test]
     fn double_slash_rejected() {
         let body = "[**SPEC Path**]\n\nxemu//csr\n";
-        let err = parse_spec_path(body, "csr", &prd()).unwrap_err();
+        let err = parse_spec_path(body, "csr", &prd(), &stub_layout()).unwrap_err();
         assert!(matches!(err, Error::InvalidFeaturePath { .. }));
     }
 
@@ -324,7 +349,7 @@ mod tests {
     fn does_not_consume_next_section() {
         let body = "[**SPEC Path**]\n\nklib\n\n[**Outcome**]\n\nfoo bar baz\nmore words\n";
         assert_eq!(
-            parse_spec_path(body, "klib", &prd()).unwrap(),
+            parse_spec_path(body, "klib", &prd(), &stub_layout()).unwrap(),
             vec!["klib".to_string()],
         );
     }
@@ -341,7 +366,7 @@ should-not-match
 real/slug
 ";
         assert_eq!(
-            parse_spec_path(body, "slug", &prd()).unwrap(),
+            parse_spec_path(body, "slug", &prd(), &stub_layout()).unwrap(),
             vec!["real".to_string(), "slug".to_string()],
         );
     }
@@ -351,8 +376,45 @@ real/slug
     fn tolerates_trailing_whitespace() {
         let body = "[**SPEC Path**]\n\n  klib  \n";
         assert_eq!(
-            parse_spec_path(body, "klib", &prd()).unwrap(),
+            parse_spec_path(body, "klib", &prd(), &stub_layout()).unwrap(),
             vec!["klib".to_string()],
         );
+    }
+
+    /// A path whose last segment differs from the slug is accepted when an
+    /// on-disk feature SPEC already exists at the path (in-place update by a
+    /// task whose slug describes the change rather than the feature itself).
+    #[test]
+    fn accepts_in_place_update_when_feature_spec_exists() {
+        use crate::io::PathExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        // Plant `.ark/specs/features/ark-context/SPEC.md` on disk.
+        let dir = layout.specs_features_dir().join("ark-context");
+        dir.ensure_dir().unwrap();
+        dir.join("SPEC.md").write_bytes(b"existing").unwrap();
+
+        let body = "[**SPEC Path**]\n\nark-context\n";
+        let got = parse_spec_path(body, "improve-ark-context", &prd(), &layout).unwrap();
+        assert_eq!(got, vec!["ark-context".to_string()]);
+    }
+
+    /// Slug-mismatched paths whose target is not on disk still fail, and the
+    /// error message reflects the relaxed contract.
+    #[test]
+    fn rejects_slug_mismatch_when_no_existing_spec() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        let body = "[**SPEC Path**]\n\nghost\n";
+        let err = parse_spec_path(body, "improve-ark-context", &prd(), &layout).unwrap_err();
+        match err {
+            Error::InvalidFeaturePath { reason, .. } => {
+                assert!(
+                    reason.contains("name an existing feature SPEC"),
+                    "reason: {reason}",
+                );
+            }
+            other => panic!("expected InvalidFeaturePath, got {other:?}"),
+        }
     }
 }
