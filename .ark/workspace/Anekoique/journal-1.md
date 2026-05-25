@@ -573,3 +573,30 @@ Grow `ark context` projection additively: `checkout`, `subagents`, `features_tre
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+
+## Session 22: research on claude agent sdk
+
+**Date**: 2026-05-25
+**Slug**: claude-agent-sdk
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `2597596`
+**Closing Commit**: <PENDING:claude-agent-sdk>
+
+### Summary
+
+Reference corpus on the Claude Agent SDK (15 files) to ground a stage-1 ArkOS port — what the SDK gives vs. what the substrate must build.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| corpus | 14 topic files (sessions, hooks, subagents, MCP, cost, concurrency, telemetry, gaps) + synthesis, pinned to SDK 0.2.87/0.3.150. |
+| findings | SDK is an MCP client that cannot publish; subagent dispatch is model-decided, depth=1; six stage-1 blockers identified. |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |
