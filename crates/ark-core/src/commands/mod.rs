@@ -34,5 +34,6 @@ pub use load::{LoadOptions, LoadSummary, load};
 pub use remove::{RemoveOptions, RemoveSummary, remove};
 pub use unload::{UnloadOptions, UnloadSummary, unload};
 pub use upgrade::{
-    ConflictChoice, ConflictPolicy, Prompter, UpgradeOptions, UpgradeSummary, upgrade,
+    ActionLabel, ConflictChoice, ConflictPolicy, DryRunPreview, Prompter, RestoreSummary,
+    UpgradeOptions, UpgradeSummary, restore, upgrade,
 };

@@ -30,6 +30,7 @@
 | 21 | 2026-05-24 | improve `ark context` | `improve-ark-context` | `feat/improve-ark-context` | <PENDING:improve-ark-context> | `journal-1.md` |
 | 22 | 2026-05-25 | research on claude agent sdk | `claude-agent-sdk` | `main` | <PENDING:claude-agent-sdk> | `journal-1.md` |
 | 23 | 2026-05-26 | sync ark-book with main | `sync-ark-book` | `main` | <PENDING:sync-ark-book> | `journal-1.md` |
+| 24 | 2026-05-27 | improve ark upgrade | `improve-ark-upgrade` | `feat/improve-ark-upgrade` | <PENDING:improve-ark-upgrade> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

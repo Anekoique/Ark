@@ -68,6 +68,22 @@ pub const CONFIG_FILE: &str = ".ark/config.toml";
 /// `.ark/`; no managed-block is needed since users do not co-author it.
 pub const ARK_GITIGNORE_FILE: &str = ".ark/.gitignore";
 
+/// Sidecar holding the last-Ark-written bytes for `[upgrade] merged` paths
+/// (`<project>/.ark/.upgrade-base/`).
+///
+/// Each merged path is mirrored under this root so a future `ark upgrade`
+/// has the diff3 base (the manifest stores only a hash, not the bytes).
+/// Gitignored and skipped by `unload` — local-only state, like `.state.toml`.
+pub const UPGRADE_BASE_DIR: &str = ".ark/.upgrade-base";
+
+/// Pre-write backup captured by `ark upgrade` (`<project>/.ark/.upgrade-backup/`).
+///
+/// Holds a copy of every file (and the manifest) an upgrade is about to
+/// mutate or delete, so a failed upgrade can roll back and a regretted one
+/// can `--restore`. Gitignored and skipped by `unload`; one backup is
+/// retained per non-dry-run upgrade, replacing any prior one.
+pub const UPGRADE_BACKUP_DIR: &str = ".ark/.upgrade-backup";
+
 /// Root directory for per-developer workspace journals (`<project>/.ark/workspace/`).
 ///
 /// Holds the top-level Active Developers index and one subdirectory per
@@ -372,6 +388,16 @@ impl Layout {
     /// Returns the project-level Ark config path.
     pub fn config_file(&self) -> PathBuf {
         self.root.join(CONFIG_FILE)
+    }
+
+    /// Returns the upgrade merge-base sidecar root (`.ark/.upgrade-base`).
+    pub fn upgrade_base_dir(&self) -> PathBuf {
+        self.root.join(UPGRADE_BASE_DIR)
+    }
+
+    /// Returns the upgrade backup root (`.ark/.upgrade-backup`).
+    pub fn upgrade_backup_dir(&self) -> PathBuf {
+        self.root.join(UPGRADE_BACKUP_DIR)
     }
 
     /// Returns the root directory for per-developer workspace journals.
