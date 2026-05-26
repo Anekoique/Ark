@@ -600,3 +600,31 @@ Reference corpus on the Claude Agent SDK (15 files) to ground a stage-1 ArkOS po
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+
+## Session 23: sync ark-book with main
+
+**Date**: 2026-05-26
+**Slug**: sync-ark-book
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `ea610e4`
+**Closing Commit**: <PENDING:sync-ark-book>
+
+### Summary
+
+Resynced the mdBook user guide with `main` after ~10 features landed since its 2026-05-02 freeze.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| workflow | Research tier added; new `subagents.md` + `workspace.md` pages; specs rewritten for recursive `[**SPEC Path**]`. |
+| reference | `ark cleanup` + `task resume/discard` + `spec import` documented; `config.toml` gains `[workspace]`, focus model replaces `.current`. |
+| drift fixes | SPEC promotion re-attributed archive→commit; reopen phase design→verify; eight slash commands across all platforms. |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

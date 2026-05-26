@@ -7,25 +7,39 @@
 ```
 .claude/
 ├── commands/ark/
-│   ├── quick.md          # /ark:quick $ARGUMENTS
-│   ├── design.md         # /ark:design [--deep] $ARGUMENTS
-│   └── commit.md         # /ark:commit
+│   ├── quick.md          # /ark:quick <title>
+│   ├── design.md         # /ark:design [--deep] <title>
+│   ├── commit.md         # /ark:commit [-m <msg>] [<slug>]
+│   ├── research.md       # /ark:research <topic>
+│   ├── resume.md         # /ark:resume <slug>
+│   ├── discard.md        # /ark:discard [<slug>] [--force]
+│   ├── extract-spec.md   # /ark:extract-spec <feature-name> [hint]
+│   └── record.md         # /ark:record [<title>]
+├── agents/
+│   ├── ark-researcher.md # dispatched during DESIGN/PLAN
+│   ├── ark-reviewer.md   # dispatched at REVIEW (deep)
+│   └── ark-verifier.md   # dispatched at VERIFY
 └── settings.json         # contains Ark's SessionStart hook entry
 
 CLAUDE.md                 # managed block pointing at .ark/
 ```
 
-The `.claude/commands/ark/` files are slash-command bodies. Each one carries Claude-specific YAML frontmatter (`description:`, `argument-hint:`) and a body that walks the agent through the corresponding tier's workflow.
+The `.claude/commands/ark/` files are slash-command bodies. Each one carries Claude-specific YAML frontmatter (`description:`, `argument-hint:`) and a body that walks the agent through the corresponding workflow. The `.claude/agents/` files are the three Ark [subagents](../workflow/subagents.md) the command bodies dispatch.
 
 ## Slash commands
 
-| Command        | Trigger                        | What it does                                                                                                                |
-| -------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `/ark:quick`   | Any message starting with this | Quick-tier flow: PRD → execute → user invokes commit.                                                                       |
-| `/ark:design`  | `/ark:design [--deep] <title>` | Standard-tier flow (or deep with `--deep`): PRD → PLAN → review → execute → verify.                                         |
-| `/ark:commit`  | `/ark:commit`                  | Atomically close the current task in a single git commit. On deep tier, promotes SPEC.                                      |
+| Command            | Trigger                              | What it does                                                                          |
+| ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------- |
+| `/ark:quick`       | `/ark:quick <title>`                 | Quick-tier flow: PRD → execute → user invokes commit.                                 |
+| `/ark:design`      | `/ark:design [--deep] <title>`       | Standard-tier flow (or deep with `--deep`): PRD → PLAN → review → execute → verify.   |
+| `/ark:research`    | `/ark:research <topic>`              | Research-tier flow: gather a reference corpus; follow-up implementation optional.     |
+| `/ark:commit`      | `/ark:commit [-m <msg>] [<slug>]`    | Atomically close the current (or named) task in one git commit. Deep tier promotes SPEC. |
+| `/ark:resume`      | `/ark:resume <slug>`                 | Refocus this session on an existing active slug. Idempotent.                          |
+| `/ark:discard`     | `/ark:discard [<slug>] [--force]`    | Remove an unarchived task. Refuses without `--force` if seeded files have user content. |
+| `/ark:extract-spec`| `/ark:extract-spec <feature> [hint]` | Author a feature SPEC from existing code (brownfield), no deep-tier task required.    |
+| `/ark:record`      | `/ark:record [<title>]`              | Append a manual entry to the developer's workspace journal.                           |
 
-Each command body starts by calling `ark context --scope phase --for <phase> --format json` to orient itself, then guides the agent through the rest of the phase.
+Each tier command body starts by calling `ark context --scope phase --for <phase> --format json` to orient itself, then guides the agent through the rest of the phase.
 
 ## SessionStart hook
 

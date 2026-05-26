@@ -13,7 +13,9 @@
 - [Tiers](./workflow/tiers.md)
 - [Lifecycle](./workflow/lifecycle.md)
 - [Specs](./workflow/specs.md)
+- [Subagents](./workflow/subagents.md)
 - [Worktrees](./workflow/worktrees.md)
+- [Workspace & Journals](./workflow/workspace.md)
 
 # Reference
 

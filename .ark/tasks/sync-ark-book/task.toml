@@ -1,0 +1,10 @@
+id = "sync-ark-book"
+title = "sync ark-book"
+tier = "standard"
+phase = "committed"
+iteration = 0
+created_at = "2026-05-25T11:22:51.717674Z"
+updated_at = "2026-05-26T04:59:34.541344Z"
+committed_at = "2026-05-26T04:59:34.541344Z"
+start_head = "ea610e4a36a04f3c68eaaa369830f73ae982eaa6"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

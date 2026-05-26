@@ -10,8 +10,8 @@ Ark is a small CLI (`ark`) plus a directory layout (`.ark/`) that gives an AI co
 
 AI coding agents work better with a harness.
 
-- **Right ceremony, right task.** Three tiers — quick fix, feature, deep refactor — each with the minimum process that fits.
-- **Reviewed, not rubber-stamped.** PLAN ↔ REVIEW iteration on deep work; a VERIFY gate before every archive.
+- **Right ceremony, right task.** Four tiers — quick fix, feature, deep refactor, and research — each with the minimum process that fits.
+- **Reviewed, not rubber-stamped.** PLAN ↔ REVIEW iteration on deep work; a VERIFY gate before every archive. Optional `ark-researcher` / `ark-reviewer` / `ark-verifier` subagents at the phases where a second set of eyes pays off.
 - **Plain markdown, no hidden magic.** Tasks and specs live in `.ark/`, diffable and git-tracked. Ark writes only what it tracks; round-tripping `unload` → `load` preserves user-edited and user-added files losslessly.
 - **Multi-platform.** Ships first-class integrations for Claude Code, Codex, and OpenCode out of the box.
 
@@ -20,7 +20,7 @@ AI coding agents work better with a harness.
 This book has five parts:
 
 1. **Getting Started** walks you through install, the first `ark init`, and a complete `/ark:quick` task.
-2. **Workflow** is the conceptual model: tiers, lifecycle, the spec system, and how worktrees fit in.
+2. **Workflow** is the conceptual model: tiers, lifecycle, the spec system, subagents, worktrees, and the per-developer workspace journal.
 3. **Reference** documents every top-level CLI command and the `.ark/config.toml` schema.
 4. **Platform Integrations** covers what files Ark drops where, per platform.
 5. **Contributing** is for developers extending Ark itself: workspace layout, adding a slash command, adding a platform, and the release process.

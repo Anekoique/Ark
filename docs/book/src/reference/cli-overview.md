@@ -1,6 +1,6 @@
 # CLI Overview
 
-The `ark` binary has two visible top-level commands:
+The `ark` binary has these visible top-level commands:
 
 | Command       | What it does                                                                                         |
 | ------------- | ---------------------------------------------------------------------------------------------------- |
@@ -11,6 +11,7 @@ The `ark` binary has two visible top-level commands:
 | `ark upgrade` | Refresh embedded templates to the current CLI version.                                               |
 | `ark context` | Print a structured snapshot of git + `.ark/` workflow state. Read-only.                              |
 | `ark archive` | Bulk-move every `phase = Committed` task into its `committed_at` month bucket. Manager-only.         |
+| `ark cleanup` | List (dry-run) or remove (`--apply`) worktrees whose backing task is closed or whose branch is gone. |
 
 Plus one hidden internal command:
 
@@ -20,7 +21,7 @@ Plus one hidden internal command:
 
 ## Stability policy
 
-- **Visible commands** (the six above) are semver-stable. Flags don't disappear within a major version; output formats (especially `ark context --format json`) follow additive-only schema versioning.
+- **Visible commands** (those above) are semver-stable. Flags don't disappear within a major version; output formats (especially `ark context --format json`) follow additive-only schema versioning.
 - **`ark agent`** is internal. Its callers are the shipped slash commands and the workflow doc. The CLI surface is *not* covered by semver — the binary and its shipped templates version together.
 
 End users should drive workflow through slash commands, not by calling `ark agent` directly. See [`ark agent`](./ark-agent.md) for when you do need to reach for it (mostly: rare lifecycle operations the slash commands don't cover).

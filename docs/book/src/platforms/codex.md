@@ -9,12 +9,23 @@
 ├── skills/
 │   ├── ark-quick/SKILL.md
 │   ├── ark-design/SKILL.md
-│   └── ark-commit/SKILL.md
+│   ├── ark-commit/SKILL.md
+│   ├── ark-research/SKILL.md
+│   ├── ark-resume/SKILL.md
+│   ├── ark-discard/SKILL.md
+│   ├── ark-extract-spec/SKILL.md
+│   └── ark-record/SKILL.md
+├── agents/               # ark-researcher, ark-reviewer, ark-verifier (TOML)
+│   ├── ark-researcher.toml
+│   ├── ark-reviewer.toml
+│   └── ark-verifier.toml
 ├── config.toml           # Codex hook config
 └── hooks.json            # Ark's SessionStart hook entry
 
 AGENTS.md                 # managed block pointing at .ark/ (created if absent)
 ```
+
+One skill per slash command — the same eight wrappers Claude ships, routed by `description` instead of typed invocation. The three `.codex/agents/*.toml` files are the Ark [subagents](../workflow/subagents.md).
 
 ## Skills
 

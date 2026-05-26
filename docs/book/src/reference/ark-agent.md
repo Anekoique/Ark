@@ -30,18 +30,23 @@ ark agent
 │   ├── verify         # transition execute → verify
 │   ├── commit         # atomically close: SPEC extract + single git commit
 │   ├── archive        # transition committed → archived (move dir)
-│   ├── promote        # change tier mid-flight
+│   ├── resume         # claim an active task as this session's focus
+│   ├── discard        # remove an unarchived task (--force if it has user content)
+│   ├── promote        # change tier mid-flight (rejected for research tier)
 │   └── worktree
 │       ├── list       # enumerate worktree-backed tasks
 │       └── cleanup    # remove a worktree dir + optionally delete branch
 └── spec
-    ├── extract        # extract PLAN's `## Spec` to specs/features/<name>/SPEC.md
-    └── register       # add a row to specs/features/INDEX.md's managed block
+    ├── extract        # extract PLAN's `## Spec` to specs/features/<path>/SPEC.md
+    ├── import         # author a feature SPEC from an existing codebase (brownfield)
+    └── register       # upsert a row in specs/features/INDEX.md's managed block
 ```
 
 ## Common patterns
 
 ### Task lifecycle
+
+`task new --tier` accepts `quick`, `standard`, `deep`, or `research`.
 
 ```bash
 # Quick tier.
@@ -95,18 +100,24 @@ ark agent task worktree cleanup --slug rate-limit --delete-branch
 ark agent task worktree cleanup --slug rate-limit --force   # for unmerged branches
 ```
 
+To sweep *all* stale worktrees at once (any whose backing task is Committed/Archived or whose branch is gone), use the visible top-level `ark cleanup` — dry-run by default, `--apply` to act. It calls `worktree cleanup` per row.
+
 ### Spec promotion
 
 Normally invoked by `ark agent task commit` on deep tier; you can call it directly when reopening an archived task:
 
 ```bash
-ark agent spec extract --slug auth                # extract PLAN's `## Spec` → specs/features/auth/SPEC.md
-ark agent spec register --slug auth               # add row to specs/features/INDEX.md
+ark agent spec extract --slug auth                # extract PLAN's `## Spec` → specs/features/<path>/SPEC.md
+ark agent spec register --slug auth               # upsert row in specs/features/INDEX.md
 ```
+
+The destination path comes from the PRD's `[**SPEC Path**]` block — slash-separated, leaf-to-root INDEX upsert. See [Specs](../workflow/specs.md) for the recursive layout. For a feature that already exists in code but has no SPEC, `ark agent spec import` (via `/ark:extract-spec`) authors one without a deep-tier task.
 
 ## Defaults
 
-Every subcommand that takes `--slug` defaults to `.ark/tasks/.current` when omitted. Every command takes optional `--dir <path>` to override project discovery.
+`task new`, `task resume`, and `task discard` require `--slug`. Every other subcommand resolves the slug from this checkout's **focus** — the single slug recorded in `.ark/.state.toml`'s `[focus]` field. `task new` and `task resume` write the focus; `task commit` / `task archive` / `task discard` clear it when their slug matches. With no focus bound, a non-targeted verb errors `NoFocus` and asks you to run `task resume --slug <s>` first.
+
+Every command takes optional `--dir <path>` to override project discovery.
 
 ## Errors
 
@@ -117,6 +128,7 @@ The state machine enforces legal transitions and rejects illegal ones. Common er
 - `TaskExistsOnParent` — creating a `--worktree` task whose slug already exists in the parent's `.ark/tasks/`.
 - `NestedWorktreeForbidden` — invoking `task new --worktree` from inside an existing `.ark/worktrees/<branch>/` checkout.
 - `WorktreeDirty` — `worktree cleanup` without `--force` on a worktree with uncommitted changes.
+- `NoFocus` — a non-targeted verb run with no `[focus]` bound; run `task new` or `task resume --slug <s>` first.
 
 Hand-edits to `task.toml` are sometimes the right escape hatch (specifically: bumping `iteration`, resetting `phase` to `plan`, or reopening an archived task). The state machine is small and the file is short; the agent does this when needed and the slash commands document when.
 

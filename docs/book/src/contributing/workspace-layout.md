@@ -46,18 +46,23 @@ ark-core/src/
     ├── unload.rs       # capture into .ark.db, remove live files
     ├── remove.rs       # unconditional wipe
     ├── upgrade.rs      # refresh embedded templates to current CLI version
-    ├── tests_common.rs # shared `assert_source_clean` for source-scan invariants
+    ├── archive.rs      # bulk-archive committed tasks (top-level `ark archive`)
+    ├── cleanup.rs      # sweep stale worktrees (top-level `ark cleanup`)
     ├── context/        # `ark context` — read-only state snapshot
     │   ├── model.rs    #   Context + sub-structs, schema=1
     │   ├── gather.rs   #   one-pass collection (git + tasks + specs)
     │   ├── projection.rs # Scope / PhaseFilter / project()
+    │   ├── checkout.rs #   checkout-kind + focus resolution
+    │   ├── spec_tree.rs #  recursive features-INDEX tree
+    │   ├── subagents.rs #  installed-subagent enumeration
     │   ├── render.rs   #   text-mode Display
     │   └── related_specs.rs # PRD [**Related Specs**] parser
     └── agent/          # `ark agent` namespace (hidden CLI, not semver)
         ├── state.rs    #   TaskToml + legal-transition table
-        ├── task/       #   task lifecycle (new/plan/review/execute/verify/archive/promote)
-        ├── spec/       #   feature SPEC extract + register
-        ├── workspace/  #   per-developer journal
+        ├── task/       #   lifecycle (new/plan/review/execute/verify/commit/archive/
+        │               #   resume/discard/promote) + worktree/ (list/cleanup)
+        ├── spec/       #   feature SPEC extract / import / register (recursive paths)
+        ├── workspace/  #   identity + per-developer journal (record/stamp/transaction)
         └── template.rs #   internal helper: extract embedded templates
 ```
 
@@ -70,8 +75,9 @@ ark-core/src/
 **Responsibilities of this layer:**
 
 - Create task directories (`task new`) and move them on archive (`task archive`) — whenever the operation touches filesystem structure that has to be correct.
-- Transition phases (`task plan` / `review` / `execute` / `verify` / `archive`) — the state machine enforces legality per tier.
-- Extract SPEC bodies from PLANs and upsert rows in `specs/features/INDEX.md`'s managed block.
+- Transition phases (`task plan` / `review` / `execute` / `verify` / `commit` / `archive`) — the state machine enforces legality per tier (research tier runs `research → committed → archived`).
+- Extract SPEC bodies from PLANs (recursive `specs/features/<path>/`) and upsert rows in each `INDEX.md`'s managed block from leaf to root.
+- Append per-developer workspace journal entries inside the closing commit (`task commit`) or on demand (`workspace record`).
 
 **Not** this layer's responsibility:
 

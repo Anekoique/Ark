@@ -29,6 +29,7 @@
 | 20 | 2026-05-21 | research on agent harness and agent infra | `agent-harness-infra` | `main` | <PENDING:agent-harness-infra> | `journal-1.md` |
 | 21 | 2026-05-24 | improve `ark context` | `improve-ark-context` | `feat/improve-ark-context` | <PENDING:improve-ark-context> | `journal-1.md` |
 | 22 | 2026-05-25 | research on claude agent sdk | `claude-agent-sdk` | `main` | <PENDING:claude-agent-sdk> | `journal-1.md` |
+| 23 | 2026-05-26 | sync ark-book with main | `sync-ark-book` | `main` | <PENDING:sync-ark-book> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

@@ -9,12 +9,23 @@
 ├── commands/ark/
 │   ├── quick.md          # /ark:quick $ARGUMENTS
 │   ├── design.md         # /ark:design [--deep] $ARGUMENTS
-│   └── commit.md         # /ark:commit
+│   ├── commit.md         # /ark:commit
+│   ├── research.md       # /ark:research $ARGUMENTS
+│   ├── resume.md         # /ark:resume $ARGUMENTS
+│   ├── discard.md        # /ark:discard $ARGUMENTS
+│   ├── extract-spec.md   # /ark:extract-spec $ARGUMENTS
+│   └── record.md         # /ark:record $ARGUMENTS
+├── agents/               # ark-researcher, ark-reviewer, ark-verifier
+│   ├── ark-researcher.md
+│   ├── ark-reviewer.md
+│   └── ark-verifier.md
 └── plugins/
     └── ark-context.ts    # injects `ark context` output as additionalContext
 
 AGENTS.md                 # managed block (shared with Codex if both are installed)
 ```
+
+The `.opencode/agents/*.md` files are the Ark [subagents](../workflow/subagents.md), invoked via OpenCode's `task` tool.
 
 ## Slash commands
 

@@ -30,7 +30,7 @@ Every task moves through the same states. Quick skips most of them; standard and
        └─────┬──────┘  rejected → halt for user decision
              ▼
        ┌────────────┐
-       │   COMMIT   │  atomic close: deep extracts SPEC → specs/features/<name>/;
+       │   COMMIT   │  atomic close: deep extracts SPEC → specs/features/<path>/;
        └─────┬──────┘  single git commit; rollback on any pre-commit failure
              ▼
        ┌────────────┐
@@ -39,6 +39,8 @@ Every task moves through the same states. Quick skips most of them; standard and
 ```
 
 State is recorded in `task.toml.phase`. Each transition is mediated by a CLI command (`ark agent task plan`, `... review`, `... execute`, `... verify`, `... commit`, `... archive`); illegal transitions error out with `IllegalPhaseTransition` rather than silently corrupting state.
+
+**Research tier is the exception.** A research task has its own short lifecycle — `research → committed → archived` — with no PLAN, REVIEW, EXECUTE, VERIFY, or SPEC promotion. `ark agent task commit` stages `task.toml`, `PRD.md`, and every file under `research/` recursively. See [Tiers → Research](./tiers.md) and [Subagents](./subagents.md).
 
 ## DESIGN — capture what & why
 
@@ -60,7 +62,7 @@ State is recorded in `task.toml.phase`. Each transition is mediated by a CLI com
 
 **Gate.** PLAN complete; Acceptance Mapping fills every Goal. Standard → EXECUTE; deep → REVIEW.
 
-**Rule.** `## Spec` must be self-contained every iteration (deltas go in `## Log`). It's copied verbatim to `specs/features/<name>/SPEC.md` on archive (deep tier).
+**Rule.** `## Spec` must be self-contained every iteration (deltas go in `## Log`). It's copied verbatim to `specs/features/<path>/SPEC.md` on commit (deep tier).
 
 ## REVIEW — pre-execute gate (deep only, iterative)
 
@@ -69,6 +71,8 @@ State is recorded in `task.toml.phase`. Each transition is mediated by a CLI com
 **Calls.**
 - `ark context --scope phase --for review` — current task, latest PLAN, related feature specs, project specs.
 - `ark agent task review` — transitions PLAN → REVIEW and seeds `NN_REVIEW.md`.
+
+**Who reviews.** At REVIEW entry the slash command stops and asks you to pick the reviewer: the `ark-reviewer` subagent, a different model, or self-review. The chosen reviewer fills `NN_REVIEW.md`; it never edits the PLAN or code. See [Subagents](./subagents.md).
 
 **Reject (HIGH)** if the latest PLAN's `## Spec` references prior iterations instead of restating in full.
 
@@ -96,13 +100,15 @@ State is recorded in `task.toml.phase`. Each transition is mediated by a CLI com
 - `ark context --scope phase --for verify` — current task with PRD + latest PLAN + VERIFY.md (if exists) + git state.
 - `ark agent task verify` — transitions to VERIFY and seeds `VERIFY.md`.
 
+**Who verifies.** At VERIFY entry the slash command stops and asks you to pick the verifier: the `ark-verifier` subagent, a different model, or self-verify. The verifier runs the project's build / test / lint / format-check and fills `VERIFY.md`; it does **not** self-fix — FAIL items return to the main session. See [Subagents](./subagents.md).
+
 **Gate.** Verdict *Approved* or *Approved with Follow-ups* → tell the user to run `/ark:commit`. *Rejected* → halt for user decision.
 
 VERIFY is **single-pass**. Unlike REVIEW, it doesn't loop. If the verdict is rejected, you decide: create fix tasks, promote tier with `ark agent task promote`, accept with acknowledgement, or discard.
 
 ## COMMIT — atomic close
 
-**Purpose.** Land all pending work plus the closing `task.toml` flip in a single git commit. Deep tier additionally extracts the final PLAN's `## Spec` to `specs/features/<name>/SPEC.md` and registers it in the features INDEX *inside the same commit*. A scoped rollback restores every touched file if any pre-commit step fails.
+**Purpose.** Land all pending work plus the closing `task.toml` flip in a single git commit. Deep tier additionally extracts the final PLAN's `## Spec` to `specs/features/<path>/SPEC.md` and registers it in the features INDEX *inside the same commit*. A scoped rollback restores every touched file if any pre-commit step fails.
 
 **Calls.**
 - `ark agent task commit` — VERIFY gate, deep-tier SPEC extract + register, single git commit covering work + `task.toml` + (deep) SPEC + features INDEX. Rolls back on any pre-commit failure.
@@ -117,4 +123,4 @@ VERIFY is **single-pass**. Unlike REVIEW, it doesn't loop. If the verdict is rej
 - `ark archive` (top-level, manager-only) — bulk-archives every committed task. `--month YYYY-MM` filters; `--dry-run` lists candidates without moving anything.
 - `ark agent task archive --slug <s>` — single-task variant, used internally and as a manual escape hatch.
 
-**Reopen.** Move the archived dir back to `.ark/tasks/<slug>/` and reset `phase = "design"` + clear `archived_at` in `task.toml`. Refuses if a same-slug active task already exists.
+**Reopen.** Move the archived dir back to `.ark/tasks/<slug>/` and reset `phase = "verify"` + clear `archived_at` in `task.toml` — the task lands back at the commit-able gate. Refuses if a same-slug active task already exists.

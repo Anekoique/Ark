@@ -3,7 +3,7 @@
 Specs are the long-lived source of truth Ark reads before any task. They live under `.ark/specs/` in two layers:
 
 - **Project specs** (`specs/project/<name>/SPEC.md`) — user-authored conventions: language style, testing requirements, architectural decisions. Ark never edits these.
-- **Feature specs** (`specs/features/<name>/SPEC.md`) — promoted from deep-tier task PLANs at archive time. Ark writes these.
+- **Feature specs** (`specs/features/<path>/SPEC.md`) — promoted from deep-tier task PLANs at commit time. Ark writes these. `<path>` is slash-separated and may nest (e.g. `core/runtime/scheduler`).
 
 Each layer has its own `INDEX.md`. Start there.
 
@@ -40,11 +40,29 @@ Then add a row to `INDEX.md`'s `## Index` table:
 
 ## Feature specs
 
-Feature specs are the *output* of deep-tier work. Every time a deep-tier task archives, the final PLAN's `## Spec` section is extracted verbatim to `specs/features/<feature>/SPEC.md` and registered in `specs/features/INDEX.md`'s managed block.
+Feature specs are the *output* of deep-tier work. When a deep-tier task **commits**, the final PLAN's `## Spec` section is extracted verbatim to `specs/features/<path>/SPEC.md` and registered in the features INDEX *inside the same commit*.
 
 You don't write feature specs by hand. The system writes them when a deep task completes. Subsequent tasks that touch the feature read the SPEC and either conform to it or — if they need to change it — append to its `[**CHANGELOG**]` section.
 
 This is how Ark accumulates institutional memory. The feature SPEC for `ark-context` exists because someone ran a deep-tier task to design it; the next person extending the context system reads that SPEC before drafting their PRD.
+
+### Recursive SPEC paths
+
+The destination is set by the PRD's `[**SPEC Path**]` block — a single `/`-separated path relative to `specs/features/`, ending in the task slug:
+
+```
+[**SPEC Path**]
+
+core/runtime/scheduler
+```
+
+`ark agent task commit` writes the SPEC to `specs/features/core/runtime/scheduler/SPEC.md` and **upserts a row in every `INDEX.md` from the leaf up to the root** — seeding any missing intermediate INDEX from the shipped subtree template. Each `INDEX.md` rows its immediate children: leaves as `<segment>/SPEC.md`, subtrees as `<segment>/INDEX.md`. A single-segment path (e.g. `klib`) reproduces the old flat layout bit-for-bit, so most features still land at `specs/features/<slug>/SPEC.md`.
+
+The block is **required on deep tier**; a missing or malformed block fails the commit with `FeaturePathMissing` / `InvalidFeaturePath`. Quick, standard, and research tiers ignore it.
+
+### Brownfield extraction
+
+For a project adopting Ark mid-life — where the feature already exists in code but has no SPEC — use `/ark:extract-spec <feature-name>` (which drives `ark agent spec import`). It produces a `specs/features/<slug>/SPEC.md` from the existing codebase without faking a deep-tier task.
 
 To trace a feature back to the originating task: every entry in the features INDEX has a `Promoted` column with the date and source slug, and the archived task dir under `.ark/tasks/archive/YYYY-MM/<slug>/` carries the full PRD/PLAN/REVIEW history.
 
@@ -66,7 +84,7 @@ The filtering happens automatically via `ark context --scope phase --for <phase>
 
 If a PLAN contradicts an existing feature SPEC, the REVIEW phase flags it. Either the PLAN conforms, or the PLAN explicitly updates the SPEC. There's no third option — silent drift means the next task reading the SPEC gets stale information.
 
-When a deep-tier task modifies an existing feature SPEC (rather than promoting a new one), `ark agent task archive` appends a `[**CHANGELOG**]` entry to that SPEC and rewrites the `Promoted` column in the features INDEX with the latest touch date.
+When a deep-tier task modifies an existing feature SPEC (rather than promoting a new one), `ark agent task commit` appends a `[**CHANGELOG**]` entry to that SPEC and rewrites the `Promoted` column in the features INDEX with the latest touch date.
 
 ## Project SPEC ⇆ feature SPEC tradeoffs
 
@@ -74,7 +92,7 @@ The two layers serve different purposes:
 
 | Question                                  | Project SPEC                                    | Feature SPEC                                     |
 | ----------------------------------------- | ----------------------------------------------- | ------------------------------------------------ |
-| Who writes it?                            | You.                                            | Deep-tier task archive promotes it.              |
+| Who writes it?                            | You.                                            | Deep-tier task commit promotes it.               |
 | When is it read?                          | Every task, every phase.                        | Phase-conditional, filtered by the PRD.          |
 | What's it for?                            | Norms that apply broadly.                       | Specific subsystem behavior + invariants.        |
 | What's the lifetime?                      | Long-lived; you maintain it.                    | Long-lived; updated by future deep tasks.        |
