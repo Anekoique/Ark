@@ -1,0 +1,14 @@
+id = "improve-ark-upgrade"
+title = "improve ark upgrade"
+tier = "deep"
+phase = "committed"
+iteration = 1
+max_iterations = 3
+created_at = "2026-05-26T16:49:50.004583Z"
+updated_at = "2026-05-26T19:20:35.486705Z"
+committed_at = "2026-05-26T19:20:35.486705Z"
+branch = "feat/improve-ark-upgrade"
+worktree_path = ".ark/worktrees/feat/improve-ark-upgrade"
+base_branch = "main"
+start_head = "43ea1d04c1b4f18901b8d9a38fc101c642ea6c61"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

@@ -189,12 +189,17 @@ fn capture_orphan_hook_entries(layout: &Layout, snapshot: &mut Snapshot) -> Resu
 ///
 /// Both walks must agree on this set; differing skip lists would cause
 /// per-checkout state to leak through one walk while being filtered out by
-/// the other.
-fn capture_skip_paths(layout: &Layout, cfg: &WorktreeConfig) -> [PathBuf; 3] {
+/// the other. Includes the upgrade sidecar dirs (`.ark/.upgrade-base/`,
+/// `.ark/.upgrade-backup/`) — local-only state that a `load` re-derives, so
+/// a round-trip drops recorded merge bases (a `merged` path reverts to the
+/// conflict-fallback path until Ark next writes it).
+fn capture_skip_paths(layout: &Layout, cfg: &WorktreeConfig) -> [PathBuf; 5] {
     [
         cfg.resolve_worktrees_dir(layout),
         layout.state_file(),
         layout.state_lock_file(),
+        layout.upgrade_base_dir(),
+        layout.upgrade_backup_dir(),
     ]
 }
 
@@ -260,6 +265,37 @@ mod tests {
         assert!(!tmp.path().join(".codex").exists());
         assert!(tmp.path().join(SNAPSHOT_FILENAME).exists());
         assert!(!tmp.path().join(".gitignore").exists());
+    }
+
+    /// V-E-2: the upgrade sidecar dirs are skipped by both unload walks (so a
+    /// round-trip drops recorded bases) and the snapshot never carries them.
+    #[test]
+    fn unload_skips_upgrade_sidecar_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        init(InitOptions::new(tmp.path())).unwrap();
+        let layout = Layout::new(tmp.path());
+        // Seed both sidecars with content under `.ark/`.
+        layout
+            .upgrade_base_dir()
+            .join(".ark/workflow.md")
+            .write_bytes(b"base bytes")
+            .unwrap();
+        layout
+            .upgrade_backup_dir()
+            .join("files/.ark/workflow.md")
+            .write_bytes(b"backup bytes")
+            .unwrap();
+
+        unload(UnloadOptions::new(tmp.path())).unwrap();
+
+        let snapshot = crate::state::Snapshot::read(tmp.path()).unwrap().unwrap();
+        assert!(
+            !snapshot.files.iter().any(|f| {
+                f.path.starts_with(".ark/.upgrade-base")
+                    || f.path.starts_with(".ark/.upgrade-backup")
+            }),
+            "sidecar dirs must not be captured into .ark.db"
+        );
     }
 
     #[test]

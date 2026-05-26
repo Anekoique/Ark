@@ -15,7 +15,7 @@ use ark_core::{
     ContextScope, DeveloperRegisterOptions, Identity, InitOptions, Layout, LoadOptions, Manifest,
     PLATFORMS, PhaseFilter, Platform, Prompter, RemoveOptions, UnloadOptions, UpgradeOptions,
     WriteMode, ark_archive, cleanup, context, developer_register, identity_resolve, identity_write,
-    init, load, remove, scaffold_developer_dir, unload, upgrade,
+    init, load, remove, restore, scaffold_developer_dir, unload, upgrade,
 };
 use clap::{Parser, Subcommand};
 
@@ -312,6 +312,12 @@ struct UpgradeArgs {
     /// Allow proceeding when CLI version < project version.
     #[arg(long)]
     allow_downgrade: bool,
+    /// Report the planned actions without modifying anything.
+    #[arg(long, conflicts_with = "restore")]
+    dry_run: bool,
+    /// Restore the most recent upgrade backup instead of upgrading.
+    #[arg(long)]
+    restore: bool,
 }
 
 impl UpgradeArgs {
@@ -602,7 +608,16 @@ impl Command {
             Self::Upgrade(a) => {
                 let policy = a.policy();
                 let root = a.target.resolve_with_discovery()?;
-                if matches!(policy, ConflictPolicy::Interactive) && !std::io::stdin().is_terminal()
+                // `--restore` is a standalone recovery action: roll the most
+                // recent backup back, no template refresh.
+                if a.restore {
+                    announce("restoring ark upgrade backup in", &root);
+                    render(restore(UpgradeOptions::new(root).with_restore(true))?);
+                    return Ok(());
+                }
+                if matches!(policy, ConflictPolicy::Interactive)
+                    && !a.dry_run
+                    && !std::io::stdin().is_terminal()
                 {
                     eprintln!(
                         "note: stdin is not a terminal; defaulting user-modified files to \
@@ -612,9 +627,14 @@ impl Command {
                 }
                 let opts = UpgradeOptions::new(root.clone())
                     .with_policy(policy)
-                    .with_allow_downgrade(a.allow_downgrade);
+                    .with_allow_downgrade(a.allow_downgrade)
+                    .with_dry_run(a.dry_run);
                 let mut prompter = StdioPrompter;
-                announce("upgrading ark in", &root);
+                if a.dry_run {
+                    announce("dry-run: previewing ark upgrade in", &root);
+                } else {
+                    announce("upgrading ark in", &root);
+                }
                 render(upgrade(opts, &mut prompter)?);
             }
             Self::Context(a) => {

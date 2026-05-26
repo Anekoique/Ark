@@ -519,6 +519,33 @@ pub enum Error {
         /// Validation failure reason.
         reason: &'static str,
     },
+
+    // `[upgrade]` strategy + backup errors.
+    /// The `[upgrade]` section of `.ark/config.toml` could not be parsed.
+    #[error("config.toml `[upgrade]` corrupt at {path:?}: {source}")]
+    UpgradeConfigCorrupt {
+        /// Config file path.
+        path: PathBuf,
+        /// TOML parse error.
+        #[source]
+        source: toml::de::Error,
+    },
+
+    /// An `[upgrade]` strategy entry failed semantic validation.
+    #[error("invalid `[upgrade]` config: {reason} ({path})")]
+    UpgradeConfigInvalid {
+        /// The offending strategy path.
+        path: PathBuf,
+        /// Validation failure reason.
+        reason: &'static str,
+    },
+
+    /// `ark upgrade --restore` found no backup to restore.
+    #[error("no upgrade backup to restore at {path:?}; nothing to undo")]
+    NoBackupToRestore {
+        /// Backup directory that was probed.
+        path: PathBuf,
+    },
 }
 
 impl Error {

@@ -5,7 +5,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::{ConflictChoice, ConflictPolicy, Prompter};
+use super::{
+    ConflictChoice, ConflictPolicy, Prompter,
+    base_store::UpgradeBaseStore,
+    merge::{MergeOutcome, three_way_merge},
+    strategy::{Strategy, UpgradeConfig},
+};
 use crate::{
     error::{Error, Result},
     io::{PathExt, hash_bytes},
@@ -47,6 +52,16 @@ pub(super) enum PlannedAction {
         contents: Vec<u8>,
         kind: WriteKind,
     },
+    /// A clean diff3 merge of a `merged` path; `contents` is the merged result.
+    Merged {
+        relative: PathBuf,
+        contents: Vec<u8>,
+    },
+    /// A conflicting diff3 merge; `contents` carries Git-style markers.
+    MergeConflict {
+        relative: PathBuf,
+        contents: Vec<u8>,
+    },
     RefreshHashOnly {
         relative: PathBuf,
         contents: Vec<u8>,
@@ -56,6 +71,10 @@ pub(super) enum PlannedAction {
         contents: Vec<u8>,
     },
     Preserve {
+        relative: PathBuf,
+    },
+    /// An `ejected` path skipped entirely; counter-only, never written.
+    EjectSkip {
         relative: PathBuf,
     },
     Delete {
@@ -69,15 +88,22 @@ pub(super) enum PlannedAction {
 impl PlannedAction {
     /// Returns the deterministic action sort key.
     ///
-    /// Writes happen before the manifest flush barrier, deletions after.
+    /// Order (per SPEC C-16): `Write{Add}` < `Write{AutoUpdate}` <
+    /// `Write{Overwrite}` < `Merged` < `MergeConflict` < `CreateNew` <
+    /// `RefreshHashOnly` < `Preserve` < `EjectSkip` < `Delete` <
+    /// `DropManifestEntry`. Writes (incl. merges) happen before the manifest
+    /// flush barrier; deletions after.
     fn sort_key(&self) -> (u8, Option<WriteKind>, &Path) {
         match self {
             PlannedAction::Write { kind, relative, .. } => (0, Some(*kind), relative),
-            PlannedAction::CreateNew { relative, .. } => (1, None, relative),
-            PlannedAction::RefreshHashOnly { relative, .. } => (2, None, relative),
-            PlannedAction::Preserve { relative } => (3, None, relative),
-            PlannedAction::Delete { relative } => (4, None, relative),
-            PlannedAction::DropManifestEntry { relative } => (5, None, relative),
+            PlannedAction::Merged { relative, .. } => (1, None, relative),
+            PlannedAction::MergeConflict { relative, .. } => (2, None, relative),
+            PlannedAction::CreateNew { relative, .. } => (3, None, relative),
+            PlannedAction::RefreshHashOnly { relative, .. } => (4, None, relative),
+            PlannedAction::Preserve { relative } => (5, None, relative),
+            PlannedAction::EjectSkip { relative } => (6, None, relative),
+            PlannedAction::Delete { relative } => (7, None, relative),
+            PlannedAction::DropManifestEntry { relative } => (8, None, relative),
         }
     }
 }
@@ -160,6 +186,48 @@ fn classify_removal(on_disk: &[u8], recorded: Option<&str>) -> RemovalClassifica
     }
 }
 
+/// Plans the action for a `merged` path, or `None` to fall back to the
+/// standard pipeline.
+///
+/// Returns `None` (fall back) when the file is absent, the recorded hash says
+/// the user did not diverge (the standard pipeline handles Add / Unchanged /
+/// AutoUpdate correctly), or no base is recorded (C-8 — a 2-way "merge" would
+/// be garbage). Otherwise runs diff3 and returns `Merged` / `MergeConflict`.
+fn plan_merge(
+    relative: &Path,
+    desired: &[u8],
+    on_disk: Option<&[u8]>,
+    recorded: Option<&str>,
+    base_store: &UpgradeBaseStore<'_>,
+) -> Result<Option<PlannedAction>> {
+    // Merge only applies when both sides changed: there is an on-disk file,
+    // it differs from the desired template, and the recorded hash shows the
+    // user (not Ark's last write) authored the on-disk content. Everything
+    // else (Add, Unchanged, AutoUpdate) is handled by `classify`.
+    let Some(current) = on_disk else {
+        return Ok(None);
+    };
+    let current_hash = hash_bytes(current);
+    let diverged = current_hash != hash_bytes(desired) && recorded != Some(current_hash.as_str());
+    if !diverged {
+        return Ok(None);
+    }
+    // No recorded base → cannot diff3; fall back to the conflict pipeline.
+    let Some(base) = base_store.base_for(relative)? else {
+        return Ok(None);
+    };
+    Ok(Some(match three_way_merge(&base, current, desired) {
+        MergeOutcome::Clean(bytes) => PlannedAction::Merged {
+            relative: relative.to_path_buf(),
+            contents: bytes,
+        },
+        MergeOutcome::Conflict(bytes) => PlannedAction::MergeConflict {
+            relative: relative.to_path_buf(),
+            contents: bytes,
+        },
+    }))
+}
+
 fn resolve_conflict(
     relative: &Path,
     policy: ConflictPolicy,
@@ -184,9 +252,11 @@ pub(super) fn plan_actions(
     desired: &[(PathBuf, Cow<'static, [u8]>)],
     policy: ConflictPolicy,
     prompter: &mut dyn Prompter,
+    config: &UpgradeConfig,
 ) -> Result<Plan> {
     let mut actions: Vec<PlannedAction> = Vec::new();
     let mut inline_unchanged = 0usize;
+    let base_store = UpgradeBaseStore::new(layout);
 
     let desired_keys: std::collections::BTreeSet<&Path> =
         desired.iter().map(|(p, _)| p.as_path()).collect();
@@ -195,9 +265,34 @@ pub(super) fn plan_actions(
         if is_exempted(relative) {
             continue;
         }
+        // Ejected paths are removed from consideration before any
+        // classification, write, or prompt (C-2, C-3 — beats every policy).
+        if config.strategy_for(relative) == Strategy::Ejected {
+            actions.push(PlannedAction::EjectSkip {
+                relative: relative.clone(),
+            });
+            continue;
+        }
         let absolute = layout.resolve(relative);
         let on_disk = absolute.read_optional()?;
         let recorded = manifest.hash_for(relative);
+
+        // A `merged` path whose sides have diverged and that has a recorded
+        // base is diff3-merged; with no base, it falls through to the standard
+        // conflict pipeline below (C-8 fallback).
+        if config.strategy_for(relative) == Strategy::Merged
+            && let Some(action) = plan_merge(
+                relative,
+                contents,
+                on_disk.as_deref(),
+                recorded,
+                &base_store,
+            )?
+        {
+            actions.push(action);
+            continue;
+        }
+
         match classify(contents, on_disk.as_deref(), recorded) {
             Classification::Add => actions.push(PlannedAction::Write {
                 relative: relative.clone(),
@@ -250,7 +345,17 @@ pub(super) fn plan_actions(
         if is_exempted(manifest_path) {
             continue;
         }
+        // Desired paths were handled in the pass above (incl. their EjectSkip);
+        // the removal pass only considers manifest entries no longer shipped.
         if desired_keys.contains(manifest_path.as_path()) {
+            continue;
+        }
+        // A removed-but-ejected file is never deleted — ejection covers
+        // removal too (C-2). Count it once here (it had no desired-pass entry).
+        if config.strategy_for(manifest_path) == Strategy::Ejected {
+            actions.push(PlannedAction::EjectSkip {
+                relative: manifest_path.clone(),
+            });
             continue;
         }
         let absolute = layout.resolve(manifest_path);
@@ -420,6 +525,7 @@ mod tests {
             &desired,
             ConflictPolicy::Skip,
             &mut prompter,
+            &UpgradeConfig::default(),
         )
         .unwrap();
         let keys: Vec<_> = plan
@@ -433,5 +539,42 @@ mod tests {
         let mut sorted = keys.clone();
         sorted.sort();
         assert_eq!(keys, sorted, "actions must be sort-key-ordered");
+    }
+
+    /// V-UT-10: the new variants occupy their C-16 buckets and stay sorted.
+    #[test]
+    fn new_action_variants_sort_into_their_buckets() {
+        let p = PathBuf::from("z.md");
+        let variants = [
+            PlannedAction::Write {
+                relative: p.clone(),
+                contents: vec![],
+                kind: WriteKind::Overwrite,
+            },
+            PlannedAction::Merged {
+                relative: p.clone(),
+                contents: vec![],
+            },
+            PlannedAction::MergeConflict {
+                relative: p.clone(),
+                contents: vec![],
+            },
+            PlannedAction::Preserve {
+                relative: p.clone(),
+            },
+            PlannedAction::EjectSkip {
+                relative: p.clone(),
+            },
+            PlannedAction::Delete {
+                relative: p.clone(),
+            },
+        ];
+        let buckets: Vec<u8> = variants.iter().map(|a| a.sort_key().0).collect();
+        // Strictly increasing — Merged after Write, before CreateNew;
+        // EjectSkip after Preserve, before Delete.
+        assert_eq!(buckets, vec![0, 1, 2, 5, 6, 7]);
+        let mut sorted = buckets.clone();
+        sorted.sort();
+        assert_eq!(buckets, sorted);
     }
 }

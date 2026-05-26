@@ -1,215 +1,129 @@
+
 [**Goals**]
 
-- G-1: `ark upgrade` is a top-level visible subcommand, safe to run repeatedly.
-- G-2: User-modified files are detected by SHA-256 hash comparison against the manifest.
-- G-3: Unmodified template files update silently; modified files prompt (overwrite / skip / write `.new`).
-- G-4: Files removed between versions are deleted only when their on-disk hash matches the manifest; otherwise left as orphans.
-- G-5: Managed blocks (`CLAUDE.md`, `AGENTS.md`) and SessionStart hook entries are re-applied unconditionally; not hash-tracked.
+- G-1: `ark upgrade` reads an `[upgrade]` strategy section from `.ark/config.toml`.
+- G-2: An `ejected` path is never written, deleted, prompted, or classified by upgrade.
+- G-3: A `merged` non-block file with diverged sides is diff3-merged against a recorded base.
+- G-4: `ark upgrade --dry-run` reports every planned action and mutates nothing.
+- G-5: `ark upgrade` is reversible: it backs up touched files plus the manifest and restores them.
 
 [**Non-goals**]
 
-- NG-1: No network I/O; no migration manifest system.
-- NG-2: No backup directory; rollback is not promised.
-- NG-3: No CRLF/LF normalization before hashing.
+- NG-1: No network I/O; the merge base is recorded locally, never fetched (carried; sidecar is not migration state).
+- NG-2: `merged` does not apply to managed-block files; their splice strategy is unchanged.
+- NG-3: No AI-assisted or interactive merge tool; merging is deterministic diff3 only.
+- NG-4: A diverged path the user never lets Ark overwrite is not auto-healed onto the merge path.
 
 [**Architecture**]
 
 ```
-crates/
-├── ark-cli/src/main.rs            (Upgrade(UpgradeArgs) top-level)
-└── ark-core/src/
-    ├── error.rs                   (DowngradeRefused, UnsafeManifestPath)
-    ├── io/path_ext.rs             (hash_sha256 method + free hash_bytes fn)
-    ├── state/manifest.rs          (hashes: BTreeMap<PathBuf, String>;
-    │                                record_file_with_hash, hash_for, clear_hash, drop_file)
-    ├── commands/init.rs           (records hashes when writing files)
-    └── commands/upgrade.rs        (the new command)
-```
-
-Call graph for `upgrade`:
-
-```
-upgrade(opts, prompter)
-  ├── Manifest::read                                       → Error::NotLoaded if missing
-  ├── validate_manifest_paths(&manifest.files)             → Error::UnsafeManifestPath  (C-15; before version check)
-  ├── check_version (semver cmp)                           → Error::DowngradeRefused if project > cli ∧ !allow_downgrade
-  ├── collect_desired_templates()                          → Vec<(PathBuf, &'static [u8])>
-  ├── plan_actions()                                       → Vec<PlannedAction> sorted by (bucket, path)
-  │     per desired:    classify → Add | Unchanged{refresh_hash} | AutoUpdate | UserModified | AmbiguousNoHash
-  │     per orphan:     classify_removal → SafeRemove | Orphaned
-  │     resolve UserModified | AmbiguousNoHash via policy or prompter
-  ├── apply_writes()                                       (Write, CreateNew, RefreshHashOnly, Preserve)
-  │     mutates manifest in-memory
-  ├── update_managed_block(CLAUDE.md, "ARK", MANAGED_BLOCK_BODY)
-  ├── update_settings_hook(.claude/settings.json, ark_session_start_hook_entry())
-  ├── manifest.version = CARGO_PKG_VERSION
-  ├── manifest.write()                                     ← durable BEFORE deletions
-  ├── apply_deletions()                                    (Delete, DropManifestEntry)
-  ├── manifest.write() again iff deletions mutated the manifest
-  └── UpgradeSummary
+crates/ark-core/src/
+├── commands/upgrade/
+│   ├── mod.rs              upgrade(): config → plan → (dry-run preview | backup → apply → restore-on-err)
+│   │                        + restore(): --restore entry; backup capture/restore helpers
+│   ├── plan.rs             classify(): strategy_for() consulted before hash classification;
+│   │                        Merged/MergeConflict/EjectSkip PlannedAction variants + sort buckets
+│   ├── strategy.rs   (new) UpgradeConfig: own raw-config struct, load+validate [upgrade]
+│   ├── merge.rs      (new) three_way_merge(): diffy::merge_bytes wrapper, git-style markers
+│   ├── base_store.rs (new) UpgradeBaseStore: read/write/remove base bytes under sidecar dir
+│   └── backup.rs     (new) UpgradeBackup: capture(files+manifest), restore, most_recent
+├── layout.rs                + upgrade_base_dir()/upgrade_backup_dir() + consts
+├── commands/unload.rs       capture_skip_paths grows to include both sidecar dirs (both walk sites)
+└── error.rs                 + UpgradeConfigInvalid, UpgradeConfigCorrupt, NoBackupToRestore
+templates/ark/
+├── config.toml              + commented [upgrade] section (ejected/merged examples)
+└── .gitignore               + .upgrade-base/ and .upgrade-backup/ rules
+# init.rs: NOT touched for base recording — init seeds fresh files; bases are recorded by
+#          upgrade's apply step only. remove.rs: NOT touched — `.ark/` wipe covers both dirs.
 ```
 
 [**Data Structure**]
 
 ```rust
-// ark-core/src/state/manifest.rs (extension)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Manifest {
-    pub version: String,
-    pub files: Vec<PathBuf>,
-    pub managed_blocks: Vec<ManagedBlock>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub hashes: BTreeMap<PathBuf, String>,
+// strategy.rs — own loader, not the worktree RawConfig
+#[derive(Deserialize)] struct RawUpgradeConfig { upgrade: Option<UpgradeSection> } // private
+pub struct UpgradeConfig { pub ejected: Vec<PathBuf>, pub merged: Vec<PathBuf> }
+impl UpgradeConfig {
+    pub fn load_or_default(layout: &Layout) -> Result<Self>; // corrupt TOML → UpgradeConfigCorrupt
+    pub fn validate(&self, blocks: &[ManagedBlock], layout: &Layout) -> Result<()>; // C-4,C-5,C-6
+    pub fn strategy_for(&self, relative: &Path) -> Strategy;
+}
+pub enum Strategy { Default, Ejected, Merged }
+
+// base_store.rs
+pub struct UpgradeBaseStore<'a> { layout: &'a Layout } // .ark/.upgrade-base/<mirrored path>
+impl UpgradeBaseStore<'_> {
+    pub fn record(&self, relative: &Path, bytes: &[u8]) -> Result<()>;
+    pub fn base_for(&self, relative: &Path) -> Result<Option<Vec<u8>>>;
 }
 
-impl Manifest {
-    pub fn record_file_with_hash(&mut self, path: impl Into<PathBuf>, contents: &[u8]);
-    pub fn hash_for(&self, path: &Path) -> Option<&str>;
-    pub fn clear_hash(&mut self, path: &Path);
-    pub fn drop_file(&mut self, path: &Path);   // removes from both files and hashes
+// backup.rs
+pub struct UpgradeBackup<'a> { layout: &'a Layout } // .ark/.upgrade-backup/
+impl UpgradeBackup<'_> {
+    pub fn capture(&self, files: &[PathBuf], manifest_bytes: &[u8]) -> Result<()>; // replaces prior
+    pub fn restore(&self) -> Result<RestoreSummary>;          // files + manifest
+    pub fn exists(&self) -> bool;
 }
 
-// ark-core/src/commands/upgrade.rs
-#[derive(Debug, Clone)]
-pub struct UpgradeOptions {
-    pub project_root: PathBuf,
-    pub conflict_policy: ConflictPolicy,
-    pub allow_downgrade: bool,
-}
+// merge.rs
+pub enum MergeOutcome { Clean(Vec<u8>), Conflict(Vec<u8>) } // Conflict carries marker bytes
+pub fn three_way_merge(base: &[u8], ours: &[u8], theirs: &[u8]) -> MergeOutcome;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConflictPolicy { Interactive, Force, Skip, CreateNew }
+// plan.rs — new PlannedAction variants, with sort buckets (see C-23)
+//   Write{Add|AutoUpdate|Overwrite} | Merged | MergeConflict   → write buckets 0..=2 (Merged/Conflict adjacent)
+//   CreateNew | RefreshHashOnly | Preserve | EjectSkip         → buckets 3..=5 (EjectSkip with Preserve)
+//   Delete | DropManifestEntry                                 → buckets 6..=7
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConflictChoice { Overwrite, Skip, CreateNew }
-
-pub trait Prompter {
-    fn prompt(&mut self, relative_path: &Path) -> Result<ConflictChoice>;
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct UpgradeSummary {
-    pub added: usize,
-    pub updated: usize,
-    pub unchanged: usize,
-    pub modified_preserved: usize,
-    pub overwritten: usize,
-    pub skipped: usize,
-    pub created_new: usize,
-    pub deleted: usize,
-    pub orphaned: usize,
-    pub version_from: String,
-    pub version_to: String,
-}
-
-// internal to upgrade.rs
-enum Classification {
-    Add,
-    Unchanged { refresh_hash: bool },
-    AutoUpdate,
-    UserModified,
-    AmbiguousNoHash,
-}
-enum RemovalClassification { SafeRemove, Orphaned }
-enum PlannedAction {
-    Write { relative: PathBuf, contents: &'static [u8], kind: WriteKind },
-    RefreshHashOnly { relative: PathBuf, contents: Vec<u8> },
-    CreateNew { relative: PathBuf, contents: &'static [u8] },
-    Preserve { relative: PathBuf },
-    Delete { relative: PathBuf },
-    DropManifestEntry { relative: PathBuf },
-}
-enum WriteKind { Add, AutoUpdate, Overwrite }
-
-// Bucket order for the C-16 sort:
-//   Write{Add} < Write{AutoUpdate} < Write{Overwrite}
-//     < CreateNew < RefreshHashOnly < Preserve
-//     < Delete < DropManifestEntry
-// Within a bucket, `relative_path` (lex) is the secondary key.
-
-// ark-core/src/error.rs (additions)
-Error::DowngradeRefused    { project_version: String, cli_version: String },
-Error::UnsafeManifestPath  { path: PathBuf, reason: &'static str },
-
-// ark-core/src/io/path_ext.rs (additions)
-trait PathExt {
-    fn hash_sha256(&self) -> Result<Option<String>>;        // hex lowercase; None if file missing
-}
-pub fn hash_bytes(contents: &[u8]) -> String;               // free fn, hex lowercase
+// mod.rs
+pub struct DryRunPreview { pub rows: Vec<(PathBuf, ActionLabel)> } // impl Display, one line per path
+pub enum ActionLabel { Add, Update, Overwrite, MergeClean, MergeConflict, Preserve,
+                       CreateNew, Delete, Orphan, EjectSkip, MergeNoBaseFallback }
+// UpgradeSummary gains: merged_clean, merged_conflict, ejected_skipped, merge_fallback counters
+// UpgradeOptions gains: dry_run: bool, restore: bool
+pub struct RestoreSummary { pub restored: usize, pub manifest_restored: bool }
 ```
 
 [**API Surface**]
 
 ```rust
-// Library re-exports from ark-core/src/lib.rs
-pub use commands::{
-    InitOptions, InitSummary,
-    LoadOptions, LoadSummary,
-    RemoveOptions, RemoveSummary,
-    UnloadOptions, UnloadSummary,
-    UpgradeOptions, UpgradeSummary, ConflictPolicy, ConflictChoice, Prompter,
-    init, load, remove, unload, upgrade,
-};
-
+// mod.rs
 pub fn upgrade(opts: UpgradeOptions, prompter: &mut dyn Prompter) -> Result<UpgradeSummary>;
-
-// CLI (ark-cli/src/main.rs)
-#[derive(Subcommand)]
-enum Command {
-    Init(InitArgs),
-    Load(LoadArgs),
-    Unload(UnloadArgs),
-    Remove(RemoveArgs),
-    Upgrade(UpgradeArgs),
-    #[command(hide = true)]
-    Agent(AgentArgs),
-}
-
-#[derive(Args)]
-#[group(id = "policy", multiple = false)]
-struct UpgradeArgs {
-    /// Overwrite user-modified files without prompting.
-    #[arg(long, group = "policy")] force: bool,
-    /// Preserve user-modified files without prompting.
-    #[arg(long, group = "policy")] skip_modified: bool,
-    /// Write updated template as `<path>.new` without prompting.
-    #[arg(long, group = "policy")] create_new: bool,
-    /// Allow proceeding when CLI version < project version.
-    /// Orthogonal to the policy group — no `group` attribute.
-    #[arg(long)] allow_downgrade: bool,
-}
-
-// Stdio prompter in the binary crate
-struct StdioPrompter;   // uses std::io::IsTerminal; non-TTY → ConflictChoice::Skip
-```
-
-`UpgradeSummary::Display` output is deterministic and prints all counters in fixed order even when zero:
-
-```
-{N} file(s): {A} added · {U} updated · {S} unchanged · {M} modified-preserved · {O} overwritten · {K} skipped · {C} .new-copied · {D} deleted · {R} orphaned
-{from} → {to}
+pub fn restore(opts: UpgradeOptions) -> Result<RestoreSummary>;
+impl UpgradeOptions { pub fn with_dry_run(self, b: bool) -> Self; pub fn with_restore(self, b: bool) -> Self; }
+// layout.rs
+impl Layout { pub fn upgrade_base_dir(&self) -> PathBuf; pub fn upgrade_backup_dir(&self) -> PathBuf; }
 ```
 
 [**Constraints**]
 
-- C-1: Hashes are SHA-256 hex-lowercase; keys in `manifest.hashes` mirror `manifest.files` entries exactly.
-- C-2: Every `init` write records the file path AND its hash via a single helper.
-- C-3: Upgrade only acts on `manifest.files ∪ desired_templates`; `.ark/.installed.json` is the sole file-level exemption.
-- C-4: Missing manifest → `Error::NotLoaded`.
-- C-5: `manifest.version > CARGO_PKG_VERSION` → `Error::DowngradeRefused` unless `opts.allow_downgrade`. Unparseable version proceeds.
-- C-6: Version comparison uses `semver::Version`; same-version upgrades run a full pass.
-- C-7: `Interactive` policy on non-TTY downgrades to `Skip` with a stderr note.
-- C-8: `CLAUDE.md` / `AGENTS.md` managed blocks and SessionStart hook entries are re-applied on every `init` / `load` / `upgrade`; not hash-tracked. Sibling user content is preserved.
-- C-9: `.new` files are never recorded in the manifest and never hashed.
-- C-10: Removed templates are deleted iff `manifest.hash_for(path) == on_disk_sha256`; otherwise orphaned. Either way, the manifest entry is dropped.
-- C-11: AmbiguousNoHash with on-disk-differs-from-desired is treated as `UserModified`.
-- C-12: All filesystem access in `upgrade.rs` routes through `io::PathExt` / `io::fs`; all path composition routes through `layout::Layout`.
-- C-13: `Prompter` is dyn-compatible (no generics, no `Self: Sized`).
-- C-14: Upgrade is not safe against concurrent file modification.
-- C-15: Every `manifest.files` path is normalized via `layout.resolve_safe` before any I/O; failures surface `Error::UnsafeManifestPath` and halt before mutation.
-- C-16: `plan_actions` returns actions sorted by `(bucket, relative_path)` for deterministic execution: `Write{Add}`, `Write{AutoUpdate}`, `Write{Overwrite}`, `CreateNew`, `RefreshHashOnly`, `Preserve`, `Delete`, `DropManifestEntry`.
+- C-1: `[upgrade]` is parsed by `strategy.rs`'s own private raw-config struct off `layout.config_file()`; missing section → empty sets.
+- C-2: An `ejected` path is excluded before classification, conflict resolution, write, and removal.
+- C-3: Ejection wins over `--force`, `--skip-modified`, `--create-new`, and interactive policy.
+- C-4: A `merged` entry naming a managed-block file fails as `UpgradeConfigInvalid`.
+- C-5: A path in both `ejected` and `merged` fails as `UpgradeConfigInvalid`.
+- C-6: Every `[upgrade]` path is validated via `Layout::resolve_safe` before any I/O.
+- C-7: The diff3 base is the bytes Ark last wrote, read from `.ark/.upgrade-base/`; never fetched.
+- C-8: A `merged` path with no recorded base routes through the existing conflict pipeline.
+- C-9: A clean diff3 writes the merged bytes; a conflict writes git-style markers via `diffy::merge_bytes`.
+- C-10: Merge operates on raw bytes so non-UTF-8 content round-trips losslessly.
+- C-11: Base bytes are recorded only for `merged`-eligible paths, scoping sidecar size.
+- C-12: `--dry-run` performs no write, delete, manifest, managed-block, hook, base, or backup mutation.
+- C-13: A non-dry-run upgrade backs up each to-be-mutated/deleted file before its first write.
+- C-14: On any apply error, the backup is restored (files + manifest) before the error propagates.
+- C-15: `--restore` restores the most recent backup or fails `NoBackupToRestore` when none exists.
+- C-16: Action sort order is `Write{Add}` < `Write{AutoUpdate}` < `Write{Overwrite}` < `Merged` < `MergeConflict` < `CreateNew` < `RefreshHashOnly` < `Preserve` < `EjectSkip` < `Delete` < `DropManifestEntry`, secondary key `relative`.
+- C-17: New `UpgradeSummary` counters print in fixed order even when zero.
+- C-18: All filesystem access routes through `io::PathExt`; all path composition through `layout::Layout`.
+- C-19: A diverged `merged` path the user never lets Ark overwrite never acquires a base and stays on fallback permanently.
+- C-20: The backup set includes `.ark/.installed.json`; rollback restores the manifest to its pre-write bytes alongside the files.
+- C-21: One backup dir per non-dry-run upgrade replaces any prior backup, is retained after success, and is left untouched by an auto-rollback (so `--restore` returns the genuine pre-upgrade tree).
+- C-22: A malformed `[upgrade]` section fails as `UpgradeConfigCorrupt`, never as `WorktreeConfigCorrupt`.
+- C-23: `Merged`/`MergeConflict` occupy write-adjacent buckets; `EjectSkip` shares `Preserve`'s position class (per C-16).
+- C-24: The dry-run preview is a `Display`-able `DryRunPreview`; one render per dispatch (project convention).
+- C-25: `capture_skip_paths` includes both sidecar dirs and both `unload` walk sites consume the widened set.
+
+---
 
 [**CHANGELOG**]
 
-- 2026-04-25 `ark-context`: C-8 extended to cover `.claude/settings.json` `SessionStart` hook entry alongside `CLAUDE.md` managed block.
-- 2026-05-08 `doc-tighten`: rewritten to match tightened SPEC contract; semantic content preserved.
+- 2026-05-26: replaced from 01_PLAN.md (prior body preserved in git history)

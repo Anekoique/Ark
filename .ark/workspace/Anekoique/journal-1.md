@@ -628,3 +628,31 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+
+## Session 24: improve ark upgrade
+
+**Date**: 2026-05-27
+**Slug**: improve-ark-upgrade
+**Branch**: `feat/improve-ark-upgrade`
+**Base Branch**: `main`
+**Start Head**: `43ea1d0`
+**Closing Commit**: <PENDING:improve-ark-upgrade>
+
+### Summary
+
+`ark upgrade` gains user-declared eject/merge strategy, diff3 3-way merge, `--dry-run` preview, and backup/`--restore`.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| strategy | `[upgrade]` in config.toml: `ejected` (never touched, beats `--force`) + `merged` (diff3 vs `.ark/.upgrade-base/` sidecar). |
+| merge | `diffy` 3-way merge writes git-style conflict markers; no recorded base falls back to the conflict pipeline. |
+| safety | `--dry-run` previews the plan; every run backs up touched files + manifest, restorable on failure or via `--restore`. |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

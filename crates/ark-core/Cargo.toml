@@ -15,6 +15,7 @@ chrono = { version = "0.4.44", default-features = false, features = [
   "clock",
   "serde",
 ] }
+diffy = "0.5.0"
 include_dir = "0.7.4"
 semver = "1"
 serde = { version = "1.0.228", features = ["derive"] }
