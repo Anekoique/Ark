@@ -26,6 +26,7 @@ use crate::{
 
 mod backup;
 mod base_store;
+mod config_merge;
 mod merge;
 mod plan;
 mod strategy;
@@ -150,6 +151,10 @@ pub struct UpgradeSummary {
     pub merge_fallback: usize,
     /// Number of `ejected` paths skipped entirely.
     pub ejected_skipped: usize,
+    /// Number of top-level `[section]` tables appended to a seed-only file
+    /// (today: `.ark/config.toml`) so a release adding new sections reaches
+    /// users whose files predate them. Counts files mutated, not sections.
+    pub config_sections_appended: usize,
     /// Number of in-flight `VERIFY.md` files migrated from the legacy
     /// verdict-driven shape to the new living-checklist shape.
     pub verify_migrated: usize,
@@ -163,7 +168,7 @@ pub struct UpgradeSummary {
 }
 
 impl UpgradeSummary {
-    fn segments(&self) -> [(&'static str, usize); 13] {
+    fn segments(&self) -> [(&'static str, usize); 14] {
         [
             ("added", self.added),
             ("updated", self.updated),
@@ -175,6 +180,7 @@ impl UpgradeSummary {
             ("merge-conflict", self.merged_conflict),
             ("merge-fallback", self.merge_fallback),
             ("ejected", self.ejected_skipped),
+            ("config-sections", self.config_sections_appended),
             ("deleted", self.deleted),
             ("orphaned", self.orphaned),
             ("verify-migrated", self.verify_migrated),
@@ -226,6 +232,9 @@ pub enum ActionLabel {
     Orphan,
     /// `ejected` path would be skipped entirely.
     EjectSkip,
+    /// Seed-only `.ark/config.toml` would have missing top-level sections
+    /// appended; the user's existing bytes are preserved as a prefix.
+    AppendSections,
 }
 
 impl ActionLabel {
@@ -241,6 +250,7 @@ impl ActionLabel {
             ActionLabel::Delete => "delete",
             ActionLabel::Orphan => "orphan",
             ActionLabel::EjectSkip => "eject-skip",
+            ActionLabel::AppendSections => "append-sections",
         }
     }
 }
@@ -492,6 +502,7 @@ fn backup_targets(actions: &[PlannedAction]) -> Vec<PathBuf> {
             PlannedAction::Write { relative, .. }
             | PlannedAction::Merged { relative, .. }
             | PlannedAction::MergeConflict { relative, .. }
+            | PlannedAction::AppendConfigSections { relative, .. }
             | PlannedAction::Delete { relative } => Some(relative.clone()),
             _ => None,
         })
@@ -563,6 +574,17 @@ fn apply_plan(
             }
             PlannedAction::EjectSkip { .. } => {
                 summary.ejected_skipped += 1;
+            }
+            PlannedAction::AppendConfigSections { relative, contents } => {
+                // Additive merge: write the user's prefix + appended template
+                // sections. We deliberately do NOT call
+                // `record_file_with_hash` — `config.toml` stays seed-only
+                // (untracked) so a future user edit still survives upgrade
+                // byte-for-byte without becoming a "modified" prompt target.
+                // We also do NOT record a merge base — diff3 only applies to
+                // paths the user opts into via `[upgrade] merged`.
+                layout.resolve(&relative).write_bytes(&contents)?;
+                summary.config_sections_appended += 1;
             }
             action @ (PlannedAction::Delete { .. } | PlannedAction::DropManifestEntry { .. }) => {
                 deferred.push(action);
@@ -637,6 +659,9 @@ fn build_preview(
             PlannedAction::Merged { relative, .. } => (relative.clone(), ActionLabel::MergeClean),
             PlannedAction::MergeConflict { relative, .. } => {
                 (relative.clone(), ActionLabel::MergeConflict)
+            }
+            PlannedAction::AppendConfigSections { relative, .. } => {
+                (relative.clone(), ActionLabel::AppendSections)
             }
             PlannedAction::CreateNew { relative, .. } => (relative.clone(), ActionLabel::CreateNew),
             PlannedAction::Preserve { relative } => (relative.clone(), ActionLabel::Preserve),
@@ -952,7 +977,9 @@ mod tests {
 
     /// Default (Interactive) policy must not prompt for user-owned seed-only
     /// paths even when the embedded template's bytes have drifted from what
-    /// the user has on disk.
+    /// the user has on disk. `config.toml` is also seed-only but gets an
+    /// append-only section merge instead of staying byte-identical — the
+    /// user's existing bytes still survive as a prefix.
     #[test]
     fn upgrade_does_not_prompt_for_seed_only_paths_under_interactive_policy() {
         let tmp = tempfile::tempdir().unwrap();
@@ -967,7 +994,11 @@ mod tests {
         let mut prompter = PanicPrompter;
         upgrade(UpgradeOptions::new(tmp.path()), &mut prompter).unwrap();
         assert_eq!(std::fs::read_to_string(&project_index).unwrap(), user_index);
-        assert_eq!(std::fs::read_to_string(&config_toml).unwrap(), user_config);
+        // INDEX.md is preserved unconditionally; config.toml gets template
+        // sections appended (the user only had `[worktree]`).
+        let after = std::fs::read_to_string(&config_toml).unwrap();
+        assert!(after.starts_with(user_config), "user prefix preserved");
+        assert!(after.contains("[workspace]"), "missing section appended");
     }
 
     /// Verifies that `.ark/config.toml` is preserved across upgrade.
@@ -1326,7 +1357,9 @@ mod tests {
         );
     }
 
-    /// V-IT-7: the `[upgrade]` config survives upgrade byte-identical.
+    /// V-IT-7: the user's existing `[upgrade]` section survives upgrade
+    /// byte-for-byte as a prefix; any template-shipped sections the user is
+    /// missing get appended without disturbing what they wrote.
     #[test]
     fn upgrade_config_survives_upgrade() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1339,7 +1372,120 @@ mod tests {
         )
         .unwrap();
         let after = std::fs::read_to_string(tmp.path().join(".ark/config.toml")).unwrap();
-        assert_eq!(before, after);
+        assert!(after.starts_with(&before), "user bytes preserved as prefix");
+        // The user's custom `ejected` line is untouched.
+        assert!(after.contains("ejected = [\".ark/workflow.md\"]"));
+    }
+
+    /// Append-only section merge delivers a template-shipped section to a
+    /// user whose `config.toml` predates that section. The user's existing
+    /// bytes are preserved as a prefix; nothing they wrote is rewritten.
+    #[test]
+    fn upgrade_appends_missing_top_level_sections_to_config_toml() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
+        let cfg = tmp.path().join(".ark/config.toml");
+        let user = "[worktree]\nbranch_prefix = \"feat\"\ncopy = [\".env\"]\n";
+        std::fs::write(&cfg, user).unwrap();
+        let summary = upgrade(
+            UpgradeOptions::new(tmp.path()).with_policy(ConflictPolicy::Skip),
+            &mut PanicPrompter,
+        )
+        .unwrap();
+        assert_eq!(summary.config_sections_appended, 1);
+        let after = std::fs::read_to_string(&cfg).unwrap();
+        assert!(after.starts_with(user), "user prefix preserved");
+        assert!(after.contains("[workspace]"));
+        assert!(after.contains("[upgrade]"));
+        assert!(after.contains("[sandbox]"));
+        // The custom user line still reads exactly as written.
+        assert!(after.contains("copy = [\".env\"]"));
+    }
+
+    /// A second upgrade after sections have already been appended is a no-op:
+    /// every template section is now present, so no further write happens.
+    #[test]
+    fn upgrade_appends_sections_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
+        let cfg = tmp.path().join(".ark/config.toml");
+        std::fs::write(&cfg, "[worktree]\nbranch_prefix = \"feat\"\n").unwrap();
+        let _ = upgrade(
+            UpgradeOptions::new(tmp.path()).with_policy(ConflictPolicy::Skip),
+            &mut PanicPrompter,
+        )
+        .unwrap();
+        let after_first = std::fs::read_to_string(&cfg).unwrap();
+        let summary = upgrade(
+            UpgradeOptions::new(tmp.path()).with_policy(ConflictPolicy::Skip),
+            &mut PanicPrompter,
+        )
+        .unwrap();
+        assert_eq!(summary.config_sections_appended, 0);
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), after_first);
+    }
+
+    /// `config.toml` listed under `[upgrade] ejected` opts out of the append
+    /// merge entirely — even when sections are missing, nothing is appended.
+    #[test]
+    fn upgrade_skips_config_append_when_ejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
+        let cfg = tmp.path().join(".ark/config.toml");
+        // Replace the shipped config with a minimal user file that lists
+        // itself as ejected; ejection must beat the append step.
+        let user =
+            "[worktree]\nbranch_prefix = \"feat\"\n\n[upgrade]\nejected = [\".ark/config.toml\"]\n";
+        std::fs::write(&cfg, user).unwrap();
+        let summary = upgrade(
+            UpgradeOptions::new(tmp.path()).with_policy(ConflictPolicy::Skip),
+            &mut PanicPrompter,
+        )
+        .unwrap();
+        assert_eq!(summary.config_sections_appended, 0);
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), user);
+    }
+
+    /// `--dry-run` reports the planned append as a row but does not mutate the
+    /// file.
+    #[test]
+    fn upgrade_dry_run_reports_append_without_mutating() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
+        let cfg = tmp.path().join(".ark/config.toml");
+        let user = "[worktree]\nbranch_prefix = \"feat\"\n";
+        std::fs::write(&cfg, user).unwrap();
+        let summary = upgrade(
+            UpgradeOptions::new(tmp.path()).with_dry_run(true),
+            &mut PanicPrompter,
+        )
+        .unwrap();
+        assert!(summary.dry_run);
+        assert_eq!(
+            summary.config_sections_appended, 0,
+            "dry-run mutates nothing"
+        );
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), user);
+    }
+
+    /// Append-merge survives an `--restore` round-trip: a regretted upgrade
+    /// rolls `config.toml` back to its pre-upgrade bytes.
+    #[test]
+    fn upgrade_appends_are_reversible_via_restore() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::commands::init(crate::commands::InitOptions::new(tmp.path())).unwrap();
+        let cfg = tmp.path().join(".ark/config.toml");
+        let user = "[worktree]\nbranch_prefix = \"feat\"\n";
+        std::fs::write(&cfg, user).unwrap();
+        let _ = upgrade(
+            UpgradeOptions::new(tmp.path()).with_policy(ConflictPolicy::Skip),
+            &mut PanicPrompter,
+        )
+        .unwrap();
+        let after = std::fs::read_to_string(&cfg).unwrap();
+        assert!(after.contains("[sandbox]"));
+        restore(UpgradeOptions::new(tmp.path()).with_restore(true)).unwrap();
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), user);
     }
 
     /// V-F-4: invalid `[upgrade]` config halts before any file is written.

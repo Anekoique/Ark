@@ -8,6 +8,7 @@ use std::{
 use super::{
     ConflictChoice, ConflictPolicy, Prompter,
     base_store::UpgradeBaseStore,
+    config_merge::append_missing_sections,
     merge::{MergeOutcome, three_way_merge},
     strategy::{Strategy, UpgradeConfig},
 };
@@ -77,6 +78,14 @@ pub(super) enum PlannedAction {
     EjectSkip {
         relative: PathBuf,
     },
+    /// Append-only merge for a seed-only path (today: `.ark/config.toml`):
+    /// every section the template ships that the user is missing is appended
+    /// verbatim, preserving the user's bytes byte-for-byte as a prefix. See
+    /// `commands/upgrade/config_merge.rs` for the section-slicing rules.
+    AppendConfigSections {
+        relative: PathBuf,
+        contents: Vec<u8>,
+    },
     Delete {
         relative: PathBuf,
     },
@@ -89,21 +98,26 @@ impl PlannedAction {
     /// Returns the deterministic action sort key.
     ///
     /// Order (per SPEC C-16): `Write{Add}` < `Write{AutoUpdate}` <
-    /// `Write{Overwrite}` < `Merged` < `MergeConflict` < `CreateNew` <
-    /// `RefreshHashOnly` < `Preserve` < `EjectSkip` < `Delete` <
-    /// `DropManifestEntry`. Writes (incl. merges) happen before the manifest
-    /// flush barrier; deletions after.
+    /// `Write{Overwrite}` < `Merged` < `MergeConflict` < `AppendConfigSections`
+    /// < `CreateNew` < `RefreshHashOnly` < `Preserve` < `EjectSkip` < `Delete`
+    /// < `DropManifestEntry`. Writes (incl. merges and additive section
+    /// appends) happen before the manifest flush barrier; deletions after.
     fn sort_key(&self) -> (u8, Option<WriteKind>, &Path) {
         match self {
             PlannedAction::Write { kind, relative, .. } => (0, Some(*kind), relative),
             PlannedAction::Merged { relative, .. } => (1, None, relative),
             PlannedAction::MergeConflict { relative, .. } => (2, None, relative),
-            PlannedAction::CreateNew { relative, .. } => (3, None, relative),
-            PlannedAction::RefreshHashOnly { relative, .. } => (4, None, relative),
-            PlannedAction::Preserve { relative } => (5, None, relative),
-            PlannedAction::EjectSkip { relative } => (6, None, relative),
-            PlannedAction::Delete { relative } => (7, None, relative),
-            PlannedAction::DropManifestEntry { relative } => (8, None, relative),
+            // AppendConfigSections is an additive write that mutates a seed-
+            // only path; it lives in the merge-adjacent band so dry-run rows
+            // group with the other write-class actions, just past the diff3
+            // merges and before CreateNew sidecars.
+            PlannedAction::AppendConfigSections { relative, .. } => (3, None, relative),
+            PlannedAction::CreateNew { relative, .. } => (4, None, relative),
+            PlannedAction::RefreshHashOnly { relative, .. } => (5, None, relative),
+            PlannedAction::Preserve { relative } => (6, None, relative),
+            PlannedAction::EjectSkip { relative } => (7, None, relative),
+            PlannedAction::Delete { relative } => (8, None, relative),
+            PlannedAction::DropManifestEntry { relative } => (9, None, relative),
         }
     }
 }
@@ -228,6 +242,56 @@ fn plan_merge(
     }))
 }
 
+/// Plans an [`PlannedAction::AppendConfigSections`] for `.ark/config.toml`
+/// when the template ships top-level sections the user's file lacks.
+///
+/// Returns `Ok(None)` when:
+/// - the user has no `config.toml` on disk yet (the standard pipeline would
+///   normally have written it via `Add`, but seed-only excludes it; absence
+///   here means the user has truly never been seeded — let `init` re-seed,
+///   don't synthesize a half-merge);
+/// - the template ships no `config.toml`;
+/// - the user already has every template-shipped section;
+/// - the path is `ejected` (no merge of any kind).
+///
+/// Path safety: a corrupt UTF-8 file disables the merge and returns `Ok(None)`
+/// rather than mutating. The append helper itself operates on `&str` and would
+/// be unsound on non-text bytes.
+fn plan_config_section_append(
+    layout: &Layout,
+    desired: &[(PathBuf, Cow<'static, [u8]>)],
+    config: &UpgradeConfig,
+) -> Result<Option<PlannedAction>> {
+    let relative = Path::new(CONFIG_FILE);
+    if config.strategy_for(relative) == Strategy::Ejected {
+        return Ok(None);
+    }
+    let Some(template_bytes) = desired
+        .iter()
+        .find(|(p, _)| p == relative)
+        .map(|(_, bytes)| bytes.as_ref())
+    else {
+        return Ok(None);
+    };
+    let Some(user_bytes) = layout.resolve(relative).read_optional()? else {
+        return Ok(None);
+    };
+    let (Ok(user_text), Ok(template_text)) = (
+        std::str::from_utf8(&user_bytes),
+        std::str::from_utf8(template_bytes),
+    ) else {
+        return Ok(None);
+    };
+    Ok(
+        append_missing_sections(user_text, template_text).map(|merged| {
+            PlannedAction::AppendConfigSections {
+                relative: relative.to_path_buf(),
+                contents: merged.into_bytes(),
+            }
+        }),
+    )
+}
+
 fn resolve_conflict(
     relative: &Path,
     policy: ConflictPolicy,
@@ -257,6 +321,16 @@ pub(super) fn plan_actions(
     let mut actions: Vec<PlannedAction> = Vec::new();
     let mut inline_unchanged = 0usize;
     let base_store = UpgradeBaseStore::new(layout);
+
+    // Seed-only `config.toml` gets an additive section merge: any top-level
+    // table the current template ships that the user is missing is appended
+    // to the user's file verbatim. Ejection wins (C-3 in spirit), so a path
+    // explicitly listed under `[upgrade] ejected` produces no action. The
+    // user's existing bytes are preserved as a prefix (the merge is strictly
+    // additive — never rewrites or reorders existing sections).
+    if let Some(action) = plan_config_section_append(layout, desired, config)? {
+        actions.push(action);
+    }
 
     let desired_keys: std::collections::BTreeSet<&Path> =
         desired.iter().map(|(p, _)| p.as_path()).collect();
@@ -571,8 +645,10 @@ mod tests {
         ];
         let buckets: Vec<u8> = variants.iter().map(|a| a.sort_key().0).collect();
         // Strictly increasing — Merged after Write, before CreateNew;
-        // EjectSkip after Preserve, before Delete.
-        assert_eq!(buckets, vec![0, 1, 2, 5, 6, 7]);
+        // EjectSkip after Preserve, before Delete. AppendConfigSections sits
+        // between MergeConflict (=2) and CreateNew, bumping the trailing
+        // buckets by one.
+        assert_eq!(buckets, vec![0, 1, 2, 6, 7, 8]);
         let mut sorted = buckets.clone();
         sorted.sort();
         assert_eq!(buckets, sorted);

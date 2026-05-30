@@ -684,3 +684,30 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 26: `ark upgrade` appends missing config.toml sections
+
+**Date**: 2026-05-30
+**Slug**: fix-config-toml-upgrade
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `72ea153`
+**Closing Commit**: <PENDING:fix-config-toml-upgrade>
+
+### Summary
+
+`ark upgrade` now appends template-shipped top-level sections that are absent from the user's `.ark/config.toml`; existing sections are preserved byte-for-byte.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| upgrade | New `config_merge.rs`; `PlannedAction::AppendConfigSections` slots between `MergeConflict` and `CreateNew`. |
+| contract | `config.toml` stays seed-only (untracked) — append is additive, never overwrites user sections; ejection wins. |
+| reversibility | File joins the backup set; `--restore` rolls back; `--dry-run` previews `append-sections` rows. |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

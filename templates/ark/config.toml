@@ -1,5 +1,8 @@
 # Ark configuration. Created by `ark init`; preserved by `ark upgrade`.
-# Edit freely — your changes survive across upgrades. Sectioned by feature;
+# Edit freely — your existing top-level sections survive across upgrades
+# byte-for-byte. When a release ships a brand-new section (e.g. a new
+# feature's defaults), `ark upgrade` appends it to the end of this file;
+# sections you already have are never rewritten. Sectioned by feature;
 # missing sections fall through to the documented defaults.
 
 [worktree]

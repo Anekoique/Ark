@@ -1,0 +1,10 @@
+id = "fix-config-toml-upgrade"
+title = "fix config.toml upgrade to add missing sections"
+tier = "quick"
+phase = "committed"
+iteration = 0
+created_at = "2026-05-30T04:34:46.143370Z"
+updated_at = "2026-05-30T04:59:46.302197Z"
+committed_at = "2026-05-30T04:59:46.302197Z"
+start_head = "c2f8c0ecfddedf22f78e944ace1061ca52141857"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

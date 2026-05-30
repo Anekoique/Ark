@@ -111,7 +111,7 @@ impl Layout { pub fn upgrade_base_dir(&self) -> PathBuf; pub fn upgrade_backup_d
 - C-13: A non-dry-run upgrade backs up each to-be-mutated/deleted file before its first write.
 - C-14: On any apply error, the backup is restored (files + manifest) before the error propagates.
 - C-15: `--restore` restores the most recent backup or fails `NoBackupToRestore` when none exists.
-- C-16: Action sort order is `Write{Add}` < `Write{AutoUpdate}` < `Write{Overwrite}` < `Merged` < `MergeConflict` < `CreateNew` < `RefreshHashOnly` < `Preserve` < `EjectSkip` < `Delete` < `DropManifestEntry`, secondary key `relative`.
+- C-16: Action sort order is `Write{Add}` < `Write{AutoUpdate}` < `Write{Overwrite}` < `Merged` < `MergeConflict` < `AppendConfigSections` < `CreateNew` < `RefreshHashOnly` < `Preserve` < `EjectSkip` < `Delete` < `DropManifestEntry`, secondary key `relative`.
 - C-17: New `UpgradeSummary` counters print in fixed order even when zero.
 - C-18: All filesystem access routes through `io::PathExt`; all path composition through `layout::Layout`.
 - C-19: A diverged `merged` path the user never lets Ark overwrite never acquires a base and stays on fallback permanently.
@@ -121,6 +121,7 @@ impl Layout { pub fn upgrade_base_dir(&self) -> PathBuf; pub fn upgrade_backup_d
 - C-23: `Merged`/`MergeConflict` occupy write-adjacent buckets; `EjectSkip` shares `Preserve`'s position class (per C-16).
 - C-24: The dry-run preview is a `Display`-able `DryRunPreview`; one render per dispatch (project convention).
 - C-25: `capture_skip_paths` includes both sidecar dirs and both `unload` walk sites consume the widened set.
+- C-26: `.ark/config.toml` is seed-only (never overwritten or hash-classified) but receives an additive section merge: any top-level `[name]` table the current template ships that the user's file lacks is appended verbatim (header + leading-comment block + body). The user's existing bytes are preserved as a prefix; no existing section is rewritten, reordered, or inspected. Ejection beats append. The merge is reversible via `--restore` (the file joins the backup set).
 
 ---
 
