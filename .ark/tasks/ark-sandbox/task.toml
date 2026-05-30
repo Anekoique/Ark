@@ -1,0 +1,14 @@
+id = "ark-sandbox"
+title = "add ark sandbox"
+tier = "deep"
+phase = "committed"
+iteration = 2
+max_iterations = 3
+created_at = "2026-05-27T10:40:32.806343Z"
+updated_at = "2026-05-30T03:35:19.222162Z"
+committed_at = "2026-05-30T03:35:19.222162Z"
+branch = "feat/ark-sandbox"
+worktree_path = ".ark/worktrees/feat/ark-sandbox"
+base_branch = "main"
+start_head = "8465e8a2f0c4dd851a9b2cb3ae1b379837f7be60"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

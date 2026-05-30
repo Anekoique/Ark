@@ -546,6 +546,96 @@ pub enum Error {
         /// Backup directory that was probed.
         path: PathBuf,
     },
+
+    // `ark sandbox` feature errors.
+    /// Spawning `docker` failed (binary missing, permissions).
+    #[error("docker {op} failed to spawn: {source}")]
+    DockerSpawn {
+        /// The docker subcommand being run (e.g. `"info"`, `"run"`).
+        op: &'static str,
+        /// Original process-spawn error.
+        #[source]
+        source: io::Error,
+    },
+
+    /// The selected sandbox backend is not reachable.
+    #[error("sandbox backend `{engine}` is unavailable")]
+    SandboxBackendUnavailable {
+        /// Backend id that failed its availability probe.
+        engine: String,
+    },
+
+    /// `[sandbox] engine` named a backend Ark does not implement.
+    #[error("unknown sandbox engine `{value}`")]
+    UnknownSandboxEngine {
+        /// Offending engine value verbatim.
+        value: String,
+    },
+
+    /// The `[sandbox]` section of `.ark/config.toml` could not be parsed.
+    #[error("config.toml `[sandbox]` corrupt at {path:?}: {source}")]
+    SandboxConfigCorrupt {
+        /// Config file path.
+        path: PathBuf,
+        /// TOML parse error.
+        #[source]
+        source: toml::de::Error,
+    },
+
+    /// A `[sandbox]` config value failed semantic validation.
+    #[error("invalid sandbox config: {reason}")]
+    SandboxConfigInvalid {
+        /// Validation failure reason.
+        reason: &'static str,
+    },
+
+    /// A sandbox already exists for the requested slug.
+    #[error("sandbox for `{slug}` already exists ({container})")]
+    SandboxExists {
+        /// Task slug.
+        slug: String,
+        /// Existing container name.
+        container: String,
+    },
+
+    /// No sandbox container was found for the requested slug.
+    #[error("no sandbox found for `{slug}`")]
+    SandboxNotFound {
+        /// Task slug.
+        slug: String,
+    },
+
+    /// `docker pull` of the configured image failed.
+    #[error("failed to pull image `{image}` (exit {exit_code})")]
+    ImagePullFailed {
+        /// Image reference that failed to pull.
+        image: String,
+        /// Process exit code.
+        exit_code: i32,
+    },
+
+    /// `docker run` failed to start the container.
+    #[error("failed to start container `{container}` (exit {exit_code})")]
+    ContainerStartFailed {
+        /// Container name that failed to start.
+        container: String,
+        /// Process exit code.
+        exit_code: i32,
+    },
+
+    /// `enter --agent` found no installed platform to launch.
+    #[error("no agent platform installed for `--agent`")]
+    NoAgentPlatform {
+        /// Checkout root that was probed.
+        project_root: PathBuf,
+    },
+
+    /// The selected platform has no yolo argv defined for `--agent`.
+    #[error("platform `{platform}` has no supported yolo mode for `--agent`")]
+    AgentYoloUnsupported {
+        /// Platform id with no yolo argv.
+        platform: String,
+    },
 }
 
 impl Error {

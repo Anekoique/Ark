@@ -24,6 +24,7 @@ The table below is managed by `ark agent spec register` — new rows appear when
 | `ark-research`             | add research tier and /ark:research slash command                       | 2026-05-20 from task `ark-research`             |
 | `ark-context`              | improve ark context                                                     | 2026-05-24 from task `improve-ark-context`      |
 | `ark-upgrade` | improve ark upgrade | 2026-05-26 from task `improve-ark-upgrade` |
+| `ark-sandbox` | add ark sandbox | 2026-05-30 from task `ark-sandbox` |
 
 <!-- ARK:FEATURES:END -->
 

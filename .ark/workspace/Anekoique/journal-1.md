@@ -656,3 +656,31 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 25: `ark sandbox` confines a task's worktree in a Docker container
+
+**Date**: 2026-05-30
+**Slug**: ark-sandbox
+**Branch**: `feat/ark-sandbox`
+**Base Branch**: `main`
+**Start Head**: `8465e8a`
+**Closing Commit**: <PENDING:ark-sandbox>
+
+### Summary
+
+`ark sandbox {create, enter, rm, list, warmup}` runs a task's worktree confined in a container with the agent CLI in-box.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| commands | New `commands/sandbox/` + `io/docker.rs`; `SandboxEngine` trait (Docker-only v1, native-additive). |
+| confinement | Worktree rw at `/workspace`; `.git` common-dir rw for in-box commit; gitdir rewrite via host-side derivation. |
+| credentials | `[sandbox] share_host_config` opt-in binds `~/.claude{,.json}` / `~/.codex{,.toml}` / `~/.gitconfig` rw. |
+| image + CI | `sandbox/Dockerfile` (uid 2000 `ark-sandbox` user, baked safe.directory); GHCR publish workflow per release. |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

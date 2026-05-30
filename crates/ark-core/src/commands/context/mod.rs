@@ -588,6 +588,52 @@ archived_at = "2026-05-01T00:00:00Z"
                 "commands/context/subagents.rs",
                 include_str!("./subagents.rs"),
             ),
+            ("commands/sandbox/mod.rs", include_str!("../sandbox/mod.rs")),
+            (
+                "commands/sandbox/engine.rs",
+                include_str!("../sandbox/engine.rs"),
+            ),
+            (
+                "commands/sandbox/engines/docker.rs",
+                include_str!("../sandbox/engines/docker.rs"),
+            ),
+            (
+                "commands/sandbox/config.rs",
+                include_str!("../sandbox/config.rs"),
+            ),
+            (
+                "commands/sandbox/naming.rs",
+                include_str!("../sandbox/naming.rs"),
+            ),
+            (
+                "commands/sandbox/gitmounts.rs",
+                include_str!("../sandbox/gitmounts.rs"),
+            ),
+            (
+                "commands/sandbox/resolve.rs",
+                include_str!("../sandbox/resolve.rs"),
+            ),
+            (
+                "commands/sandbox/platform_argv.rs",
+                include_str!("../sandbox/platform_argv.rs"),
+            ),
+            (
+                "commands/sandbox/create.rs",
+                include_str!("../sandbox/create.rs"),
+            ),
+            (
+                "commands/sandbox/enter.rs",
+                include_str!("../sandbox/enter.rs"),
+            ),
+            ("commands/sandbox/rm.rs", include_str!("../sandbox/rm.rs")),
+            (
+                "commands/sandbox/list.rs",
+                include_str!("../sandbox/list.rs"),
+            ),
+            (
+                "commands/sandbox/warmup.rs",
+                include_str!("../sandbox/warmup.rs"),
+            ),
         ];
         for (name, source) in SOURCES {
             // Strip everything after `#[cfg(test)]` heuristically — same

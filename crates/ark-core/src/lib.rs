@@ -22,8 +22,11 @@ pub use commands::{
     ActionLabel, ArchiveOptions, ArchiveSummary, CleanupOptions, CleanupReason, CleanupRow,
     CleanupSummary, ConflictChoice, ConflictPolicy, ContextOptions, ContextSummary, DryRunPreview,
     Format as ContextFormat, InitOptions, InitSummary, LoadOptions, LoadSummary, PhaseFilter,
-    ProjectedContext, Prompter, RemoveOptions, RemoveSummary, RestoreSummary,
-    Scope as ContextScope, ScopeTag, UnloadOptions, UnloadSummary, UpgradeOptions, UpgradeSummary,
+    ProjectedContext, Prompter, RemoveOptions, RemoveSummary, RestoreSummary, SandboxCreateOptions,
+    SandboxCreateSummary, SandboxEnterOptions, SandboxEnterSummary, SandboxListOptions,
+    SandboxListSummary, SandboxRmOptions, SandboxRmSummary, SandboxRow, SandboxWarmupOptions,
+    SandboxWarmupSummary, Scope as ContextScope, ScopeTag, UnloadOptions, UnloadSummary,
+    UpgradeOptions, UpgradeSummary,
     agent::{
         Phase, Status, TaskToml, Tier,
         spec::{
@@ -48,7 +51,8 @@ pub use commands::{
             scaffold_developer_dir, workspace_record,
         },
     },
-    ark_archive, cleanup, context, init, load, remove, restore, unload, upgrade,
+    ark_archive, cleanup, context, init, load, remove, restore, sandbox_create, sandbox_enter,
+    sandbox_list, sandbox_rm, sandbox_warmup, unload, upgrade,
 };
 pub use error::{Error, Result};
 pub use io::{PathExt, WriteMode, hash_bytes};

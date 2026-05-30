@@ -19,7 +19,7 @@ pub mod migrate;
 pub mod model;
 pub mod reconcile;
 
-pub use io::{clear_focus_for_slug, is_state_tmp, load_state, state_mutate};
+pub use io::{clear_focus_for_slug, is_state_tmp, load_state, resolve_focus_slug, state_mutate};
 pub use migrate::synthesize_from_legacy;
 pub use model::{StateFile, Tasks};
 pub use reconcile::reconcile_against_disk;
