@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ark — Presentation</title>
+<style>
+  :root{
+    --bg:#0b0e14; --bg-soft:#11151f; --panel:#151a26; --panel-2:#1b2233;
+    --line:#283248; --ink:#e6ecf5; --ink-dim:#9aa7bd; --ink-faint:#66758f;
+    --accent:#5eead4; --accent-2:#818cf8; --accent-3:#fbbf24; --accent-4:#f472b6;
+    --green:#4ade80; --red:#fb7185;
+    --mono:"SF Mono","JetBrains Mono","Fira Code",ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--sans); color:var(--ink); overflow:hidden;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(94,234,212,.10), transparent 60%),
+      radial-gradient(1000px 500px at 0% 10%, rgba(129,140,248,.10), transparent 55%),
+      var(--bg);
+  }
+  code,pre,.mono{font-family:var(--mono)}
+
+  /* ---- deck mechanics ---- */
+  .deck{position:fixed;inset:0}
+  .slide{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;justify-content:flex-start;
+    padding:5.5vh 6vw 6vh;
+    opacity:0;visibility:hidden;
+    transform:translateY(24px) scale(.99);
+    transition:opacity .4s ease, transform .4s ease, visibility 0s linear .4s;
+    overflow:hidden;
+    background:var(--bg);   /* opaque: the active slide fully occludes others mid-transition */
+  }
+  .slide.active{opacity:1;visibility:visible;transform:none;z-index:2;transition:opacity .4s ease, transform .4s ease, visibility 0s}
+  .slide.prev{transform:translateY(-24px) scale(.99)}
+
+  .slide > .frag:not(.show){pointer-events:none}
+
+  /* Fill model (no distortion):
+     The kicker + title keep their natural height at the top. The primary
+     content block flexes to OCCUPY the leftover height but CENTERS its content
+     inside that band — it does not stretch children, so tiles/rows/diagrams
+     keep their natural proportions while the page reads full. A trailing note
+     keeps its natural height at the bottom. */
+  /* (a) A bare content element that is a direct child just grows to fill the
+     band and stays vertically centered. We do NOT touch its display/
+     flex-direction (so .row / .flowrow keep their own row layout). */
+  .slide > .grid,
+  .slide > .row,
+  .slide > .flowrow,
+  .slide > svg.diagram,
+  .slide > table.t,
+  .slide > .toc,
+  .slide > ul.big,
+  .slide > .term{flex:1 1 auto;min-height:0;align-self:center;width:100%}
+
+  /* (b) A content element WRAPPED in a .frag animation div: the wrapper takes
+     the band and centers the element; the element keeps its natural layout. */
+  .slide > .frag:has(> .grid),
+  .slide > .frag:has(> .row),
+  .slide > .frag:has(> .flowrow),
+  .slide > .frag:has(> svg.diagram),
+  .slide > .frag:has(> table.t),
+  .slide > .frag:has(> .toc),
+  .slide > .frag:has(> ul.big),
+  .slide > .frag:has(> .term){
+    flex:1 1 auto;min-height:0;
+    display:flex;flex-direction:column;justify-content:center;
+  }
+  /* diagrams: fill the band, aspect preserved (SVG centers itself) */
+  .slide > svg.diagram{height:100%}
+  .slide > .frag:has(> svg.diagram) > svg.diagram{height:100%;min-height:0;flex:1 1 auto}
+  /* equal-height cards in a row read as intentional */
+  .slide > .grid > .card,.slide > .grid > .tier,.slide > .grid > .vtile,
+  .slide > .frag > .grid > .card,.slide > .frag > .grid > .tier,.slide > .frag > .grid > .vtile{height:100%}
+
+  .slide.divider{justify-content:center}
+  .slide.vcenter{justify-content:center}
+
+  /* fragments */
+  .frag{opacity:0;transform:translateY(14px);transition:opacity .45s ease, transform .45s ease;}
+  .frag.show{opacity:1;transform:none}
+
+  /* ---- typography ---- */
+  .kicker{font-family:var(--mono);font-size:clamp(13px,1.4vw,17px);letter-spacing:3px;text-transform:uppercase;color:var(--accent);margin-bottom:20px}
+  h1{font-size:clamp(40px,7.5vw,104px);line-height:1.0;letter-spacing:-2px;font-weight:800}
+  h2{font-size:clamp(38px,5.6vw,72px);line-height:1.03;letter-spacing:-1.5px;font-weight:800;margin-bottom:28px}
+  .grad{background:linear-gradient(100deg,var(--accent),var(--accent-2) 55%,var(--accent-4));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lede{font-size:clamp(20px,2.7vw,34px);color:var(--ink-dim);max-width:1150px;line-height:1.5}
+  .big-lede{font-size:clamp(24px,3.4vw,44px);color:var(--ink);max-width:1200px;line-height:1.35;font-weight:600}
+  p.note{color:var(--ink-faint);font-size:clamp(15px,1.8vw,22px);margin-top:clamp(18px,2.4vh,32px)}
+
+  /* ---- layout helpers ---- */
+  .row{display:flex;gap:26px;flex-wrap:wrap}
+  .grid{display:grid;gap:clamp(18px,2vw,28px)}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:1fr 1fr 1fr}
+  .g4{grid-template-columns:repeat(4,1fr)}
+
+  .card{
+    background:linear-gradient(180deg,var(--panel),var(--bg-soft));
+    border:1px solid var(--line);border-radius:16px;padding:clamp(18px,2.2vw,32px);
+    display:flex;flex-direction:column;justify-content:center;
+  }
+  .card h3{font-size:clamp(19px,2.2vw,28px);margin-bottom:10px;display:flex;align-items:center;gap:12px}
+  .card p{color:var(--ink-dim);font-size:clamp(15px,1.65vw,21px);line-height:1.5}
+  .ic{width:clamp(38px,3.4vw,48px);height:clamp(38px,3.4vw,48px);flex:none;border-radius:10px;display:grid;place-items:center;font-size:clamp(20px,2.2vw,26px)}
+
+  ul.big{list-style:none;display:flex;flex-direction:column;gap:clamp(16px,2.4vh,30px)}
+  ul.big li{display:flex;gap:16px;align-items:flex-start;font-size:clamp(17px,2.3vw,28px);color:var(--ink-dim)}
+  ul.big li b{color:var(--ink)}
+  ul.big .bullet{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-family:var(--mono);font-size:14px;color:#0b0e14;font-weight:700;margin-top:3px}
+
+  code.inline{color:var(--accent);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 8px;font-size:.86em}
+  .cmd{color:var(--accent)}
+
+  table.t{width:100%;border-collapse:collapse;font-size:clamp(15px,1.7vw,22px);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  table.t th,table.t td{text-align:left;padding:clamp(14px,1.8vh,24px) clamp(16px,1.6vw,26px);border-bottom:1px solid var(--line);vertical-align:middle}
+  table.t th{background:var(--panel-2);font-size:.8em;letter-spacing:.5px;color:var(--ink)}
+  table.t tr:last-child td{border-bottom:none}
+  table.t td:first-child code,table.t .cmd{color:var(--accent)}
+
+  /* tiers */
+  .tier{border-radius:16px;border:1px solid var(--line);padding:clamp(18px,2.2vw,30px);background:var(--panel);position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center}
+  .tier::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px}
+  .tier.quick::before{background:var(--green)}.tier.standard::before{background:var(--accent)}.tier.deep::before{background:var(--accent-2)}.tier.research::before{background:var(--accent-3)}
+  .tier h3{font-size:clamp(20px,2.4vw,30px);margin-bottom:4px}
+  .tier .sub{font-family:var(--mono);font-size:clamp(12px,1.3vw,16px);color:var(--ink-faint);margin-bottom:12px}
+  .tier p{color:var(--ink-dim);font-size:clamp(14px,1.6vw,20px);line-height:1.45;margin-bottom:14px}
+  .arti{display:flex;gap:7px;flex-wrap:wrap}
+  .arti span{font-family:var(--mono);font-size:clamp(10px,1.1vw,13px);padding:4px 10px;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim)}
+
+  .callout{background:var(--panel);border-left:5px solid var(--accent-2);border-radius:10px;padding:clamp(18px,2.2vh,30px) clamp(20px,2vw,32px);color:var(--ink-dim);font-size:clamp(16px,1.9vw,24px);line-height:1.5}
+  .callout b{color:var(--ink)}
+
+  pre.block{background:var(--bg-soft);border:1px solid var(--line);border-radius:14px;padding:clamp(16px,1.8vw,24px);overflow:auto;font-size:clamp(12px,1.4vw,17px);line-height:1.7}
+  .c-prompt{color:var(--accent)}.c-flag{color:var(--accent-3)}.c-cmt{color:var(--ink-faint)}.c-ok{color:var(--green)}
+
+  /* ---- visual primitives (replace prose) ---- */
+  /* phase chip: big glyph + one-line label */
+  .phase{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;padding:clamp(18px,2.6vh,34px) 16px;border-radius:16px;border:1px solid var(--line);background:var(--panel);position:relative}
+  .phase .dot{width:clamp(54px,6vw,84px);height:clamp(54px,6vw,84px);border-radius:50%;display:grid;place-items:center;font-size:clamp(26px,3.2vw,42px)}
+  .phase .nm{font-size:clamp(18px,2.2vw,28px);font-weight:700;letter-spacing:.5px}
+  .phase .out{font-family:var(--mono);font-size:clamp(12px,1.35vw,17px);color:var(--ink-dim)}
+  .phase .gate{margin-top:4px;font-size:clamp(12px,1.35vw,17px);color:var(--accent-3);display:flex;align-items:center;gap:6px}
+  .phase .gate.ok{color:var(--green)}
+
+  .flowrow{display:flex;align-items:stretch;gap:10px;flex-wrap:nowrap}
+  .flowrow .phase{flex:1}
+  .ar{flex:none;align-self:center;color:var(--ink-faint);font-size:clamp(24px,3vw,40px);font-weight:300}
+  @media(max-width:780px){ .flowrow{flex-wrap:wrap} .flowrow .phase{flex:1 1 40%} }
+
+  /* horizontal phase lane: badge · name+desc · command · gate */
+  .lanes{display:flex;flex-direction:column;gap:clamp(10px,1.6vh,18px);width:100%}
+  .lane{display:flex;align-items:center;gap:clamp(14px,1.8vw,26px);padding:clamp(12px,1.8vh,22px) clamp(16px,1.8vw,26px);border:1px solid var(--line);border-radius:14px;background:var(--panel);position:relative;overflow:hidden}
+  .lane::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px}
+  .lane .bdg{flex:none;width:clamp(44px,4vw,58px);height:clamp(44px,4vw,58px);border-radius:12px;display:grid;place-items:center;font-size:clamp(22px,2.4vw,30px)}
+  .lane .lmain{flex:1 1 auto;min-width:0}
+  .lane .lname{font-size:clamp(18px,2vw,26px);font-weight:750;letter-spacing:.3px}
+  .lane .ldesc{color:var(--ink-dim);font-size:clamp(13px,1.5vw,19px);margin-top:2px}
+  .lane .lcmd{flex:none;font-family:var(--mono);font-size:clamp(12px,1.35vw,17px);color:var(--accent);background:var(--bg-soft);border:1px solid var(--line);border-radius:9px;padding:8px 14px;white-space:nowrap}
+  .lane .lgate{flex:none;font-size:clamp(12px,1.3vw,16px);color:var(--ink-faint);text-align:right;max-width:24%}
+  .lane.q::before{background:var(--green)} .lane.b::before{background:var(--accent)} .lane.v::before{background:var(--accent-2)}
+  .lane.o::before{background:#fb923c} .lane.y::before{background:var(--accent-3)} .lane.c::before{background:var(--accent-3)}
+  @media(max-width:780px){ .lane{flex-wrap:wrap} .lane .lgate{max-width:100%;text-align:left} }
+
+  /* loop badge */
+  .loopbadge{display:inline-flex;align-items:center;gap:12px;border:1px solid var(--accent-2);background:rgba(129,140,248,.10);border-radius:999px;padding:clamp(10px,1.4vh,18px) clamp(18px,2vw,30px);font-size:clamp(15px,1.8vw,23px)}
+  .loopbadge .spin{color:var(--accent-2);font-size:1.3em}
+
+  /* stat / chips */
+  .chiprow{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}
+  .chip{font-family:var(--mono);font-size:clamp(13px,1.45vw,18px);padding:7px 15px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim)}
+  .chip.on{border-color:var(--accent);color:var(--accent)}
+
+  /* big visual icon tile (subagents / knowledge) */
+  .vtile{display:flex;flex-direction:column;gap:clamp(10px,1.4vh,18px);align-items:center;justify-content:center;text-align:center;padding:clamp(18px,2.4vw,36px);border-radius:16px;border:1px solid var(--line);background:linear-gradient(180deg,var(--panel),var(--bg-soft))}
+  .vtile .big{width:clamp(60px,6.5vw,92px);height:clamp(60px,6.5vw,92px);border-radius:18px;display:grid;place-items:center;font-size:clamp(30px,3.8vw,48px)}
+  .vtile .ttl{font-size:clamp(18px,2.1vw,26px);font-weight:700}
+  .vtile .sub{font-family:var(--mono);font-size:clamp(12px,1.35vw,17px);color:var(--ink-dim)}
+  .vtile .tag{font-size:clamp(13px,1.5vw,19px);color:var(--ink-faint)}
+
+  /* ---- TOC + act dividers ---- */
+  .toc{display:flex;flex-direction:column;gap:clamp(14px,2vh,26px);max-width:1000px;width:100%;margin:0 auto}
+  .toc-item{display:flex;align-items:center;gap:24px;padding:clamp(18px,2.6vh,34px) clamp(22px,2.4vw,36px);border:1px solid var(--line);border-radius:14px;background:var(--panel);transition:border-color .18s,transform .18s;flex:1}
+  .toc-item:hover{border-color:#36425e;transform:translateX(4px)}
+  .toc-item .no{flex:none;width:clamp(46px,4.4vw,64px);height:clamp(46px,4.4vw,64px);border-radius:12px;display:grid;place-items:center;font-family:var(--mono);font-weight:800;font-size:clamp(20px,2.4vw,32px);color:#0b0e14}
+  .toc-item .ti{font-size:clamp(20px,2.6vw,34px);font-weight:700}
+  .toc-item .td{margin-left:auto;font-family:var(--mono);font-size:clamp(11px,1.2vw,14px);color:var(--ink-faint);text-align:right}
+
+  /* full-bleed act divider */
+  .divider{align-items:flex-start;justify-content:center}
+  .divider .actno{font-family:var(--mono);font-size:clamp(60px,12vw,180px);font-weight:800;line-height:.9;letter-spacing:-4px;opacity:.16}
+  .divider h2{font-size:clamp(44px,7vw,92px);margin:6px 0 16px}
+  .divider .roadmap{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:26px;font-family:var(--mono);font-size:clamp(12px,1.4vw,16px)}
+  .divider .rstep{padding:6px 14px;border-radius:999px;border:1px solid var(--line);color:var(--ink-faint)}
+  .divider .rstep.on{border-color:var(--accent);color:var(--accent);background:rgba(94,234,212,.08)}
+
+  /* ---- closing slide ---- */
+  .close-hero{text-align:center}
+  .close-hero .logo{width:clamp(56px,6vw,84px);height:clamp(56px,6vw,84px);margin:0 auto 18px}
+  .close-hero h1{font-size:clamp(40px,7vw,96px);line-height:1}
+  .recap{display:grid;grid-template-columns:repeat(4,1fr);gap:clamp(14px,1.6vw,22px);width:100%;margin:clamp(22px,3vh,40px) 0}
+  .recap .rc{display:flex;flex-direction:column;gap:8px;padding:clamp(16px,2vh,26px) clamp(14px,1.4vw,22px);border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg-soft));position:relative;overflow:hidden}
+  .recap .rc::before{content:"";position:absolute;left:0;top:0;right:0;height:3px}
+  .recap .rc .rn{font-family:var(--mono);font-weight:800;font-size:clamp(20px,2.2vw,28px)}
+  .recap .rc .rt{font-size:clamp(17px,1.9vw,24px);font-weight:750}
+  .recap .rc .rd{color:var(--ink-dim);font-size:clamp(12px,1.4vw,17px);line-height:1.4}
+  .recap .rc.c1::before{background:var(--accent-2)} .recap .rc.c1 .rn{color:var(--accent-2)}
+  .recap .rc.c2::before{background:var(--accent)}   .recap .rc.c2 .rn{color:var(--accent)}
+  .recap .rc.c3::before{background:var(--accent-3)} .recap .rc.c3 .rn{color:var(--accent-3)}
+  .recap .rc.c4::before{background:var(--accent-4)} .recap .rc.c4 .rn{color:var(--accent-4)}
+  .close-foot{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center}
+  @media(max-width:780px){ .recap{grid-template-columns:1fr 1fr} }
+
+  /* terminal */
+  .term{background:var(--bg-soft);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);max-width:900px}
+  .term .bar{display:flex;gap:8px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .term .dot{width:13px;height:13px;border-radius:50%}
+  .term .dot.r{background:#ff5f57}.term .dot.y{background:#febc2e}.term .dot.g{background:#28c840}
+  .term .tt{margin-left:10px;font-family:var(--mono);font-size:12px;color:var(--ink-faint)}
+  .term pre{padding:22px 24px;font-size:clamp(13px,1.5vw,18px);line-height:1.85}
+
+  .pills{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+  .pill{font-family:var(--mono);font-size:clamp(11px,1.3vw,15px);padding:6px 14px;border-radius:999px;border:1px solid var(--line);color:var(--ink-dim);background:var(--panel)}
+
+  svg.diagram{display:block;width:100%;height:100%;max-height:68vh;min-height:0}
+
+  /* ---- chrome ---- */
+  .logo{width:44px;height:44px}
+  .brandrow{display:flex;align-items:center;gap:16px;margin-bottom:30px}
+  .brandrow .name{font-size:28px;font-weight:800;letter-spacing:.5px}
+
+  .progress{position:fixed;left:0;top:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent-2));z-index:60;transition:width .4s ease;width:0}
+  .hud{position:fixed;bottom:18px;right:24px;z-index:60;font-family:var(--mono);font-size:13px;color:var(--ink-faint);display:flex;align-items:center;gap:14px}
+  .hud .dots{display:flex;gap:6px}
+  .hud .d{width:8px;height:8px;border-radius:50%;background:var(--line);transition:background .3s,transform .3s}
+  .hud .d.on{background:var(--accent);transform:scale(1.25)}
+  .hint{position:fixed;bottom:18px;left:24px;z-index:60;font-family:var(--mono);font-size:12px;color:var(--ink-faint)}
+  .hint kbd{background:var(--panel-2);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 7px;color:var(--accent)}
+  .slidenum{position:fixed;top:16px;right:24px;z-index:60;font-family:var(--mono);font-size:13px;color:var(--ink-faint)}
+
+  @media (max-width:780px){
+    .g2,.g3,.g4{grid-template-columns:1fr}
+    .slide{padding:7vh 6vw}
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<div class="slidenum" id="slidenum">01</div>
+
+<div class="deck" id="deck">
+
+  <!-- ====== 1 · TITLE ====== -->
+  <section class="slide vcenter">
+    <div class="frag show">
+      <span class="kicker">Agent harnesses · a journey up the stack</span>
+    </div>
+    <div class="frag">
+      <h1><span class="grad">Ark</span> &amp; <span class="grad">ArkOS</span></h1>
+    </div>
+    <div class="frag">
+      <p class="lede" style="margin-top:20px">Building reliable coding agents — from harness to operating system.</p>
+    </div>
+    <div class="frag" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:36px">
+      <span class="pill">① Agents &amp; harnesses</span><span class="ar" style="font-size:1em">→</span>
+      <span class="pill">② Ark</span><span class="ar" style="font-size:1em">→</span>
+      <span class="pill">③ ArkOS</span><span class="ar" style="font-size:1em">→</span>
+      <span class="pill" style="color:var(--accent)">④ Future agent model</span>
+    </div>
+  </section>
+
+  <!-- ====== TABLE OF CONTENTS ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">Agenda</span></div>
+    <div class="frag"><h2>Four steps up the stack</h2></div>
+    <div class="toc">
+      <div class="toc-item frag"><span class="no" style="background:var(--accent-2)">1</span><span class="ti">Agents &amp; harnesses</span><span class="td">what an agent is ·<br>the 7-part harness framework</span></div>
+      <div class="toc-item frag"><span class="no" style="background:var(--accent)">2</span><span class="ti">Ark</span><span class="td">a workflow harness ·<br>tiers · lifecycle · specs</span></div>
+      <div class="toc-item frag"><span class="no" style="background:var(--accent-3)">3</span><span class="ti">ArkOS</span><span class="td">workflow as a service ·<br>self-evolving substrate</span></div>
+      <div class="toc-item frag"><span class="no" style="background:var(--accent-4)">4</span><span class="ti">The future agent model</span><span class="td">how agents will work ·<br>autonomous, isolated, at scale</span></div>
+    </div>
+  </section>
+
+  <!-- ====== ACT 1 · DIVIDER ====== -->
+  <section class="slide divider">
+    <div class="frag show actno" style="color:var(--accent-2)">01</div>
+    <div class="frag"><h2>Agents &amp; harnesses</h2></div>
+    <div class="frag lede">A model in a loop is the engine. The <span class="grad">harness</span> is everything that makes it ship.</div>
+    <div class="frag roadmap">
+      <span class="rstep on">① Agents &amp; harnesses</span><span>→</span>
+      <span class="rstep">② Ark</span><span>→</span>
+      <span class="rstep">③ ArkOS</span><span>→</span>
+      <span class="rstep">④ Future agent model</span>
+    </div>
+  </section>
+
+  <!-- ====== ACT 1 · A1 · WHAT IS AN AGENT ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">① Agents &amp; harnesses</span></div>
+    <div class="frag"><h2>What is an <span class="grad">agent</span>?</h2></div>
+    <svg class="diagram" viewBox="0 0 1080 400" role="img" aria-label="Agent model: agentic loop with model, tools, memory, planning">
+      <defs>
+        <marker id="la" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#5eead4"/></marker>
+        <marker id="lb2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#66758f"/></marker>
+      </defs>
+      <style>
+        .lb{fill:#141a27;stroke:#283248;stroke-width:1.5}
+        .ll{fill:#e6ecf5;font-size:17px;font-weight:700}
+        .lm{fill:#e6ecf5;font-size:14px;font-weight:600}
+        .ls{fill:#9aa7bd;font-size:12px;font-family:'SF Mono',monospace}
+        .lloop{fill:none;stroke:#5eead4;stroke-width:2.6}
+        .lG{opacity:0;transition:opacity .45s ease}.lG.show{opacity:1}
+      </style>
+
+      <!-- Step 1: the agentic loop core -->
+      <g class="lG" data-step="1">
+        <circle cx="540" cy="200" r="150" fill="none" stroke="#283248" stroke-width="1.4" stroke-dasharray="4 6"/>
+        <rect x="430" y="158" width="220" height="84" rx="16" class="lb" stroke="#818cf8" stroke-width="2"/>
+        <text x="540" y="194" text-anchor="middle" class="ll" style="fill:#a5b0f5">AGENT</text>
+        <text x="540" y="220" text-anchor="middle" class="ls">the agentic loop</text>
+        <!-- loop arcs: perceive -> reason -> act around the circle -->
+        <path class="lloop" d="M540 50 A150 150 0 0 1 681 252" marker-end="url(#la)"/>
+        <path class="lloop" d="M681 252 A150 150 0 0 1 399 252" marker-end="url(#la)"/>
+        <path class="lloop" d="M399 252 A150 150 0 0 1 540 50" marker-end="url(#la)"/>
+        <text x="668" y="116" class="ls" style="fill:#5eead4">reason</text>
+        <text x="618" y="338" text-anchor="middle" class="ls" style="fill:#5eead4">act</text>
+        <text x="412" y="116" text-anchor="end" class="ls" style="fill:#5eead4">perceive</text>
+      </g>
+
+      <!-- Step 2: the four resources the loop draws on -->
+      <g class="lG" data-step="2">
+        <rect x="120" y="40" width="190" height="68" rx="12" class="lb" stroke="#818cf8"/>
+        <text x="215" y="72" text-anchor="middle" class="lm" style="fill:#a5b0f5">🧠 Model</text>
+        <text x="215" y="92" text-anchor="middle" class="ls">reasoning core</text>
+
+        <rect x="770" y="40" width="190" height="68" rx="12" class="lb" stroke="#fbbf24"/>
+        <text x="865" y="72" text-anchor="middle" class="lm" style="fill:#fbbf24">🧰 Tools</text>
+        <text x="865" y="92" text-anchor="middle" class="ls">edit · shell · git · web</text>
+
+        <rect x="120" y="292" width="190" height="68" rx="12" class="lb" stroke="#f472b6"/>
+        <text x="215" y="324" text-anchor="middle" class="lm" style="fill:#f472b6">💾 Memory</text>
+        <text x="215" y="344" text-anchor="middle" class="ls">what it knows / recalls</text>
+
+        <rect x="770" y="292" width="190" height="68" rx="12" class="lb" stroke="#4ade80"/>
+        <text x="865" y="324" text-anchor="middle" class="lm" style="fill:#4ade80">🗺 Planning</text>
+        <text x="865" y="344" text-anchor="middle" class="ls">decompose · sequence</text>
+
+        <!-- dotted connectors from each resource into the core -->
+        <line x1="310" y1="78"  x2="432" y2="170" stroke="#66758f" stroke-width="1.4" stroke-dasharray="3 4" marker-end="url(#lb2)"/>
+        <line x1="770" y1="78"  x2="648" y2="170" stroke="#66758f" stroke-width="1.4" stroke-dasharray="3 4" marker-end="url(#lb2)"/>
+        <line x1="310" y1="322" x2="432" y2="230" stroke="#66758f" stroke-width="1.4" stroke-dasharray="3 4" marker-end="url(#lb2)"/>
+        <line x1="770" y1="322" x2="648" y2="230" stroke="#66758f" stroke-width="1.4" stroke-dasharray="3 4" marker-end="url(#lb2)"/>
+      </g>
+
+      <!-- Step 3: the environment it acts on -->
+      <g class="lG" data-step="3">
+        <rect x="400" y="356" width="280" height="36" rx="10" class="lb"/>
+        <text x="540" y="380" text-anchor="middle" class="ls" style="fill:#66758f">ENVIRONMENT — codebase · OS · results</text>
+      </g>
+    </svg>
+    <p class="note frag" data-diagram-step>An <b>agent = a loop</b> (perceive → reason → act) wired to a <b>model, tools, memory, and planning</b> — acting on its environment until the goal is met.</p>
+  </section>
+
+  <!-- ====== ACT 1 · A2 · HARNESS VS FRAMEWORK ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">① Agents &amp; harnesses</span></div>
+    <div class="frag"><h2>The model is only the <span class="grad">engine</span></h2></div>
+    <div class="frag row" style="justify-content:center;gap:18px;align-items:stretch;margin-top:8px">
+      <div class="vtile" style="flex:1;max-width:340px">
+        <span class="big" style="background:rgba(129,140,248,.14)">📦</span>
+        <span class="ttl">Framework</span>
+        <span class="sub">a library — you <b>import</b> it</span>
+        <span class="tag">LangChain · Agents SDK · CrewAI</span>
+      </div>
+      <div class="vtile" style="flex:1;max-width:340px;border-color:#5eead4">
+        <span class="big" style="background:rgba(94,234,212,.14)">⚙</span>
+        <span class="ttl" style="color:var(--accent)">Harness</span>
+        <span class="sub">an app — you <b>install &amp; run</b> it</span>
+        <span class="tag">Claude Code · Codex · Aider · OpenHands · <b style="color:var(--accent)">Ark</b></span>
+      </div>
+    </div>
+    <p class="note frag" style="text-align:center;margin-top:22px">Framework = you import it. Harness = you install &amp; run it.</p>
+  </section>
+
+  <!-- ====== ACT 1 · A3 · THE HARNESS FRAMEWORK (combined: layers × 7 dimensions) ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">① Agents &amp; harnesses · the framework</span></div>
+    <div class="frag show"><h2>Inside the harness</h2></div>
+    <svg class="diagram" viewBox="0 0 1080 410" role="img" aria-label="Agent harness framework: layered runtime plus cross-cutting dimensions">
+      <style>
+        .hb{fill:#141a27;stroke:#283248;stroke-width:1.4}
+        .hl{fill:#e6ecf5;font-size:16px;font-weight:700}
+        .hs{fill:#9aa7bd;font-size:11.5px;font-family:'SF Mono',monospace}
+        .hd2{font-size:11px;font-family:'SF Mono',monospace;letter-spacing:1.5px}
+        .hside{fill:#11151f;stroke:#283248;stroke-width:1.3}
+        .hG{opacity:0;transition:opacity .45s ease}.hG.show{opacity:1}
+      </style>
+
+      <!-- frame -->
+      <g class="hG" data-step="1">
+        <rect x="20" y="14" width="760" height="382" rx="18" fill="none" stroke="#5eead4" stroke-width="1.6"/>
+        <text x="40" y="38" class="hd2" style="fill:#5eead4">THE HARNESS — everything that isn't the model</text>
+      </g>
+
+      <!-- the vertical runtime stack (4 core layers) -->
+      <g class="hG" data-step="2">
+        <rect x="40" y="52" width="720" height="62" rx="10" class="hb" stroke="#384660"/>
+        <text x="60" y="80" class="hl">🖥 Interface</text><text x="60" y="100" class="hs">CLI · IDE · web UI — how you talk to it</text>
+      </g>
+      <g class="hG" data-step="3">
+        <rect x="40" y="122" width="720" height="62" rx="10" class="hb" stroke="#818cf8"/>
+        <text x="60" y="150" class="hl" style="fill:#a5b0f5">🔁 Orchestration</text><text x="60" y="170" class="hs">the agent loop · planning · subagents · retries</text>
+      </g>
+      <g class="hG" data-step="4">
+        <rect x="40" y="192" width="720" height="62" rx="10" class="hb" stroke="#f472b6"/>
+        <text x="60" y="220" class="hl" style="fill:#f472b6">🧠 Context &amp; memory</text><text x="60" y="240" class="hs">prompt · working state · compaction · recall</text>
+      </g>
+      <g class="hG" data-step="5">
+        <rect x="40" y="262" width="720" height="62" rx="10" class="hb" stroke="#fbbf24"/>
+        <text x="60" y="290" class="hl" style="fill:#fbbf24">🧰 Tools &amp; protocols</text><text x="60" y="310" class="hs">MCP · bash · file I/O · AGENTS.md</text>
+      </g>
+      <g class="hG" data-step="6">
+        <rect x="40" y="332" width="720" height="50" rx="10" class="hb" stroke="#4ade80"/>
+        <text x="60" y="362" class="hl" style="fill:#4ade80">📦 Substrate &amp; sandbox</text><text x="600" y="362" text-anchor="end" class="hs">worktree → container → microVM</text>
+      </g>
+
+      <!-- cross-cutting dimensions, as a side rail spanning all layers -->
+      <g class="hG" data-step="7">
+        <rect x="800" y="52" width="260" height="330" rx="14" fill="none" stroke="#384660" stroke-width="1.4" stroke-dasharray="5 5"/>
+        <text x="930" y="76" text-anchor="middle" class="hd2" style="fill:#9aa7bd">CROSS-CUTTING</text>
+        <rect x="818" y="92" width="224" height="50" rx="9" class="hside"/><text x="836" y="116" class="hl" style="font-size:14px">📊 Evaluation</text><text x="836" y="132" class="hs">SWE-bench · RL envs</text>
+        <rect x="818" y="152" width="224" height="50" rx="9" class="hside"/><text x="836" y="176" class="hl" style="font-size:14px">📡 Observability</text><text x="836" y="192" class="hs">traces · cost · replay</text>
+        <rect x="818" y="212" width="224" height="50" rx="9" class="hside"/><text x="836" y="236" class="hl" style="font-size:14px">🛡 Guardrails</text><text x="836" y="252" class="hs">gates · policy · audit</text>
+        <rect x="818" y="272" width="224" height="50" rx="9" class="hside"/><text x="836" y="296" class="hl" style="font-size:14px">🧩 Reference impls</text><text x="836" y="312" class="hs">Claude Code · Codex</text>
+        <text x="930" y="356" text-anchor="middle" class="hs" style="fill:#66758f">apply to every layer</text>
+      </g>
+    </svg>
+    <p class="note frag" data-diagram-step>Four layers of runtime, three cross-cutting concerns — the <i>Agent Harness Engineering</i> survey's seven dimensions, in one map.</p>
+  </section>
+
+  <!-- ====== ACT 1 · A4 · DIMENSIONS IN DETAIL ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">① Agents &amp; harnesses · in detail</span></div>
+    <div class="frag show"><h2>What each dimension does</h2></div>
+    <table class="t frag" style="font-size:clamp(13px,1.5vw,19px)">
+      <tr><th style="width:26%">Dimension</th><th>What it owns</th><th style="width:30%">Key techniques</th></tr>
+      <tr><td>🔁 Orchestration</td><td>how the agent decides &amp; coordinates work</td><td>loop · subagents · skill composition</td></tr>
+      <tr><td>🧠 Context &amp; state</td><td>what fits in the window vs. what persists</td><td>compaction · memory injection · planning-as-file</td></tr>
+      <tr><td>📦 Substrates</td><td>where code runs, safely &amp; resumably</td><td>microVM · snapshot/restore · egress policy</td></tr>
+      <tr><td>🔌 Protocols</td><td>how the agent talks to tools &amp; repos</td><td>MCP · AGENTS.md · git-native contracts</td></tr>
+      <tr><td>📊 Evaluation</td><td>whether a change is actually an improvement</td><td>SWE-bench · trajectory audit · RL envs</td></tr>
+      <tr><td>📡 Observability</td><td>seeing what the agent did &amp; what it cost</td><td>tracing · cost attribution · replay</td></tr>
+      <tr><td>🛡 Guardrails</td><td>keeping autonomy safe &amp; accountable</td><td>approval gates · policy · fail-closed</td></tr>
+    </table>
+  </section>
+
+  <!-- ====== ACT 1 · A5 · HARNESS IS LOAD-BEARING ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">① Agents &amp; harnesses · the thesis</span></div>
+    <div class="frag"><h2>The harness is <span class="grad">load-bearing</span></h2></div>
+    <div class="grid g3">
+      <div class="vtile frag" style="border-color:#5eead4">
+        <span style="font-size:clamp(44px,7vw,84px);font-weight:800;letter-spacing:-2px" class="grad">46→80</span>
+        <span class="ttl">same model</span>
+        <span class="tag">two harnesses, one benchmark</span>
+      </div>
+      <div class="vtile frag" style="border-color:#818cf8">
+        <span style="font-size:clamp(44px,7vw,84px);font-weight:800;letter-spacing:-2px" class="grad">+26%</span>
+        <span class="ttl">LangChain</span>
+        <span class="tag">harness change only</span>
+      </div>
+      <div class="vtile frag" style="border-color:#fbbf24">
+        <span style="font-size:clamp(44px,7vw,84px);font-weight:800;letter-spacing:-2px" class="grad">23→45</span>
+        <span class="ttl">scaffold</span>
+        <span class="tag">basic vs tuned, SWE-bench</span>
+      </div>
+    </div>
+    <p class="note frag" style="text-align:center">Same model. Only the wrapper changed.</p>
+  </section>
+
+  <!-- ====== ACT 2 · DIVIDER ====== -->
+  <section class="slide divider">
+    <div class="frag show actno" style="color:var(--accent)">02</div>
+    <div class="frag"><h2>Ark</h2></div>
+    <div class="frag lede">An opinionated <span class="grad">workflow harness</span> — the seven dimensions, with discipline baked in.</div>
+    <div class="frag roadmap">
+      <span class="rstep">① Agents &amp; harnesses</span><span>→</span>
+      <span class="rstep on">② Ark</span><span>→</span>
+      <span class="rstep">③ ArkOS</span><span>→</span>
+      <span class="rstep">④ Future agent model</span>
+    </div>
+  </section>
+
+  <!-- ====== 2 · THE PROBLEM (Ark) ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · the gap</span></div>
+    <div class="frag"><h2>Today's harnesses have <span class="grad">no process</span></h2></div>
+    <div class="grid g3">
+      <div class="card frag"><h3>🌀 No structure</h3><p>no PRD, no plan, no record of <i>why</i></p></div>
+      <div class="card frag"><h3>👤 No second opinion</h3><p>the agent grades its own work</p></div>
+      <div class="card frag"><h3>🧩 No memory</h3><p>knowledge evaporates between sessions</p></div>
+    </div>
+  </section>
+
+  <!-- ====== 3 · WHERE ARK SITS (harness positioning) ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · positioning</span></div>
+    <div class="frag"><h2>A <span class="grad">workflow harness</span> above the agent</h2></div>
+    <svg class="diagram" viewBox="0 0 1080 300" role="img" aria-label="Where Ark sits">
+      <style>
+        .wb{fill:#141a27;stroke:#283248;stroke-width:1.5}
+        .wl{fill:#e6ecf5;font-size:16px;font-weight:650}
+        .ws{fill:#9aa7bd;font-size:12.5px;font-family:'SF Mono',monospace}
+        .wG{opacity:0;transition:opacity .45s ease}.wG.show{opacity:1}
+      </style>
+      <g class="wG" data-step="1">
+        <rect x="240" y="20" width="600" height="64" rx="14" class="wb" stroke="#5eead4" stroke-width="2"/>
+        <text x="540" y="48" text-anchor="middle" class="wl" style="fill:var(--accent)">Ark — workflow harness</text>
+        <text x="540" y="70" text-anchor="middle" class="ws">tiered lifecycle · gates · SPECs · journals</text>
+      </g>
+      <g class="wG" data-step="2">
+        <rect x="240" y="100" width="600" height="64" rx="14" class="wb" stroke="#818cf8"/>
+        <text x="540" y="128" text-anchor="middle" class="wl" style="fill:#a5b0f5">coding-agent harness</text>
+        <text x="540" y="150" text-anchor="middle" class="ws">Claude Code · Codex · OpenCode</text>
+      </g>
+      <g class="wG" data-step="3">
+        <rect x="240" y="180" width="600" height="56" rx="14" class="wb" stroke="#fbbf24"/>
+        <text x="540" y="214" text-anchor="middle" class="wl" style="fill:#fbbf24">model + tools (the agent loop)</text>
+      </g>
+      <g class="wG" data-step="4">
+        <rect x="240" y="252" width="600" height="40" rx="12" class="wb"/>
+        <text x="540" y="277" text-anchor="middle" class="ws" style="fill:#66758f">host — your machine, git, filesystem</text>
+      </g>
+    </svg>
+    <p class="note frag" data-diagram-step>Ark is <b>local, multi-platform, workflow-opinionated</b> — the meta-layer that turns any coding agent into a software-engineering process.</p>
+  </section>
+
+  <!-- ====== 3b · ARK ON THE 7-DIMENSION FRAMEWORK ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · the framework</span></div>
+    <div class="frag show"><h2>Ark on the seven dimensions</h2></div>
+    <table class="t frag" style="font-size:clamp(13px,1.5vw,19px)">
+      <tr><th style="width:34%">Dimension</th><th>Ark's answer</th></tr>
+      <tr><td>🔁 Orchestration</td><td>tiered lifecycle + researcher / reviewer / verifier subagents</td></tr>
+      <tr><td>🧠 Context &amp; state</td><td>structured artifacts on disk · <code class="inline">ark context</code> projection</td></tr>
+      <tr><td>📦 Substrates</td><td>worktree-per-task · <code class="inline">.ark.db</code> snapshots</td></tr>
+      <tr><td>🔌 Protocols</td><td>AGENTS.md · slash commands · per-platform templates</td></tr>
+      <tr><td>📊 Evaluation</td><td>VERIFY gate · PLAN ⇄ REVIEW loop</td></tr>
+      <tr><td>🛡 Guardrails</td><td>state machine · user-staged atomic commit</td></tr>
+    </table>
+    <p class="note frag">Same seven axes — Ark's take is <b>opinionated workflow discipline</b>.</p>
+  </section>
+
+  <!-- ====== 4 · TWO PIECES ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · the idea</span></div>
+    <div class="frag"><h2>Two pieces, working as one</h2></div>
+    <div class="grid g2">
+      <div class="card frag">
+        <h3><span class="ic" style="background:rgba(94,234,212,.14)">⌘</span> ark-cli</h3>
+        <p>the mechanism — a Rust binary you install &amp; run</p>
+      </div>
+      <div class="card frag">
+        <h3><span class="ic" style="background:rgba(129,140,248,.14)">◇</span> ark-workflow</h3>
+        <p>the discipline — a tiered lifecycle in <code class="inline">workflow.md</code></p>
+      </div>
+    </div>
+    <p class="note frag" style="text-align:center">Install once → every transition runs through an <span class="cmd">ark</span> command.</p>
+  </section>
+
+  <!-- ====== 4 · WHAT IT LOOKS LIKE ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · in practice</span></div>
+    <div class="frag"><h2>What it looks like</h2></div>
+    <div class="frag term">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tt">~/my-project — ark</span></div>
+      <pre><span class="c-prompt">$</span> ark init                          <span class="c-cmt"># scaffold .ark/ + agent integrations</span>
+<span class="c-ok">✓</span> initialized ark · claude-code, codex, opencode
+
+<span class="c-prompt">$</span> ark context                       <span class="c-cmt"># orient: git + tasks + specs</span>
+<span class="c-prompt">›</span> /ark:design --deep <span class="c-flag">"refactor auth layer"</span>
+<span class="c-cmt">  DESIGN → PLAN ⇄ REVIEW → EXECUTE → VERIFY → COMMIT</span>
+<span class="c-ok">✓</span> one atomic commit: work + task.toml + SPEC + journal</pre>
+    </div>
+    <p class="note frag">Two layers of commands: the public lifecycle (<code class="inline">init / context / …</code>) and what you type inside the agent (<code class="inline">/ark:*</code>).</p>
+  </section>
+
+  <!-- ====== 5 · CLI · TWO LAYERS (merged) ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · CLI</span></div>
+    <div class="frag"><h2>One binary, <span class="grad">two layers</span></h2></div>
+    <div class="frag card" style="margin-bottom:16px;border-color:#5eead4">
+      <h3 style="margin-bottom:12px"><span class="ic" style="background:rgba(94,234,212,.14)">⌘</span> Public — manage Ark's footprint</h3>
+      <div class="chiprow" style="margin-top:0">
+        <span class="chip">init</span><span class="chip">context</span><span class="chip">load</span><span class="chip">unload</span><span class="chip">upgrade</span><span class="chip">archive</span><span class="chip">cleanup</span>
+      </div>
+    </div>
+    <div class="frag card" style="border-color:#818cf8">
+      <h3 style="margin-bottom:12px"><span class="ic" style="background:rgba(129,140,248,.14)">◇</span> Hidden <code class="inline">ark agent</code> — the workflow engine</h3>
+      <div class="row" style="gap:24px;flex-wrap:wrap">
+        <div><div class="sub" style="font-family:var(--mono);color:var(--accent);font-size:clamp(12px,1.3vw,15px);margin-bottom:6px">task</div><div class="chiprow" style="margin-top:0"><span class="chip">new</span><span class="chip">plan</span><span class="chip">review</span><span class="chip">execute</span><span class="chip">verify</span><span class="chip">commit</span><span class="chip">archive</span></div></div>
+        <div><div class="sub" style="font-family:var(--mono);color:var(--accent);font-size:clamp(12px,1.3vw,15px);margin-bottom:6px">spec</div><div class="chiprow" style="margin-top:0"><span class="chip">extract</span><span class="chip">import</span><span class="chip">register</span></div></div>
+        <div><div class="sub" style="font-family:var(--mono);color:var(--accent);font-size:clamp(12px,1.3vw,15px);margin-bottom:6px">workspace</div><div class="chiprow" style="margin-top:0"><span class="chip">record</span><span class="chip">developer</span></div></div>
+      </div>
+    </div>
+    <p class="note frag">You type the <b>slash commands</b>; they call <code class="inline">ark agent</code>. The state machine guards every transition.</p>
+  </section>
+
+  <!-- ====== 7 · TIERS ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · tiers</span></div>
+    <div class="frag"><h2>Pick the smallest tier that fits</h2></div>
+    <div class="grid g2">
+      <div class="tier quick frag"><h3>⚡ Quick</h3><div class="sub">/ark:quick · reversible</div><div class="arti"><span>PRD</span></div></div>
+      <div class="tier standard frag"><h3>◆ Standard</h3><div class="sub">/ark:design · feature scope</div><div class="arti"><span>PRD</span><span>PLAN</span><span>VERIFY</span></div></div>
+      <div class="tier deep frag"><h3>◈ Deep</h3><div class="sub">/ark:design --deep · architectural</div><div class="arti"><span>PRD</span><span>NN_PLAN ⇄ NN_REVIEW</span><span>VERIFY</span><span>SPEC</span></div></div>
+      <div class="tier research frag"><h3>🔬 Research</h3><div class="sub">/ark:research · corpus = deliverable</div><div class="arti"><span>PRD</span><span>research/</span></div></div>
+    </div>
+    <p class="note frag">When in doubt, pick lower — promotion is cheap.</p>
+  </section>
+
+  <!-- ====== 8 · LIFECYCLE DIAGRAM (progressive) ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · workflow</span></div>
+    <div class="frag show"><h2>One task, end to end</h2></div>
+    <svg class="diagram" viewBox="0 0 1080 360" role="img" aria-label="Ark lifecycle">
+      <defs>
+        <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#9aa7bd"/></marker>
+        <marker id="arrA" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#818cf8"/></marker>
+        <linearGradient id="node" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b2233"/><stop offset="1" stop-color="#141a27"/></linearGradient>
+        <style>
+          .lbl{fill:#e6ecf5;font-size:16px;font-weight:650}
+          .cmd2{fill:#5eead4;font-size:12px;font-family:'SF Mono',monospace}
+          .ph{fill:#66758f;font-size:11px;font-family:'SF Mono',monospace;letter-spacing:1px}
+          .edge{stroke:#384660;stroke-width:2.4;fill:none}
+          .edgeA{stroke:#818cf8;stroke-width:2.4;fill:none;stroke-dasharray:6 4}
+          .elbl{fill:#9aa7bd;font-size:12px}
+          .elblA{fill:#a5b0f5;font-size:12px;font-style:italic}
+          .gG{opacity:0;transition:opacity .5s ease}
+          .gG.show{opacity:1}
+        </style>
+      </defs>
+
+      <!-- f1: design+plan -->
+      <g class="gG" data-step="1">
+        <rect x="20" y="40" width="150" height="64" rx="12" fill="url(#node)" stroke="#5eead4" stroke-width="1.6"/>
+        <text x="95" y="68" text-anchor="middle" class="lbl">DESIGN</text>
+        <text x="95" y="88" text-anchor="middle" class="cmd2">task new</text>
+        <rect x="230" y="40" width="150" height="64" rx="12" fill="url(#node)" stroke="#384660"/>
+        <text x="305" y="68" text-anchor="middle" class="lbl">PLAN</text>
+        <text x="305" y="88" text-anchor="middle" class="cmd2">task plan</text>
+        <line class="edge" x1="170" y1="72" x2="226" y2="72" marker-end="url(#arr)"/>
+      </g>
+
+      <!-- f2: review + iterate -->
+      <g class="gG" data-step="2">
+        <rect x="440" y="40" width="150" height="64" rx="12" fill="url(#node)" stroke="#818cf8" stroke-width="1.6"/>
+        <text x="515" y="62" text-anchor="middle" class="lbl">REVIEW</text>
+        <text x="515" y="80" text-anchor="middle" class="cmd2">task review</text>
+        <text x="515" y="96" text-anchor="middle" class="ph">deep only</text>
+        <line class="edge" x1="380" y1="72" x2="436" y2="72" marker-end="url(#arr)"/>
+        <path class="edgeA" d="M460 104 C 430 158, 350 158, 320 106" marker-end="url(#arrA)"/>
+        <text x="388" y="156" text-anchor="middle" class="elblA">iterate ⇄ (≤ max)</text>
+      </g>
+
+      <!-- f3: execute + verify -->
+      <g class="gG" data-step="3">
+        <rect x="650" y="40" width="150" height="64" rx="12" fill="url(#node)" stroke="#384660"/>
+        <text x="725" y="68" text-anchor="middle" class="lbl">EXECUTE</text>
+        <text x="725" y="88" text-anchor="middle" class="cmd2">task execute</text>
+        <rect x="860" y="40" width="150" height="64" rx="12" fill="url(#node)" stroke="#384660"/>
+        <text x="935" y="68" text-anchor="middle" class="lbl">VERIFY</text>
+        <text x="935" y="88" text-anchor="middle" class="cmd2">task verify</text>
+        <line class="edge" x1="590" y1="72" x2="646" y2="72" marker-end="url(#arr)"/>
+        <line class="edge" x1="800" y1="72" x2="856" y2="72" marker-end="url(#arr)"/>
+      </g>
+
+      <!-- f4: commit + archive -->
+      <g class="gG" data-step="4">
+        <rect x="860" y="220" width="150" height="64" rx="12" fill="url(#node)" stroke="#fbbf24" stroke-width="1.6"/>
+        <text x="935" y="248" text-anchor="middle" class="lbl">COMMIT</text>
+        <text x="935" y="268" text-anchor="middle" class="cmd2">task commit -m</text>
+        <path class="edge" d="M935 104 L935 216" marker-end="url(#arr)"/>
+        <text x="935" y="170" text-anchor="middle" class="elbl">gate: no PENDING</text>
+        <rect x="650" y="220" width="150" height="64" rx="12" fill="url(#node)" stroke="#384660"/>
+        <text x="725" y="248" text-anchor="middle" class="lbl">ARCHIVED</text>
+        <text x="725" y="268" text-anchor="middle" class="cmd2">ark archive</text>
+        <line class="edge" x1="856" y1="252" x2="804" y2="252" marker-end="url(#arr)"/>
+        <text x="828" y="305" text-anchor="middle" class="elbl">later · bulk</text>
+      </g>
+
+      <!-- f5: research path -->
+      <g class="gG" data-step="5">
+        <rect x="20" y="150" width="150" height="52" rx="12" fill="url(#node)" stroke="#fbbf24" stroke-width="1.4"/>
+        <text x="95" y="172" text-anchor="middle" class="lbl" style="font-size:14px">RESEARCH</text>
+        <text x="95" y="190" text-anchor="middle" class="cmd2">/ark:research</text>
+        <path class="edge" d="M170 176 C 470 200, 770 222, 858 240" marker-end="url(#arr)"/>
+        <text x="450" y="222" text-anchor="middle" class="elbl" style="fill:#fbbf24">research → commit → archive (no PLAN/REVIEW/VERIFY)</text>
+      </g>
+    </svg>
+    <p class="note frag" data-diagram-step>Each phase is an <code class="inline">ark agent</code> command. You type a slash command; it drives the state machine.</p>
+  </section>
+
+  <!-- ====== 9 · PHASES DETAIL 1 — DESIGN · PLAN · REVIEW ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · lifecycle · decide</span></div>
+    <div class="frag"><h2>Decide <span class="grad">what</span>, then <span class="grad">how</span></h2></div>
+    <div class="lanes">
+      <div class="lane q frag">
+        <span class="bdg" style="background:rgba(74,222,128,.16)">🟢</span>
+        <div class="lmain"><div class="lname">DESIGN</div><div class="ldesc">write the PRD — What · Why · Outcome · related specs</div></div>
+        <code class="lcmd">ark agent task new</code>
+        <span class="lgate">⛓ fields filled</span>
+      </div>
+      <div class="lane b frag">
+        <span class="bdg" style="background:rgba(94,234,212,.16)">🔵</span>
+        <div class="lmain"><div class="lname">PLAN</div><div class="ldesc">elaborate how — goals <code class="inline">G-N</code> · architecture · API · validation</div></div>
+        <code class="lcmd">ark agent task plan</code>
+        <span class="lgate">✓ every G-N → a test</span>
+      </div>
+      <div class="lane v frag">
+        <span class="bdg" style="background:rgba(129,140,248,.16)">🟣</span>
+        <div class="lmain"><div class="lname">REVIEW <span style="font-weight:400;color:var(--ink-faint);font-size:.7em">deep · looped ⟳</span></div><div class="ldesc">independent reviewer files <code class="inline">R-NNN</code> — iterate until approved, 0 critical</div></div>
+        <code class="lcmd">ark agent task review</code>
+        <span class="lgate">you pick the reviewer</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== 10 · PHASES DETAIL 2 — EXECUTE · VERIFY · COMMIT ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · lifecycle · ship</span></div>
+    <div class="frag"><h2>Build · audit · close</h2></div>
+    <div class="lanes">
+      <div class="lane o frag">
+        <span class="bdg" style="background:rgba(251,146,60,.16)">🟠</span>
+        <div class="lmain"><div class="lname">EXECUTE</div><div class="ldesc">implement the PLAN, following project &amp; feature specs</div></div>
+        <code class="lcmd">ark agent task execute</code>
+        <span class="lgate">✓ tests · lints · build</span>
+      </div>
+      <div class="lane y frag">
+        <span class="bdg" style="background:rgba(251,191,36,.16)">🟡</span>
+        <div class="lmain"><div class="lname">VERIFY</div><div class="ldesc">audit shipped code — spec compliance · plan fidelity · drift</div></div>
+        <code class="lcmd">ark agent task verify</code>
+        <span class="lgate">⛓ nothing PENDING</span>
+      </div>
+      <div class="lane c frag">
+        <span class="bdg" style="background:rgba(251,191,36,.22)">🔶</span>
+        <div class="lmain"><div class="lname">COMMIT</div><div class="ldesc">you stage, then one atomic commit closes the task</div></div>
+        <code class="lcmd">ark agent task commit</code>
+        <span class="lgate">→ next slide</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== 11 · ATOMIC COMMIT ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · the keystone</span></div>
+    <div class="frag show"><h2>⚛ <code style="font-size:.7em">commit</code> — five things, one commit</h2></div>
+    <svg class="diagram" viewBox="0 0 1080 320" role="img" aria-label="Atomic commit">
+      <defs><marker id="ca" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#5eead4"/></marker></defs>
+      <style>
+        .cbx{fill:#141a27;stroke:#283248;stroke-width:1.4}
+        .cl{fill:#e6ecf5;font-size:15px;font-weight:600}
+        .cs{fill:#9aa7bd;font-size:12px;font-family:'SF Mono',monospace}
+        .cG{opacity:0;transition:opacity .45s ease}.cG.show{opacity:1}
+      </style>
+      <!-- 5 inputs -->
+      <g class="cG" data-step="1">
+        <rect x="30" y="24" width="300" height="46" rx="10" class="cbx" stroke="#fbbf24"/><text x="50" y="52" class="cl">①  VERIFY gate</text><text x="200" y="52" class="cs">deep: refuse on PENDING</text>
+      </g>
+      <g class="cG" data-step="2">
+        <rect x="30" y="78" width="300" height="46" rx="10" class="cbx" stroke="#818cf8"/><text x="50" y="106" class="cl">②  extract SPEC</text><text x="200" y="106" class="cs">deep · → features tree</text>
+      </g>
+      <g class="cG" data-step="3">
+        <rect x="30" y="132" width="300" height="46" rx="10" class="cbx"/><text x="50" y="160" class="cl">③  task.toml</text><text x="200" y="160" class="cs">phase = Committed</text>
+      </g>
+      <g class="cG" data-step="4">
+        <rect x="30" y="186" width="300" height="46" rx="10" class="cbx"/><text x="50" y="214" class="cl">④  stage files</text><text x="200" y="214" class="cs">exactly Ark's · no -A</text>
+      </g>
+      <g class="cG" data-step="5">
+        <rect x="30" y="240" width="300" height="46" rx="10" class="cbx"/><text x="50" y="268" class="cl">⑤  journal</text><text x="200" y="268" class="cs">session entry</text>
+      </g>
+      <!-- converge -->
+      <g class="cG" data-step="6">
+        <path class="cs" d="M330 47 C 470 47, 470 150, 560 150" fill="none" stroke="#384660" stroke-width="2"/>
+        <path d="M330 101 C 470 101, 470 150, 560 150" fill="none" stroke="#384660" stroke-width="2"/>
+        <path d="M330 155 L 560 153" fill="none" stroke="#384660" stroke-width="2"/>
+        <path d="M330 209 C 470 209, 470 150, 560 150" fill="none" stroke="#384660" stroke-width="2"/>
+        <path d="M330 263 C 470 263, 470 150, 558 152" fill="none" stroke="#384660" stroke-width="2" marker-end="url(#ca)"/>
+        <rect x="560" y="116" width="230" height="72" rx="14" fill="#141a27" stroke="#5eead4" stroke-width="2"/>
+        <text x="675" y="148" text-anchor="middle" class="cl" style="fill:#5eead4;font-size:18px">1 git commit</text>
+        <text x="675" y="172" text-anchor="middle" class="cs">all-or-nothing</text>
+      </g>
+      <!-- rollback -->
+      <g class="cG" data-step="7">
+        <rect x="820" y="116" width="230" height="72" rx="14" fill="#141a27" stroke="#fb7185" stroke-width="1.6"/>
+        <text x="935" y="142" text-anchor="middle" class="cl" style="fill:#fb7185">on failure ↺</text>
+        <text x="935" y="162" text-anchor="middle" class="cs">scoped rollback</text>
+        <text x="935" y="179" text-anchor="middle" class="cs" style="fill:#66758f">your index untouched</text>
+        <line x1="790" y1="152" x2="816" y2="152" stroke="#fb7185" stroke-width="2" stroke-dasharray="4 3"/>
+      </g>
+    </svg>
+  </section>
+
+  <!-- ====== 13 · SUBAGENTS ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · subagents</span></div>
+    <div class="frag"><h2>The author never grades itself</h2></div>
+    <div class="row frag" style="align-items:stretch;justify-content:center;gap:18px;margin-bottom:8px">
+      <div class="vtile" style="flex:1;max-width:300px">
+        <span class="big" style="background:rgba(94,234,212,.14)">🔎</span>
+        <span class="ttl">ark-researcher</span>
+        <span class="sub">DESIGN · PLAN</span>
+        <span class="tag">gathers what the session lacks → <code class="inline">research/</code></span>
+      </div>
+      <div class="vtile" style="flex:1;max-width:300px;border-color:#818cf8">
+        <span class="big" style="background:rgba(129,140,248,.14)">⚖</span>
+        <span class="ttl">ark-reviewer</span>
+        <span class="sub">REVIEW · deep</span>
+        <span class="tag">judges the PLAN → verdict + <code class="inline">R-NNN</code></span>
+      </div>
+      <div class="vtile" style="flex:1;max-width:300px;border-color:#fbbf24">
+        <span class="big" style="background:rgba(251,191,36,.14)">✓</span>
+        <span class="ttl">ark-verifier</span>
+        <span class="sub">VERIFY · final gate</span>
+        <span class="tag">audits shipped code → <code class="inline">V-NNN</code></span>
+      </div>
+    </div>
+    <div class="frag loopbadge" style="margin:24px auto 0;border-color:var(--accent);background:rgba(94,234,212,.08)">
+      <span style="color:var(--ink)">author</span><span class="ar" style="font-size:1em">→</span><span style="color:var(--ink)">hands off</span><span class="ar" style="font-size:1em">→</span><span style="color:var(--accent)">independent agent <b>you choose</b></span>
+    </div>
+  </section>
+
+  <!-- ====== 14a · MEMORY vs CONTEXT ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · memory</span></div>
+    <div class="frag"><h2>Memory ≠ context</h2></div>
+    <div class="frag row" style="justify-content:center;gap:18px;align-items:stretch;margin-top:6px">
+      <div class="vtile" style="flex:1;max-width:360px;border-color:#384660">
+        <span class="big" style="background:rgba(129,140,248,.14)">💨</span>
+        <span class="ttl">Context</span>
+        <span class="sub">in-prompt · ephemeral</span>
+        <span class="tag">gone when the session ends · costs tokens every turn</span>
+      </div>
+      <div class="vtile" style="flex:1;max-width:360px;border-color:#5eead4">
+        <span class="big" style="background:rgba(94,234,212,.14)">💾</span>
+        <span class="ttl" style="color:var(--accent)">Memory</span>
+        <span class="sub">on disk · durable</span>
+        <span class="tag">survives sessions, agents, platforms · loaded on demand</span>
+      </div>
+    </div>
+    <div class="frag callout" style="margin-top:24px"><b>Ark's bet:</b> state lives in <b>structured files</b> — PRD · PLAN · SPEC · VERIFY · journals. Available, not resident.</div>
+  </section>
+
+  <!-- ====== 14b · SPECS (the heart of Ark memory) ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · memory · specs</span></div>
+    <div class="frag show"><h2><span class="grad">Specs</span> — the durable contract</h2></div>
+    <svg class="diagram" viewBox="0 0 1080 330" role="img" aria-label="Ark specs: two layers and promotion">
+      <defs><marker id="pa" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#5eead4"/></marker></defs>
+      <style>
+        .pb{fill:#141a27;stroke:#283248;stroke-width:1.5}
+        .pl{fill:#e6ecf5;font-size:15px;font-weight:650}
+        .ps{fill:#9aa7bd;font-size:11.5px;font-family:'SF Mono',monospace}
+        .pflow{fill:none;stroke:#5eead4;stroke-width:2.4}
+        .pG{opacity:0;transition:opacity .45s ease}.pG.show{opacity:1}
+      </style>
+      <!-- project layer -->
+      <g class="pG" data-step="1">
+        <rect x="40" y="40" width="470" height="110" rx="14" class="pb" stroke="#818cf8"/>
+        <text x="64" y="70" class="pl" style="fill:#a5b0f5">📐 Project specs</text>
+        <text x="64" y="94" class="ps">specs/project/&lt;name&gt;/SPEC.md</text>
+        <text x="64" y="116" class="ps" style="fill:#66758f">user-authored conventions</text>
+        <text x="64" y="136" class="ps" style="fill:#5eead4">read before EVERY task · always apply</text>
+      </g>
+      <!-- feature layer -->
+      <g class="pG" data-step="2">
+        <rect x="570" y="40" width="470" height="110" rx="14" class="pb" stroke="#4ade80"/>
+        <text x="594" y="70" class="pl" style="fill:#4ade80">🧩 Feature specs</text>
+        <text x="594" y="94" class="ps">specs/features/…/SPEC.md (recursive)</text>
+        <text x="594" y="116" class="ps" style="fill:#66758f">machine-promoted contracts</text>
+        <text x="594" y="136" class="ps" style="fill:#5eead4">read only the ones your task touches</text>
+      </g>
+      <!-- promotion pipeline -->
+      <g class="pG" data-step="3">
+        <rect x="120" y="220" width="200" height="70" rx="12" class="pb" stroke="#fbbf24"/>
+        <text x="220" y="252" text-anchor="middle" class="pl" style="fill:#fbbf24">deep PLAN</text>
+        <text x="220" y="273" text-anchor="middle" class="ps">## Spec section</text>
+        <path class="pflow" d="M320 255 L 470 255" marker-end="url(#pa)"/>
+        <text x="395" y="244" text-anchor="middle" class="ps" style="fill:#66758f">on commit</text>
+        <rect x="480" y="220" width="220" height="70" rx="12" class="pb" stroke="#5eead4"/>
+        <text x="590" y="252" text-anchor="middle" class="pl" style="fill:#5eead4">extract → SPEC.md</text>
+        <text x="590" y="273" text-anchor="middle" class="ps">+ upsert INDEX leaf→root</text>
+        <path class="pflow" d="M700 255 C 800 255, 760 150, 760 152" marker-end="url(#pa)"/>
+      </g>
+      <!-- VERIFY check -->
+      <g class="pG" data-step="4">
+        <rect x="740" y="220" width="300" height="70" rx="12" class="pb" stroke="#fb7185"/>
+        <text x="890" y="248" text-anchor="middle" class="pl" style="fill:#fb7185">VERIFY checks adherence</text>
+        <text x="890" y="270" text-anchor="middle" class="ps">drift needs a CHANGELOG entry to pass</text>
+      </g>
+    </svg>
+    <p class="note frag" data-diagram-step><b>Anchored, versioned, drift-detected</b> — specs are how knowledge compounds instead of evaporating between sessions.</p>
+  </section>
+
+  <!-- ====== 14c · OTHER DURABLE STATE ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · memory · the rest</span></div>
+    <div class="frag"><h2>The rest of the durable state</h2></div>
+    <div class="grid g3">
+      <div class="vtile frag"><span class="big" style="background:rgba(251,191,36,.14)">✎</span><span class="ttl">Journals</span><span class="sub">.ark/workspace/&lt;dev&gt;/</span><span class="tag">a session block written on every commit</span></div>
+      <div class="vtile frag"><span class="big" style="background:rgba(129,140,248,.14)">⑂</span><span class="ttl">Worktrees</span><span class="sub">one branch / task</span><span class="tag">parallel tasks, no collisions</span></div>
+      <div class="vtile frag"><span class="big" style="background:rgba(244,114,182,.14)">⤓</span><span class="ttl">Snapshots</span><span class="sub">unload / load</span><span class="tag">freeze &amp; restore the whole footprint</span></div>
+    </div>
+    <p class="note frag" style="text-align:center">All on disk, versioned with the repo — the project remembers.</p>
+  </section>
+
+  <!-- ====== 15 · ARCHITECTURE (progressive) ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">② Ark · architecture</span></div>
+    <div class="frag show"><h2>Inside the binary</h2></div>
+    <svg class="diagram" viewBox="0 0 1080 410" role="img" aria-label="Ark architecture">
+      <defs><marker id="a2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9aa7bd"/></marker></defs>
+      <style>
+        .box{fill:#1b2233;stroke:#283248;stroke-width:1.5}
+        .t1{fill:#e6ecf5;font-size:15px;font-weight:650}
+        .t2{fill:#9aa7bd;font-size:12px;font-family:'SF Mono',monospace}
+        .hd{fill:#5eead4;font-size:13px;font-family:'SF Mono',monospace;letter-spacing:1.5px}
+        .flow{stroke:#384660;stroke-width:2.4;fill:none}
+        .aG{opacity:0;transition:opacity .5s ease}.aG.show{opacity:1}
+      </style>
+
+      <g class="aG" data-step="1">
+        <rect x="30" y="20" width="340" height="120" rx="14" class="box" stroke="#5eead4"/>
+        <text x="52" y="48" class="hd">ARK-CLI · thin adapter</text>
+        <rect x="52" y="62" width="140" height="34" rx="8" fill="#141a27" stroke="#283248"/>
+        <text x="122" y="84" text-anchor="middle" class="t2">main.rs</text>
+        <rect x="206" y="62" width="144" height="34" rx="8" fill="#141a27" stroke="#283248"/>
+        <text x="278" y="84" text-anchor="middle" class="t2">agent_cli.rs</text>
+        <text x="52" y="122" class="t2" style="fill:#66758f">parse · dispatch · render(summary)</text>
+        <line class="flow" x1="200" y1="140" x2="200" y2="176" marker-end="url(#a2)"/>
+      </g>
+
+      <g class="aG" data-step="2">
+        <rect x="30" y="180" width="1020" height="210" rx="14" class="box" stroke="#818cf8"/>
+        <text x="52" y="208" class="hd" style="fill:#818cf8">ARK-CORE · all logic</text>
+      </g>
+
+      <g class="aG" data-step="3">
+        <rect x="52" y="224" width="195" height="72" rx="10" fill="#141a27" stroke="#283248"/>
+        <text x="149" y="252" text-anchor="middle" class="t1">commands/</text>
+        <text x="149" y="274" text-anchor="middle" class="t2">init load unload</text>
+        <text x="149" y="290" text-anchor="middle" class="t2">upgrade context …</text>
+        <rect x="262" y="224" width="195" height="72" rx="10" fill="#141a27" stroke="#283248"/>
+        <text x="359" y="252" text-anchor="middle" class="t1">commands/agent/</text>
+        <text x="359" y="274" text-anchor="middle" class="t2">task · spec</text>
+        <text x="359" y="290" text-anchor="middle" class="t2">workspace · worktree</text>
+        <rect x="472" y="224" width="185" height="72" rx="10" fill="#141a27" stroke="#5eead4"/>
+        <text x="564" y="252" text-anchor="middle" class="t1">platforms.rs</text>
+        <text x="564" y="274" text-anchor="middle" class="t2">one path →</text>
+        <text x="564" y="290" text-anchor="middle" class="t2">claude·codex·opencode</text>
+      </g>
+
+      <g class="aG" data-step="4">
+        <rect x="672" y="224" width="180" height="72" rx="10" fill="#141a27" stroke="#283248"/>
+        <text x="762" y="252" text-anchor="middle" class="t1">layout.rs</text>
+        <text x="762" y="274" text-anchor="middle" class="t2">rooted paths</text>
+        <text x="762" y="290" text-anchor="middle" class="t2">discover·resolve_safe</text>
+        <rect x="867" y="224" width="168" height="72" rx="10" fill="#141a27" stroke="#283248"/>
+        <text x="951" y="252" text-anchor="middle" class="t1">state/</text>
+        <text x="951" y="274" text-anchor="middle" class="t2">manifest·snapshot</text>
+        <text x="951" y="290" text-anchor="middle" class="t2">.state.toml</text>
+
+        <rect x="52" y="308" width="290" height="64" rx="10" fill="#141a27" stroke="#283248"/>
+        <text x="197" y="335" text-anchor="middle" class="t1">io/ — structured FS &amp; git</text>
+        <text x="197" y="356" text-anchor="middle" class="t2">PathExt · managed blocks · git</text>
+        <rect x="357" y="308" width="300" height="64" rx="10" fill="#141a27" stroke="#fbbf24"/>
+        <text x="507" y="335" text-anchor="middle" class="t1">agent/state.rs</text>
+        <text x="507" y="356" text-anchor="middle" class="t2">tier × phase transition table</text>
+        <rect x="672" y="308" width="363" height="64" rx="10" fill="#141a27" stroke="#283248"/>
+        <text x="853" y="335" text-anchor="middle" class="t1">templates.rs — include_dir!()</text>
+        <text x="853" y="356" text-anchor="middle" class="t2">ark·claude·codex·opencode trees in binary</text>
+      </g>
+    </svg>
+    <p class="note frag" data-diagram-step>The CLI parses &amp; prints; the core does everything. A platform registry drives all three agents from <b>one code path</b>.</p>
+  </section>
+
+  <!-- ====== ACT 3 · DIVIDER ====== -->
+  <section class="slide divider">
+    <div class="frag show actno" style="color:var(--accent-3)">03</div>
+    <div class="frag"><h2>ArkOS</h2></div>
+    <div class="frag lede">The harness becomes a <span class="grad">substrate</span> — workflow as a service, for agents instead of humans.</div>
+    <div class="frag roadmap">
+      <span class="rstep">① Agents &amp; harnesses</span><span>→</span>
+      <span class="rstep">② Ark</span><span>→</span>
+      <span class="rstep on">③ ArkOS</span><span>→</span>
+      <span class="rstep">④ Future agent model</span>
+    </div>
+  </section>
+
+  <!-- ====== 16 · FUTURE · ARKOS INTRO ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">③ ArkOS · RFC 001</span></div>
+    <div class="frag"><h2>Next: <span class="grad">ArkOS</span></h2></div>
+    <div class="frag big-lede" style="font-size:clamp(19px,2.5vw,32px);margin-bottom:30px">What Ark does for <b>humans</b>,<br>ArkOS does for <b>agents</b>.</div>
+    <div class="frag" style="display:flex;align-items:center;gap:clamp(12px,3vw,40px);flex-wrap:wrap;justify-content:center">
+      <div class="vtile" style="min-width:230px;border-color:#5eead4">
+        <span class="big" style="background:rgba(94,234,212,.14)">⌘</span>
+        <span class="ttl">Ark</span>
+        <span class="sub">human · gated</span>
+        <span class="tag">a CLI you drive</span>
+      </div>
+      <div style="text-align:center;color:var(--ink-faint);font-family:var(--mono);font-size:clamp(13px,1.5vw,17px)">
+        <div style="font-size:1.8em;color:var(--accent-2)">⚖</div>
+        siblings<br>not a stack
+      </div>
+      <div class="vtile" style="min-width:230px;border-color:#818cf8">
+        <span class="big" style="background:rgba(129,140,248,.14)">◈</span>
+        <span class="ttl" style="color:#a5b0f5">ArkOS</span>
+        <span class="sub">agent · autonomous</span>
+        <span class="tag">workflow as a service</span>
+      </div>
+    </div>
+    <div class="frag chiprow" style="justify-content:center;margin-top:28px">
+      <span class="chip on">services →</span><span class="chip">lifecycle</span><span class="chip">task tree</span><span class="chip">memory</span><span class="chip">SPEC storage</span><span class="chip">event log</span><span class="chip">grounding hooks</span>
+    </div>
+  </section>
+
+  <!-- ====== 17 · FUTURE · LAYERED MODEL + AGENT-FORM SWITCH ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">③ ArkOS · how it evolves</span></div>
+    <div class="frag show"><h2>Swap the agent form. The substrate stays.</h2></div>
+    <svg class="diagram" viewBox="0 0 1080 380" role="img" aria-label="ArkOS layered model and two-stage evolution">
+      <defs><marker id="oa" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9aa7bd"/></marker></defs>
+      <style>
+        .ob{fill:#1b2233;stroke:#283248;stroke-width:1.5}
+        .ot1{fill:#e6ecf5;font-size:15px;font-weight:650}
+        .ot2{fill:#9aa7bd;font-size:11.5px;font-family:'SF Mono',monospace}
+        .ohd{font-size:12px;font-family:'SF Mono',monospace;letter-spacing:1.5px}
+        .oflow{stroke:#384660;stroke-width:2.2;fill:none}
+        .oG{opacity:0;transition:opacity .5s ease}.oG.show{opacity:1}
+      </style>
+
+      <!-- workloads -->
+      <g class="oG" data-step="1">
+        <rect x="40" y="20" width="1000" height="56" rx="12" class="ob" stroke="#384660"/>
+        <text x="60" y="44" class="ohd" style="fill:#66758f">WORKLOADS</text>
+        <text x="60" y="63" class="ot2" style="fill:#9aa7bd">tasks agents work on · autonomous orchestrators · products — supply the grounding signal</text>
+      </g>
+
+      <!-- substrate layer: Ark + ArkOS -->
+      <g class="oG" data-step="2">
+        <rect x="40" y="92" width="1000" height="112" rx="12" class="ob" stroke="#818cf8"/>
+        <text x="60" y="116" class="ohd" style="fill:#818cf8">SUBSTRATE — peers, different audience</text>
+        <rect x="60" y="128" width="470" height="62" rx="10" fill="#141a27" stroke="#5eead4"/>
+        <text x="295" y="153" text-anchor="middle" class="ot1">Ark · human audience</text>
+        <text x="295" y="174" text-anchor="middle" class="ot2">CLI harness · human-gated · no self-improve</text>
+        <rect x="550" y="128" width="470" height="62" rx="10" fill="#141a27" stroke="#818cf8"/>
+        <text x="785" y="153" text-anchor="middle" class="ot1" style="fill:#a5b0f5">ArkOS · agent audience</text>
+        <text x="785" y="174" text-anchor="middle" class="ot2">workflow as service · autonomy-operable · self-improves</text>
+      </g>
+
+      <!-- runtime layer: swappable agent forms -->
+      <g class="oG" data-step="3">
+        <rect x="40" y="220" width="1000" height="80" rx="12" class="ob" stroke="#fbbf24"/>
+        <text x="60" y="244" class="ohd" style="fill:#fbbf24">AGENT RUNTIMES — the swappable "agent form"</text>
+        <rect x="60" y="256" width="150" height="34" rx="8" fill="#141a27" stroke="#283248"/><text x="135" y="278" text-anchor="middle" class="ot2">Claude Code</text>
+        <rect x="220" y="256" width="120" height="34" rx="8" fill="#141a27" stroke="#283248"/><text x="280" y="278" text-anchor="middle" class="ot2">Codex</text>
+        <rect x="350" y="256" width="140" height="34" rx="8" fill="#141a27" stroke="#283248"/><text x="420" y="278" text-anchor="middle" class="ot2">OpenCode</text>
+        <text x="520" y="278" class="ot2" style="fill:#66758f">→</text>
+        <rect x="560" y="256" width="220" height="34" rx="8" fill="#141a27" stroke="#fbbf24" stroke-dasharray="5 4"/><text x="670" y="278" text-anchor="middle" class="ot2" style="fill:#fbbf24">native runtime (stage 2)</text>
+        <text x="800" y="278" class="ot2" style="fill:#66758f">+ raw LLM API</text>
+        <line class="oflow" x1="540" y1="204" x2="540" y2="216" marker-end="url(#oa)"/>
+      </g>
+
+      <!-- host -->
+      <g class="oG" data-step="4">
+        <rect x="40" y="316" width="1000" height="44" rx="12" class="ob" stroke="#283248"/>
+        <text x="540" y="343" text-anchor="middle" class="ot2" style="fill:#66758f">HOST — POSIX · Linux · git · process isolation</text>
+      </g>
+    </svg>
+    <p class="note frag" data-diagram-step><b>Stage 1:</b> bootstrap on today's runtimes (Ark's primitives re-exposed to agents). <b>Stage 2:</b> grow a native runtime — the agent form swaps, the substrate is constant.</p>
+  </section>
+
+  <!-- ====== 18 · FUTURE · SELF-EVOLUTION, GROUNDED ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">③ ArkOS · self-evolution</span></div>
+    <div class="frag show"><h2>Self-evolving — but <span class="grad">grounded</span></h2></div>
+    <svg class="diagram" viewBox="0 0 1080 300" role="img" aria-label="Workload-grounded self-evolution loop">
+      <defs><marker id="ea" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#5eead4"/></marker></defs>
+      <style>
+        .eb{fill:#141a27;stroke:#283248;stroke-width:1.5}
+        .el{fill:#e6ecf5;font-size:16px;font-weight:650}
+        .es{fill:#9aa7bd;font-size:12.5px;font-family:'SF Mono',monospace}
+        .eflow{fill:none;stroke:#5eead4;stroke-width:2.4}
+        .eG{opacity:0;transition:opacity .5s ease}.eG.show{opacity:1}
+      </style>
+      <!-- the loop: substrate -> agents -> workload -> signal -> substrate -->
+      <g class="eG" data-step="1">
+        <rect x="60" y="110" width="220" height="80" rx="14" class="eb" stroke="#818cf8"/>
+        <text x="170" y="145" text-anchor="middle" class="el" style="fill:#a5b0f5">ArkOS rev N+1</text>
+        <text x="170" y="167" text-anchor="middle" class="es">improved primitives</text>
+      </g>
+      <g class="eG" data-step="2">
+        <path class="eflow" d="M280 150 L 418 150" marker-end="url(#ea)"/>
+        <rect x="420" y="110" width="220" height="80" rx="14" class="eb" stroke="#fbbf24"/>
+        <text x="530" y="145" text-anchor="middle" class="el" style="fill:#fbbf24">agents run</text>
+        <text x="530" y="167" text-anchor="middle" class="es">a real workload</text>
+      </g>
+      <g class="eG" data-step="3">
+        <path class="eflow" d="M640 150 L 778 150" marker-end="url(#ea)"/>
+        <rect x="780" y="110" width="240" height="80" rx="14" class="eb" stroke="#4ade80"/>
+        <text x="900" y="145" text-anchor="middle" class="el" style="fill:#4ade80">workload grades</text>
+        <text x="900" y="167" text-anchor="middle" class="es">tests · LTP · panel</text>
+      </g>
+      <!-- feedback arc back to substrate -->
+      <g class="eG" data-step="4">
+        <path class="eflow" d="M900 190 C 900 260, 170 260, 170 192" marker-end="url(#ea)"/>
+        <text x="535" y="252" text-anchor="middle" class="es" style="fill:#5eead4">faster · fewer iterations · smaller budget  →  keep the change</text>
+      </g>
+      <!-- the hard line -->
+      <g class="eG" data-step="5">
+        <text x="540" y="40" text-anchor="middle" class="el" style="fill:#fb7185">🚫 the substrate never grades itself</text>
+        <text x="540" y="66" text-anchor="middle" class="es" style="fill:#9aa7bd">it cannot edit its own evaluation harness · the judge is independent of the generator</text>
+      </g>
+    </svg>
+    <p class="note frag" data-diagram-step>Like the Linux kernel: it doesn't self-grade — <b>programs running on it</b> shipping faster is the signal.</p>
+  </section>
+
+  <!-- ====== ACT 4 · DIVIDER ====== -->
+  <section class="slide divider">
+    <div class="frag show actno" style="color:var(--accent-4)">04</div>
+    <div class="frag"><h2>The future agent model</h2></div>
+    <div class="frag lede">My vision for how agents will work — <span class="grad">autonomous, isolated, and running at scale.</span></div>
+    <div class="frag roadmap">
+      <span class="rstep">① Agents &amp; harnesses</span><span>→</span>
+      <span class="rstep">② Ark</span><span>→</span>
+      <span class="rstep">③ ArkOS</span><span>→</span>
+      <span class="rstep on">④ Future agent model</span>
+    </div>
+  </section>
+
+  <!-- ====== ACT 4 · F1 · THE LEAP ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">④ The future · the agent model</span></div>
+    <div class="frag"><h2>From one agent<br>to a <span class="grad">fleet of sandboxes</span></h2></div>
+    <div class="frag row" style="align-items:center;justify-content:center;gap:clamp(20px,4vw,60px);flex-wrap:wrap;margin-top:18px">
+      <div class="vtile" style="min-width:240px">
+        <span class="big" style="background:rgba(129,140,248,.14)">🧑‍💻</span>
+        <span class="ttl">Today</span>
+        <span class="sub">one agent · your terminal</span>
+        <span class="tag">you drive it, step by step</span>
+      </div>
+      <div style="font-size:clamp(28px,5vw,56px);color:var(--accent)">→</div>
+      <div class="vtile" style="min-width:240px;border-color:#5eead4">
+        <span class="big" style="background:rgba(94,234,212,.14)">🛰️</span>
+        <span class="ttl" style="color:var(--accent)">Next</span>
+        <span class="sub">N isolated sandboxes</span>
+        <span class="tag">each drives its own project, on its own</span>
+      </div>
+    </div>
+    <p class="note frag" style="text-align:center">Isolation is a <b>stack</b>: worktree → container → microVM / hypervisor. The fleet model takes it all the way down.</p>
+  </section>
+
+  <!-- ====== ACT 4 · F2 · THE STACK ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">④ The future · architecture</span></div>
+    <div class="frag show"><h2>Hypervisor below · agent sandboxes above</h2></div>
+    <svg class="diagram" viewBox="0 0 1080 380" role="img" aria-label="Future agent fleet architecture">
+      <style>
+        .fb{fill:#141a27;stroke:#283248;stroke-width:1.5}
+        .fl{fill:#e6ecf5;font-size:15px;font-weight:650}
+        .fs{fill:#9aa7bd;font-size:11.5px;font-family:'SF Mono',monospace}
+        .fhd{font-size:12px;font-family:'SF Mono',monospace;letter-spacing:1.5px}
+        .fG{opacity:0;transition:opacity .5s ease}.fG.show{opacity:1}
+      </style>
+
+      <!-- hypervisor (bottom) -->
+      <g class="fG" data-step="1">
+        <rect x="40" y="312" width="1000" height="52" rx="12" class="fb" stroke="#fbbf24" stroke-width="2"/>
+        <text x="60" y="335" class="fhd" style="fill:#fbbf24">HYPERVISOR</text>
+        <text x="60" y="354" class="fs" style="fill:#9aa7bd">manages VMs · CPU · memory · isolation · scheduling</text>
+        <text x="1020" y="344" text-anchor="end" class="fs" style="fill:#66758f">bare metal / cloud host</text>
+      </g>
+
+      <!-- VMs (middle band) -->
+      <g class="fG" data-step="2">
+        <text x="48" y="296" class="fhd" style="fill:#818cf8">VMs</text>
+        <rect x="40" y="190" width="320" height="92" rx="12" class="fb" stroke="#818cf8"/>
+        <rect x="380" y="190" width="320" height="92" rx="12" class="fb" stroke="#818cf8"/>
+        <rect x="720" y="190" width="320" height="92" rx="12" class="fb" stroke="#818cf8"/>
+        <text x="200" y="245" text-anchor="middle" class="fs" style="fill:#66758f">microVM</text>
+        <text x="540" y="245" text-anchor="middle" class="fs" style="fill:#66758f">microVM</text>
+        <text x="880" y="245" text-anchor="middle" class="fs" style="fill:#66758f">microVM</text>
+      </g>
+
+      <!-- sandboxes (top, one per VM) -->
+      <g class="fG" data-step="3">
+        <text x="48" y="172" class="fhd" style="fill:#5eead4">AGENT SANDBOXES</text>
+        <rect x="56" y="60" width="288" height="100" rx="12" fill="#11151f" stroke="#5eead4"/>
+        <rect x="396" y="60" width="288" height="100" rx="12" fill="#11151f" stroke="#5eead4"/>
+        <rect x="736" y="60" width="288" height="100" rx="12" fill="#11151f" stroke="#5eead4"/>
+        <!-- contents glyphs -->
+        <text x="200" y="92" text-anchor="middle" class="fl" style="fill:#5eead4">📁 project + 🤖 ArkOS</text>
+        <text x="200" y="114" text-anchor="middle" class="fs">agent drives it ⟳</text>
+        <text x="540" y="92" text-anchor="middle" class="fl" style="fill:#5eead4">📁 project + 🤖 ArkOS</text>
+        <text x="540" y="114" text-anchor="middle" class="fs">agent drives it ⟳</text>
+        <text x="880" y="92" text-anchor="middle" class="fl" style="fill:#5eead4">📁 project + 🤖 ArkOS</text>
+        <text x="880" y="114" text-anchor="middle" class="fs">agent drives it ⟳</text>
+        <text x="200" y="140" text-anchor="middle" class="fs" style="fill:#66758f">+ … N more</text>
+        <text x="540" y="140" text-anchor="middle" class="fs" style="fill:#66758f">running in parallel</text>
+        <text x="880" y="140" text-anchor="middle" class="fs" style="fill:#66758f">fully isolated</text>
+      </g>
+    </svg>
+    <p class="note frag" data-diagram-step>One hypervisor schedules many VMs; each VM hosts <b>one agent sandbox</b> — a project plus its own ArkOS agent. No sibling-interference: every project is walled off.</p>
+  </section>
+
+  <!-- ====== ACT 4 · F3 · INSIDE ONE SANDBOX ====== -->
+  <section class="slide">
+    <div class="frag show"><span class="kicker">④ The future · inside a sandbox</span></div>
+    <div class="frag show"><h2>Each sandbox runs <span class="grad">itself</span></h2></div>
+    <svg class="diagram" viewBox="0 0 1080 300" role="img" aria-label="Inside one agent sandbox">
+      <defs><marker id="sa" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#5eead4"/></marker></defs>
+      <style>
+        .sb{fill:#141a27;stroke:#283248;stroke-width:1.5}
+        .sl{fill:#e6ecf5;font-size:16px;font-weight:650}
+        .ss{fill:#9aa7bd;font-size:12.5px;font-family:'SF Mono',monospace}
+        .sflow{fill:none;stroke:#5eead4;stroke-width:2.4}
+        .sG{opacity:0;transition:opacity .45s ease}.sG.show{opacity:1}
+      </style>
+      <!-- sandbox boundary -->
+      <rect x="30" y="20" width="1020" height="260" rx="18" fill="none" stroke="#283248" stroke-dasharray="7 5"/>
+      <text x="52" y="46" class="ss" style="fill:#66758f">sandbox (one microVM)</text>
+
+      <g class="sG" data-step="1">
+        <rect x="80" y="100" width="260" height="100" rx="14" class="sb" stroke="#818cf8"/>
+        <text x="210" y="140" text-anchor="middle" class="sl" style="fill:#a5b0f5">🤖 ArkOS agent</text>
+        <text x="210" y="164" text-anchor="middle" class="ss">workflow as a service</text>
+        <text x="210" y="183" text-anchor="middle" class="ss">grounded · self-evolving</text>
+      </g>
+      <g class="sG" data-step="2">
+        <rect x="740" y="100" width="260" height="100" rx="14" class="sb" stroke="#4ade80"/>
+        <text x="870" y="140" text-anchor="middle" class="sl" style="fill:#4ade80">📁 the project</text>
+        <text x="870" y="164" text-anchor="middle" class="ss">code · tests · git</text>
+        <text x="870" y="183" text-anchor="middle" class="ss">the grounding signal</text>
+      </g>
+      <g class="sG" data-step="3">
+        <path class="sflow" d="M340 130 L 736 130" marker-end="url(#sa)"/>
+        <text x="538" y="120" text-anchor="middle" class="ss" style="fill:#66758f">DESIGN→PLAN→…→COMMIT</text>
+        <path class="sflow" d="M736 172 L 344 172" marker-end="url(#sa)"/>
+        <text x="538" y="192" text-anchor="middle" class="ss" style="fill:#66758f">tests pass / fail → next move</text>
+      </g>
+      <g class="sG" data-step="4">
+        <text x="540" y="248" text-anchor="middle" class="sl" style="fill:#5eead4">⟳ continuously, with no human in the loop</text>
+      </g>
+    </svg>
+    <p class="note frag" data-diagram-step>Gates from Ark · autonomy &amp; grounding from ArkOS · isolation from the sandbox.</p>
+  </section>
+
+  <!-- ====== CLOSE ====== -->
+  <section class="slide vcenter">
+    <div class="frag show close-hero">
+      <svg class="logo" viewBox="0 0 32 32" fill="none"><path d="M16 3 L28 26 H22 L16 13 L10 26 H4 Z" fill="url(#lgF)"/><defs><linearGradient id="lgF" x1="0" y1="0" x2="32" y2="32"><stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#818cf8"/></linearGradient></defs></svg>
+      <h1>Up the <span class="grad">stack</span></h1>
+    </div>
+    <div class="recap frag">
+      <div class="rc c1"><span class="rn">①</span><span class="rt">Agent</span><span class="rd">a model in a loop — the harness makes it reliable</span></div>
+      <div class="rc c2"><span class="rn">②</span><span class="rt">Ark</span><span class="rd">a workflow harness — gates, review, living specs</span></div>
+      <div class="rc c3"><span class="rn">③</span><span class="rt">ArkOS</span><span class="rd">workflow as a service — self-evolving, grounded</span></div>
+      <div class="rc c4"><span class="rn">④</span><span class="rt">The fleet</span><span class="rd">autonomous agents, isolated, at scale</span></div>
+    </div>
+    <div class="frag close-foot">
+      <span class="pill" style="color:var(--accent);border-color:var(--accent)">npm install -g @anekoique/ark</span>
+      <span class="pill">github.com/Anekoique/ark</span>
+      <span class="pill" style="color:var(--accent-2)">Thank you — questions?</span>
+    </div>
+  </section>
+
+</div>
+
+<div class="hud"><span id="hudtxt">1 / 16</span><span class="dots" id="dots"></span></div>
+<div class="hint"><kbd>←</kbd> <kbd>→</kbd> / <kbd>Space</kbd> navigate · <kbd>F</kbd> fullscreen · <kbd>O</kbd> overview</div>
+
+<script>
+(function(){
+  const deck = document.getElementById('deck');
+  const slides = Array.from(deck.querySelectorAll('.slide'));
+  const progress = document.getElementById('progress');
+  const hudtxt = document.getElementById('hudtxt');
+  const slidenum = document.getElementById('slidenum');
+  const dotsWrap = document.getElementById('dots');
+
+  let si = 0;   // slide index
+  let fi = 0;   // how many step-fragments of the current slide are revealed
+
+  // Freeze each slide's step list ONCE, in DOM order. A "step" is any
+  // .frag / .gG / .aG that did NOT carry `show` in the original markup.
+  // Elements pre-marked `show` are always-visible (slide headers, diagrams
+  // shells that pre-render) and are never touched by navigation.
+  const STEPS = slides.map(slide => {
+    const nodes = Array.from(slide.querySelectorAll('.frag, .gG, .aG, .oG, .cG, .eG, .lG, .wG, .fG, .sG, .hG, .pG'));
+    return nodes.filter(n => !n.classList.contains('show'));
+  });
+
+  // dots
+  slides.forEach(() => { const d = document.createElement('span'); d.className = 'd'; dotsWrap.appendChild(d); });
+  const dots = Array.from(dotsWrap.children);
+
+  // Reveal exactly the first `count` steps of slide `idx`; hide the rest.
+  // Deterministic: depends only on (idx, count), never on current classes.
+  function applyFragments(idx, count){
+    const st = STEPS[idx];
+    st.forEach((n, k) => n.classList.toggle('show', k < count));
+  }
+
+  // Show slide `si` with `fi` steps revealed. Used by every navigation path
+  // so the rendered state is a pure function of (si, fi).
+  function render(){
+    slides.forEach((s, i) => {
+      s.classList.toggle('active', i === si);
+      s.classList.toggle('prev', i < si);
+    });
+    applyFragments(si, fi);
+    updateChrome();
+  }
+
+  function next(){
+    if(fi < STEPS[si].length){            // reveal next fragment on this slide
+      fi++;
+    } else if(si < slides.length - 1){    // advance to next slide, none revealed yet
+      si++; fi = 0;
+    } else {
+      return;
+    }
+    render();
+  }
+
+  function prev(){
+    if(fi > 0){                            // hide last fragment on this slide
+      fi--;
+    } else if(si > 0){                     // go back a slide, fully revealed
+      si--; fi = STEPS[si].length;
+    } else {
+      return;
+    }
+    render();
+  }
+
+  // Jump straight to slide `idx` with all its fragments shown.
+  function goto(idx, revealAll){
+    si = Math.max(0, Math.min(slides.length - 1, idx));
+    fi = revealAll ? STEPS[si].length : 0;
+    render();
+  }
+
+  function updateChrome(){
+    const totalSteps = STEPS[si].length;
+    const frac = (si + (totalSteps ? fi/totalSteps : 1)) / slides.length;
+    progress.style.width = (frac*100).toFixed(1)+'%';
+    const n = String(si+1).padStart(2,'0');
+    slidenum.textContent = n;
+    hudtxt.textContent = (si+1)+' / '+slides.length;
+    dots.forEach((d,i)=>d.classList.toggle('on', i===si));
+  }
+
+  // ---- overview mode ----
+  let overview=false;
+  function toggleOverview(){
+    overview=!overview;
+    if(overview){
+      deck.style.transform='scale(.18)';
+      deck.style.transformOrigin='top left';
+      deck.style.transition='transform .4s';
+      // lay slides in a grid
+      const cols=4;
+      slides.forEach((s,i)=>{
+        s.style.transition='none';
+        s.style.opacity='1';s.style.visibility='visible';s.style.transform='none';
+        s.style.position='absolute';
+        s.style.width='100vw';s.style.height='100vh';
+        s.style.left=(i%cols)*100+'vw';
+        s.style.top=Math.floor(i/cols)*100+'vh';
+        s.style.outline=(i===si)?'6px solid #5eead4':'2px solid #283248';
+        s.onclick=()=>{ overview=false; resetFromOverview(); goto(i, true); };
+      });
+    } else { resetFromOverview(); render(); }
+  }
+  function resetFromOverview(){
+    deck.style.transform='none';
+    slides.forEach(s=>{
+      s.style.cssText='';
+      s.onclick=null;
+    });
+  }
+
+  // ---- input ----
+  document.addEventListener('keydown', e=>{
+    if(overview){
+      // Any of Esc / O exits overview back to the current slide.
+      if(e.key==='Escape'||e.key==='o'||e.key==='O'){ toggleOverview(); }
+      return;
+    }
+    switch(e.key){
+      case 'ArrowRight': case ' ': case 'PageDown': case 'Enter': e.preventDefault(); next(); break;
+      case 'ArrowLeft': case 'PageUp': e.preventDefault(); prev(); break;
+      case 'Home': e.preventDefault(); goto(0, false); break;
+      case 'End': e.preventDefault(); goto(slides.length-1, true); break;
+      case 'f': case 'F':
+        if(!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+        else document.exitFullscreen?.();
+        break;
+      case 'o': case 'O': toggleOverview(); break;
+    }
+  });
+
+  // click / tap to advance (ignore clicks on links)
+  document.addEventListener('click', e=>{
+    if(overview) return;
+    if(e.target.closest('a')) return;
+    // right 65% advances, left 35% goes back
+    if(e.clientX > window.innerWidth*0.35) next(); else prev();
+  });
+
+  // touch swipe
+  let tx=0;
+  document.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;},{passive:true});
+  document.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].clientX-tx;
+    if(Math.abs(dx)>40){ dx<0?next():prev(); }
+  },{passive:true});
+
+  render();
+})();
+</script>
+</body>
+</html>
