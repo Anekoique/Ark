@@ -13,9 +13,11 @@ use std::{
 use ark_core::{
     ArchiveOptions, CleanupOptions, ConflictChoice, ConflictPolicy, ContextFormat, ContextOptions,
     ContextScope, DeveloperRegisterOptions, Identity, InitOptions, Layout, LoadOptions, Manifest,
-    PLATFORMS, PhaseFilter, Platform, Prompter, RemoveOptions, UnloadOptions, UpgradeOptions,
-    WriteMode, ark_archive, cleanup, context, developer_register, identity_resolve, identity_write,
-    init, load, remove, restore, scaffold_developer_dir, unload, upgrade,
+    PLATFORMS, PhaseFilter, Platform, Prompter, RemoveOptions, SandboxCreateOptions,
+    SandboxEnterOptions, SandboxListOptions, SandboxRmOptions, SandboxWarmupOptions, UnloadOptions,
+    UpgradeOptions, WriteMode, ark_archive, cleanup, context, developer_register, identity_resolve,
+    identity_write, init, load, remove, restore, sandbox_create, sandbox_enter, sandbox_list,
+    sandbox_rm, sandbox_warmup, scaffold_developer_dir, unload, upgrade,
 };
 use clap::{Parser, Subcommand};
 
@@ -59,10 +61,102 @@ enum Command {
     /// is Committed, Archived, or whose backing branch is gone locally.
     /// Dry-run by default; `--apply` invokes `worktree cleanup` per row.
     Cleanup(CleanupArgs),
+    /// Run a task's worktree inside a confined container.
+    ///
+    /// Opt-in, per task. Reuses the worktree created by `task new --worktree`;
+    /// `create` starts the box, `enter` launches the agent CLI (or bash with
+    /// `--shell`), `rm` tears it down, `list` shows running boxes, `warmup`
+    /// warms the backend ahead of the first `create`. Requires `docker` on
+    /// PATH. The cage confines filesystem + process, not network.
+    Sandbox(SandboxArgs),
     /// Internal commands invoked by the Ark workflow and slash commands.
     /// Not covered by semver — prefer the slash commands over calling these directly.
     #[command(hide = true)]
     Agent(AgentArgs),
+}
+
+#[derive(clap::Args)]
+struct SandboxArgs {
+    #[command(subcommand)]
+    command: SandboxCommand,
+}
+
+#[derive(Subcommand)]
+enum SandboxCommand {
+    /// Start a sandbox container for a task's worktree.
+    Create(SandboxCreateCliArgs),
+    /// Launch the agent CLI (or a shell with `--shell`) inside the sandbox.
+    Enter(SandboxEnterCliArgs),
+    /// Stop and remove the sandbox container.
+    Rm(SandboxRmCliArgs),
+    /// List running Ark sandboxes.
+    List(SandboxListCliArgs),
+    /// Warm any per-backend startup cost so the first `create` is fast.
+    ///
+    /// For the Docker backend this is `docker pull <image>`; backends with no
+    /// meaningful warmup report what they did (or skipped).
+    Warmup(SandboxWarmupCliArgs),
+}
+
+#[derive(clap::Args)]
+struct SandboxCreateCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug (defaults to this checkout's focused task).
+    #[arg(long)]
+    slug: Option<String>,
+    /// Replace an existing sandbox for this task.
+    #[arg(long, default_value_t = false)]
+    recreate: bool,
+    /// Bind-mount host `~/.claude{,.json}` and `~/.codex{,.toml}` into the
+    /// box read-write (overrides `[sandbox] share_host_config`). The in-box
+    /// CLIs inherit the host's login and settings and can refresh the same
+    /// session files the host uses; the documented cost is that an in-box
+    /// agent can write to your host config.
+    #[arg(long = "share-host-config", default_value_t = false)]
+    share_host_config: bool,
+}
+
+#[derive(clap::Args)]
+struct SandboxEnterCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug (defaults to this checkout's focused task).
+    #[arg(long)]
+    slug: Option<String>,
+    /// Open a bash shell instead of the agent CLI.
+    #[arg(long, default_value_t = false)]
+    shell: bool,
+    /// Platform to launch (defaults to the first installed).
+    /// Implies the agent path; conflicts with `--shell`.
+    #[arg(long, conflicts_with = "shell")]
+    platform: Option<String>,
+}
+
+#[derive(clap::Args)]
+struct SandboxRmCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+    /// Task slug (defaults to this checkout's focused task).
+    #[arg(long)]
+    slug: Option<String>,
+    /// Drop the config volume too (destructive — wipes the persisted login
+    /// token). Default keeps the volume so a re-`create` reuses the same
+    /// token without re-login.
+    #[arg(long = "drop-volume", default_value_t = false)]
+    drop_volume: bool,
+}
+
+#[derive(clap::Args)]
+struct SandboxListCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
+}
+
+#[derive(clap::Args)]
+struct SandboxWarmupCliArgs {
+    #[command(flatten)]
+    target: TargetArgs,
 }
 
 #[derive(clap::Args)]
@@ -674,6 +768,51 @@ impl Command {
                     std::process::exit(1);
                 }
             }
+            Self::Sandbox(a) => match a.command {
+                SandboxCommand::Create(c) => {
+                    let root = c.target.resolve_with_discovery()?;
+                    let summary = sandbox_create(SandboxCreateOptions {
+                        project_root: root,
+                        slug: c.slug,
+                        recreate: c.recreate,
+                        share_host_config: c.share_host_config,
+                    })?;
+                    render(summary);
+                }
+                SandboxCommand::Enter(c) => {
+                    let root = c.target.resolve_with_discovery()?;
+                    let summary = sandbox_enter(SandboxEnterOptions {
+                        project_root: root,
+                        slug: c.slug,
+                        shell: c.shell,
+                        platform: c.platform,
+                    })?;
+                    let code = summary.exit_code;
+                    render(summary);
+                    if code != 0 {
+                        std::process::exit(code);
+                    }
+                }
+                SandboxCommand::Rm(c) => {
+                    let root = c.target.resolve_with_discovery()?;
+                    let summary = sandbox_rm(SandboxRmOptions {
+                        project_root: root,
+                        slug: c.slug,
+                        keep_volume: !c.drop_volume,
+                    })?;
+                    render(summary);
+                }
+                SandboxCommand::List(c) => {
+                    let root = c.target.resolve_with_discovery()?;
+                    let summary = sandbox_list(SandboxListOptions { project_root: root })?;
+                    render(summary);
+                }
+                SandboxCommand::Warmup(c) => {
+                    let root = c.target.resolve_with_discovery()?;
+                    let summary = sandbox_warmup(SandboxWarmupOptions { project_root: root })?;
+                    render(summary);
+                }
+            },
             Self::Agent(a) => a.dispatch()?,
         }
         Ok(())
@@ -906,5 +1045,81 @@ mod tests {
         .unwrap();
         assert_eq!(calls, 1);
         assert_eq!(ids(&resolved), ["claude-code"]);
+    }
+
+    /// Parses the four `ark sandbox` subcommands and their flags.
+    #[test]
+    fn cli_sandbox_subcommands_parse() {
+        let parse = |argv: &[&str]| -> SandboxCommand {
+            #[derive(Parser)]
+            #[command(no_binary_name = true)]
+            struct Wrapper {
+                #[command(subcommand)]
+                cmd: Wrapped,
+            }
+            #[derive(Subcommand)]
+            enum Wrapped {
+                Sandbox(SandboxArgs),
+            }
+            let Wrapped::Sandbox(a) = Wrapper::parse_from(argv).cmd;
+            a.command
+        };
+
+        assert!(matches!(
+            parse(&["sandbox", "create", "--slug", "x", "--recreate"]),
+            SandboxCommand::Create(c) if c.slug.as_deref() == Some("x") && c.recreate
+        ));
+        // Default enter path (no flags) → agent; --shell is the bash opt-in;
+        // --platform implies the agent path and overrides first-installed.
+        assert!(matches!(
+            parse(&["sandbox", "enter"]),
+            SandboxCommand::Enter(c) if !c.shell && c.platform.is_none()
+        ));
+        assert!(matches!(
+            parse(&["sandbox", "enter", "--shell"]),
+            SandboxCommand::Enter(c) if c.shell
+        ));
+        assert!(matches!(
+            parse(&["sandbox", "enter", "--platform", "claude"]),
+            SandboxCommand::Enter(c) if !c.shell && c.platform.as_deref() == Some("claude")
+        ));
+        // Default `ark sandbox rm` keeps the volume so the login token
+        // survives the typical teardown; `--drop-volume` is the opt-in wipe.
+        assert!(matches!(
+            parse(&["sandbox", "rm"]),
+            SandboxCommand::Rm(c) if !c.drop_volume
+        ));
+        assert!(matches!(
+            parse(&["sandbox", "rm", "--drop-volume"]),
+            SandboxCommand::Rm(c) if c.drop_volume
+        ));
+        assert!(matches!(
+            parse(&["sandbox", "list"]),
+            SandboxCommand::List(_)
+        ));
+        assert!(matches!(
+            parse(&["sandbox", "warmup"]),
+            SandboxCommand::Warmup(_)
+        ));
+    }
+
+    /// `--platform` and `--shell` are mutually exclusive (shell is the bash
+    /// escape; platform picks an agent CLI).
+    #[test]
+    fn cli_sandbox_shell_and_platform_conflict() {
+        #[derive(Parser)]
+        #[command(no_binary_name = true)]
+        struct Wrapper {
+            #[command(subcommand)]
+            cmd: Wrapped,
+        }
+        #[derive(Subcommand)]
+        enum Wrapped {
+            Sandbox(SandboxArgs),
+        }
+        assert!(
+            Wrapper::try_parse_from(["sandbox", "enter", "--shell", "--platform", "claude"])
+                .is_err()
+        );
     }
 }

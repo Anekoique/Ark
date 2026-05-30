@@ -103,6 +103,23 @@ pub fn clear_focus_for_slug(layout: &Layout, slug: &str) -> Result<()> {
     })
 }
 
+/// Resolves the slug a checkout-scoped command should act on.
+///
+/// `Some(slug)` is returned verbatim. `None` defaults to `state.focus`,
+/// raising [`Error::NoFocus`] (with the active set as resume candidates) when
+/// no focus is bound. The shared focus-defaulting contract for checkout-scoped
+/// commands that need a slug but cannot reach the binary's private resolver.
+pub fn resolve_focus_slug(layout: &Layout, slug: Option<String>) -> Result<String> {
+    if let Some(slug) = slug {
+        return Ok(slug);
+    }
+    let state = load_state(layout)?;
+    state.focus.clone().ok_or_else(|| Error::NoFocus {
+        project_root: layout.root().to_path_buf(),
+        candidates: state.tasks.active.clone(),
+    })
+}
+
 /// Reads `.state.toml` if present, else synthesizes from legacy.
 fn read_or_synthesize(layout: &Layout) -> Result<StateFile> {
     let path = layout.state_file();
@@ -263,6 +280,56 @@ mod tests {
         let state = load_state(&layout).unwrap();
         assert!(state.tasks.active.is_empty());
         assert!(state.focus.is_none());
+    }
+
+    /// Returns the given slug, falls back to focus, and errors with `NoFocus`
+    /// when neither is available.
+    #[test]
+    fn resolve_focus_slug_precedence() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = layout_for(&tmp);
+
+        // Explicit slug wins, no state needed.
+        assert_eq!(
+            resolve_focus_slug(&layout, Some("explicit".into())).unwrap(),
+            "explicit"
+        );
+
+        // No slug, no focus → NoFocus.
+        assert!(matches!(
+            resolve_focus_slug(&layout, None),
+            Err(Error::NoFocus { .. })
+        ));
+
+        // No slug, focus set → focus. Seed a real task dir so reconcile keeps
+        // the slug active (and thus keeps the focus pointing at it).
+        let dir = layout.task_dir("foc");
+        dir.ensure_dir().unwrap();
+        let now = chrono::Utc::now();
+        let toml = crate::commands::agent::state::TaskToml {
+            id: "foc".into(),
+            title: "foc".into(),
+            tier: crate::commands::agent::state::Tier::Quick,
+            phase: crate::commands::agent::state::Phase::Design,
+            iteration: 0,
+            max_iterations: None,
+            created_at: now,
+            updated_at: now,
+            archived_at: None,
+            committed_at: None,
+            branch: None,
+            worktree_path: None,
+            base_branch: None,
+            start_head: None,
+            journal_path: None,
+        };
+        toml.save(&dir).unwrap();
+        state_mutate(&layout, |s| {
+            s.focus = Some("foc".into());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(resolve_focus_slug(&layout, None).unwrap(), "foc");
     }
 
     /// Verifies that pure reads do not delete legacy files.

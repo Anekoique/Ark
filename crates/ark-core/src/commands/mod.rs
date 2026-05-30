@@ -14,6 +14,8 @@ pub mod init;
 pub mod load;
 /// `ark remove` command implementation.
 pub mod remove;
+/// `ark sandbox` container command implementation.
+pub mod sandbox;
 /// `ark unload` command implementation.
 pub mod unload;
 /// `ark upgrade` command implementation.
@@ -32,6 +34,12 @@ pub use context::{
 pub use init::{InitOptions, InitSummary, init};
 pub use load::{LoadOptions, LoadSummary, load};
 pub use remove::{RemoveOptions, RemoveSummary, remove};
+pub use sandbox::{
+    SandboxConfig, SandboxCreateOptions, SandboxCreateSummary, SandboxEnterOptions,
+    SandboxEnterSummary, SandboxListOptions, SandboxListSummary, SandboxRmOptions,
+    SandboxRmSummary, SandboxRow, SandboxWarmupOptions, SandboxWarmupSummary, sandbox_create,
+    sandbox_enter, sandbox_list, sandbox_rm, sandbox_warmup,
+};
 pub use unload::{UnloadOptions, UnloadSummary, unload};
 pub use upgrade::{
     ActionLabel, ConflictChoice, ConflictPolicy, DryRunPreview, Prompter, RestoreSummary,

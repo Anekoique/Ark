@@ -1,0 +1,78 @@
+name: Publish ark-sandbox image
+
+# Build and push the `ark sandbox` container image to GHCR on every release tag.
+# Triggered alongside release.yml by the `vX.Y.Z` tags auto-tag.yml creates, so
+# the image always ships with the matching binary release (SPEC C-15: a release
+# must publish its matching image tag, or `ark sandbox create` fails with
+# ImagePullFailed on that version's default `ghcr.io/anekoique/ark-sandbox:<ver>`).
+
+on:
+  push:
+    # GitHub Actions tag filters use glob syntax (minimatch with `noext: true`),
+    # not regex — `+` is a literal character, not a quantifier. Use `[0-9]*` for
+    # one-or-more digits. The `*-*` variant catches pre-releases (e.g. `-rc.1`).
+    tags:
+      - "v[0-9]*.[0-9]*.[0-9]*"
+      - "v[0-9]*.[0-9]*.[0-9]*-*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to publish (e.g. 0.1.6). Defaults to the workspace version."
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # On a tag push, version = ref minus the leading `v`. On manual dispatch,
+      # use the input if given, else read Cargo.toml. Either way the resulting
+      # tag matches `[sandbox] image`'s default in ark-core::config.rs. Owner is
+      # lowercased — GHCR namespaces are case-sensitive and the binary's
+      # default `image` (`ghcr.io/anekoique/...`) is lowercase by convention.
+      - name: Resolve image tag and owner
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${GITHUB_REF_NAME#v}"
+          elif [ -n "${{ inputs.tag }}" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag=$(awk -F\" '/^version = "/ { print $2; exit }' Cargo.toml)
+          fi
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "owner=$owner" >>"$GITHUB_OUTPUT"
+          echo "Publishing ghcr.io/$owner/ark-sandbox:$tag"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ steps.ver.outputs.owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: sandbox
+          file: sandbox/Dockerfile
+          push: true
+          # Both the version tag and `latest` go up. The version tag is what the
+          # binary's default `image` resolves to; `latest` is a convenience for
+          # ad-hoc local use.
+          tags: |
+            ghcr.io/${{ steps.ver.outputs.owner }}/ark-sandbox:${{ steps.ver.outputs.tag }}
+            ghcr.io/${{ steps.ver.outputs.owner }}/ark-sandbox:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Linux amd64 + arm64 so the image works on both x86 CI and Apple
+          # Silicon laptops without an emulation tax.
+          platforms: linux/amd64,linux/arm64

@@ -7,7 +7,11 @@
 //! - `git` — the only sanctioned `Command::new("git")` site. Kept
 //!   crate-private; callers route through
 //!   [`crate::commands::context::gather`] rather than the raw helper.
+//! - `docker` — the only sanctioned `Command::new("docker")` site, used by
+//!   the `ark sandbox` engine. Crate-private like `git`.
 
+/// `docker` subprocess spawns — the only sanctioned `Command::new("docker")` site.
+pub(crate) mod docker;
 /// Filesystem and text-content helpers.
 pub mod fs;
 pub(crate) mod git;

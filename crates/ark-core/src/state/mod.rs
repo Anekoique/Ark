@@ -16,7 +16,7 @@ pub mod snapshot;
 
 pub use checkout::{
     StateFile, Tasks, clear_focus_for_slug, is_state_tmp, load_state, reconcile_against_disk,
-    state_mutate, synthesize_from_legacy,
+    resolve_focus_slug, state_mutate, synthesize_from_legacy,
 };
 pub use manifest::Manifest;
 pub use snapshot::{SNAPSHOT_FILENAME, Snapshot, SnapshotBlock, SnapshotFile, SnapshotHookBody};
