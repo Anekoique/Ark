@@ -5,9 +5,13 @@ A slide deck that walks the whole stack — from what an agent *is*, up through 
 The deck is a self-contained, full-screen HTML app. **Open it in its own tab for the real experience** — a preview is embedded below it. Inside the deck: arrow keys (or click) to advance, `F` for fullscreen, `O` for an overview grid.
 
 <style>
-/* Scoped to this page only. The deck is a fixed-viewport app whose fonts use
-   viewport units, so it needs real width/height to render legibly — we break
-   the embed out of mdBook's narrow content column to the full window. */
+/* Scoped to this page only. The deck is a fixed-viewport app: its slide layout
+   (`padding:5.5vh 6vw`) and fonts (`clamp(min, Xvw, max)`) are tuned for a real
+   ~1440x900 window. Sized to a narrow embed, every `vw` clamp snaps to its
+   minimum and the slides render cramped and overflowing. So we render the
+   iframe at a FIXED logical 1440x900 — the deck sees a full-screen viewport —
+   then `transform: scale()` it down to fit the embed width. A wrapper reserves
+   the scaled visual height so surrounding content reflows correctly. */
 .ark-deck-launch{
   display:inline-flex;align-items:center;gap:.55em;
   margin:.4rem 0 1.2rem;padding:.7em 1.25em;
@@ -16,18 +20,17 @@ The deck is a self-contained, full-screen HTML app. **Open it in its own tab for
   box-shadow:0 6px 20px rgba(94,234,212,.25);
 }
 .ark-deck-launch:hover{filter:brightness(1.05)}
-.ark-deck-fullbleed{
-  /* pull out of the centered, max-width content column to full window width */
-  width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);
-  margin-top:1rem;margin-bottom:.5rem;
-}
-.ark-deck-fullbleed iframe{
-  display:block;width:100%;height:80vh;min-height:520px;border:0;
-  background:#0b0e14;
+.ark-deck-block{
+  /* `--deck-embed-w` is the on-screen width of the embed: capped at 880px, but
+     shrinking with the window on narrow screens. Uses `vw` (not `%`) so it
+     resolves in the height/scale calc below. Both the button bar and the
+     scaled frame are sized from it and centered. */
+  --deck-embed-w:min(880px, 100vw - 2rem);
+  margin:1rem auto .5rem;
 }
 .ark-deck-bar{
   display:flex;justify-content:flex-end;gap:.5rem;
-  max-width:1100px;margin:0 auto .5rem;padding:0 1rem;
+  width:var(--deck-embed-w);margin:0 auto .5rem;
 }
 .ark-deck-bar button{
   font:inherit;font-size:.85em;cursor:pointer;
@@ -36,6 +39,27 @@ The deck is a self-contained, full-screen HTML app. **Open it in its own tab for
   background:var(--quote-bg,#1b2233);color:inherit;
 }
 .ark-deck-bar button:hover{border-color:#5eead4}
+
+/* The scaled embed. Logical size is 1440x900; `--deck-scale` is the ratio of
+   the embed's display width to 1440. The frame's height is reserved as
+   900 * scale so the scaled-down iframe leaves no dead space. */
+.ark-deck-frame{
+  --deck-w:1440px; --deck-h:900px;
+  /* scale is unitless: embed width (a length) divided by the logical width
+     (also a length) → a pure number, which is what `scale()` requires. */
+  --deck-scale:calc(var(--deck-embed-w) / 1440px);
+  position:relative;width:var(--deck-embed-w);margin:0 auto;
+  overflow:hidden;border-radius:10px;background:#0b0e14;
+  /* reserved visual height = display width * (900/1440) aspect ratio */
+  height:calc(var(--deck-embed-w) * 0.625);
+}
+.ark-deck-frame iframe{
+  position:absolute;top:0;left:0;
+  width:var(--deck-w);height:var(--deck-h);border:0;
+  transform:scale(var(--deck-scale));
+  transform-origin:0 0;   /* scale from top-left so the box fills the frame */
+  background:#0b0e14;
+}
 </style>
 
 <p>
@@ -44,15 +68,17 @@ The deck is a self-contained, full-screen HTML app. **Open it in its own tab for
   </a>
 </p>
 
-<div class="ark-deck-fullbleed">
+<div class="ark-deck-block">
   <div class="ark-deck-bar">
-    <button type="button" onclick="this.closest('.ark-deck-fullbleed').querySelector('iframe').requestFullscreen()">⛶ Fullscreen preview</button>
+    <button type="button" onclick="this.closest('.ark-deck-block').querySelector('iframe').requestFullscreen()">⛶ Fullscreen preview</button>
   </div>
-  <iframe
-    src="ark-deck.html"
-    title="Ark — presentation"
-    loading="lazy"
-    allowfullscreen></iframe>
+  <div class="ark-deck-frame">
+    <iframe
+      src="ark-deck.html"
+      title="Ark — presentation"
+      loading="lazy"
+      allowfullscreen></iframe>
+  </div>
 </div>
 
 > No iframe (print, or a text reader)? Open **[ark-deck.html](./ark-deck.html)** directly.
