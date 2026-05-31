@@ -792,3 +792,30 @@ Actuator tags move to a compact two-line form (`- C-N: @kind[: arg]` / prose); e
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 30: categorize archived tasks by tier
+
+**Date**: 2026-06-01
+**Slug**: categorize-ark-archive
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `d6a3f1f`
+**Closing Commit**: <PENDING:categorize-ark-archive>
+
+### Summary
+
+Archive is now bucketed `tasks/archive/<YYYY-MM>/<tier>/<slug>/` and `ark archive` regenerates a tier-grouped `archive/INDEX.md`.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| archive | layout gains `<tier>/` level; write + context + cleanup paths walk it |
+| archive | `ark archive` regenerates `archive/INDEX.md` from the tree (skips `--dry-run`) |
+| migration | 32 existing archived tasks relocated into tier buckets |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

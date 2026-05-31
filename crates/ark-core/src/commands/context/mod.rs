@@ -448,7 +448,7 @@ mod tests {
         // Seed an archive directory full of synthetic entries to push the
         // raw payload over the cap. ARCHIVE_CAP is 5, so 5 directories with
         // long titles in their task.toml is enough.
-        let archive_root = tmp.path().join(".ark/tasks/archive/2026-05");
+        let archive_root = tmp.path().join(".ark/tasks/archive/2026-05/quick");
         archive_root.ensure_dir().unwrap();
         for i in 0..5 {
             let dir = archive_root.join(format!("synthetic-task-{i:02}"));

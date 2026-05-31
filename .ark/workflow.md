@@ -61,7 +61,7 @@ When in doubt, pick lower. Promotion is cheap; demotion is awkward.
 │   ├── PLAN.md / NN_PLAN.md
 │   ├── NN_REVIEW.md          # deep only
 │   └── VERIFY.md             # standard + deep
-├── tasks/archive/YYYY-MM/    # closed tasks
+├── tasks/archive/YYYY-MM/<tier>/    # closed tasks, bucketed by tier (see INDEX.md)
 └── specs/
     ├── project/<name>/SPEC.md     # user-authored
     └── features/<...>/<name>/SPEC.md    # promoted on deep commit (recursive tree)
@@ -251,7 +251,7 @@ ark archive --month 2026-05       # one bucket
 ark archive --dry-run             # list candidates only
 ```
 
-Moves every `phase = Committed` task to `tasks/archive/YYYY-MM/<slug>/`. Month derived from each task's own `committed_at`. Side-effect-free — no SPEC promotion (already happened on commit), no journal writes.
+Moves every `phase = Committed` task to `tasks/archive/YYYY-MM/<tier>/<slug>/`. Month derived from each task's own `committed_at`, tier from its `task.toml`. Side-effect-free for tasks — no SPEC promotion (already happened on commit), no journal writes. A real run then regenerates `tasks/archive/INDEX.md` (tier-grouped index) from the tree; `--dry-run` does not.
 
 Reopen by hand: move the archived dir back to `.ark/tasks/<slug>/`, set `phase = "verify"`, clear `archived_at`. Refused if a same-slug active task exists.
 

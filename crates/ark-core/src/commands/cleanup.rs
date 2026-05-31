@@ -32,7 +32,7 @@ use crate::{
 pub enum CleanupReason {
     /// Backing task's `task.toml` reports `phase = Committed`.
     Committed,
-    /// Slug exists under `tasks/archive/YYYY-MM/<slug>/` on the parent.
+    /// Slug exists under `tasks/archive/<YYYY-MM>/<tier>/<slug>/` on the parent.
     Archived,
     /// Backing branch is missing from `git branch --list`.
     BranchGone,
@@ -235,7 +235,7 @@ pub fn cleanup(opts: CleanupOptions) -> Result<CleanupSummary> {
     Ok(summary)
 }
 
-/// Walks `.ark/tasks/archive/<YYYY-MM>/<slug>/` and returns the slug set.
+/// Walks `.ark/tasks/archive/<YYYY-MM>/<tier>/<slug>/` and returns the slug set.
 ///
 /// Reads directory names only — no `task.toml` parse needed for membership.
 fn enumerate_archived(layout: &Layout) -> Result<HashSet<String>> {
@@ -251,15 +251,23 @@ fn enumerate_archived(layout: &Layout) -> Result<HashSet<String>> {
         if !month_path.is_dir() {
             continue;
         }
-        for slug_entry in month_path.list_dir()? {
-            let slug_path = slug_entry
+        for tier_entry in month_path.list_dir()? {
+            let tier_path = tier_entry
                 .map_err(|e| crate::error::Error::io(&month_path, e))?
                 .path();
-            if !slug_path.is_dir() {
+            if !tier_path.is_dir() {
                 continue;
             }
-            if let Some(name) = slug_path.file_name().and_then(|n| n.to_str()) {
-                out.insert(name.to_string());
+            for slug_entry in tier_path.list_dir()? {
+                let slug_path = slug_entry
+                    .map_err(|e| crate::error::Error::io(&tier_path, e))?
+                    .path();
+                if !slug_path.is_dir() {
+                    continue;
+                }
+                if let Some(name) = slug_path.file_name().and_then(|n| n.to_str()) {
+                    out.insert(name.to_string());
+                }
             }
         }
     }
@@ -732,6 +740,31 @@ mod tests {
         assert_eq!(summary.successes.len(), 1, "{:?}", summary.successes);
         assert_eq!(summary.failures.len(), 1, "{:?}", summary.failures);
         assert_eq!(summary.failures[0].0, "dirty");
+    }
+
+    /// Walks the `<month>/<tier>/<slug>` archive layout and returns each slug
+    /// regardless of which tier bucket it lives in.
+    #[test]
+    fn enumerate_archived_reads_tier_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        let deep = layout
+            .tasks_archive_dir()
+            .join("2026-05")
+            .join("deep")
+            .join("alpha");
+        deep.ensure_dir().unwrap();
+        let quick = layout
+            .tasks_archive_dir()
+            .join("2026-04")
+            .join("quick")
+            .join("beta");
+        quick.ensure_dir().unwrap();
+
+        let set = enumerate_archived(&layout).unwrap();
+        assert!(set.contains("alpha"), "deep-tier slug missing: {set:?}");
+        assert!(set.contains("beta"), "quick-tier slug missing: {set:?}");
+        assert_eq!(set.len(), 2);
     }
 
     /// Source-scan invariant.

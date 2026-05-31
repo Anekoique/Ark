@@ -157,9 +157,9 @@ fn gather_archive(layout: &Layout) -> Result<ArchiveState> {
     if !archive_root.exists() {
         return Ok(ArchiveState::default());
     }
-    // Layout: archive/YYYY-MM/<slug>/. Walk one level down to find month dirs,
-    // then one more level to find tasks. Collect every task with task.toml,
-    // sort by archived_at desc, take ARCHIVE_CAP.
+    // Layout: archive/<YYYY-MM>/<tier>/<slug>/. Walk month dirs, then tier
+    // dirs, then task dirs. Collect every task with task.toml, sort by
+    // archived_at desc, take ARCHIVE_CAP.
     let mut all: Vec<ArchivedTask> = Vec::new();
     for month_entry in archive_root.list_dir()? {
         let month_entry = month_entry.map_err(|e| crate::error::Error::io(&archive_root, e))?;
@@ -167,30 +167,37 @@ fn gather_archive(layout: &Layout) -> Result<ArchiveState> {
         if !month_path.is_dir() {
             continue;
         }
-        for task_entry in month_path.list_dir()? {
-            let task_entry = task_entry.map_err(|e| crate::error::Error::io(&month_path, e))?;
-            let task_path = task_entry.path();
-            if !task_path.is_dir() {
+        for tier_entry in month_path.list_dir()? {
+            let tier_entry = tier_entry.map_err(|e| crate::error::Error::io(&month_path, e))?;
+            let tier_path = tier_entry.path();
+            if !tier_path.is_dir() {
                 continue;
             }
-            let Some(slug) = task_path.file_name().and_then(|n| n.to_str()) else {
-                continue;
-            };
-            let Ok(toml) = TaskToml::load(&task_path) else {
-                continue;
-            };
-            let archived_at: DateTime<Utc> = toml.archived_at.unwrap_or(toml.updated_at);
-            let relative = task_path
-                .strip_prefix(layout.root())
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|_| task_path.clone());
-            all.push(ArchivedTask {
-                slug: slug.to_string(),
-                title: toml.title.clone(),
-                tier: toml.tier,
-                archived_at,
-                path: relative,
-            });
+            for task_entry in tier_path.list_dir()? {
+                let task_entry = task_entry.map_err(|e| crate::error::Error::io(&tier_path, e))?;
+                let task_path = task_entry.path();
+                if !task_path.is_dir() {
+                    continue;
+                }
+                let Some(slug) = task_path.file_name().and_then(|n| n.to_str()) else {
+                    continue;
+                };
+                let Ok(toml) = TaskToml::load(&task_path) else {
+                    continue;
+                };
+                let archived_at: DateTime<Utc> = toml.archived_at.unwrap_or(toml.updated_at);
+                let relative = task_path
+                    .strip_prefix(layout.root())
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|_| task_path.clone());
+                all.push(ArchivedTask {
+                    slug: slug.to_string(),
+                    title: toml.title.clone(),
+                    tier: toml.tier,
+                    archived_at,
+                    path: relative,
+                });
+            }
         }
     }
     all.sort_by_key(|a| std::cmp::Reverse(a.archived_at));
@@ -927,14 +934,17 @@ mod tests {
         );
     }
 
+    /// Walks the `<month>/<tier>/<slug>` archive layout and lists archived
+    /// tasks newest-first, with the tier segment reflected in each path.
     #[test]
-    fn gather_archive_lists_recent_first() {
+    fn gather_archive_reads_tier_layout() {
         let tmp = arked_tempdir();
         let layout = Layout::new(tmp.path());
-        let month = layout.tasks_archive_dir().join("2026-04");
-        month.ensure_dir().unwrap();
+        // Both tasks are tier=deep → stored under archive/2026-04/deep/.
+        let tier_dir = layout.tasks_archive_dir().join("2026-04").join("deep");
+        tier_dir.ensure_dir().unwrap();
         for (slug, archived) in [("a", "2026-04-01T00:00:00Z"), ("b", "2026-04-22T00:00:00Z")] {
-            let task_dir = month.join(slug);
+            let task_dir = tier_dir.join(slug);
             task_dir.ensure_dir().unwrap();
             task_dir
                 .join("task.toml")
@@ -953,5 +963,14 @@ mod tests {
         assert_eq!(ctx.archive.recent.len(), 2);
         assert_eq!(ctx.archive.recent[0].slug, "b");
         assert_eq!(ctx.archive.recent[1].slug, "a");
+        // Path reflects the tier segment.
+        assert!(
+            ctx.archive.recent[0]
+                .path
+                .to_string_lossy()
+                .contains("archive/2026-04/deep/b"),
+            "got {}",
+            ctx.archive.recent[0].path.display()
+        );
     }
 }

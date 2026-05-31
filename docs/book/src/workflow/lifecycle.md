@@ -34,7 +34,7 @@ Every task moves through the same states. Quick skips most of them; standard and
        └─────┬──────┘  single git commit; rollback on any pre-commit failure
              ▼
        ┌────────────┐
-       │  ARCHIVE   │  bulk-move Committed tasks to tasks/archive/YYYY-MM/
+       │  ARCHIVE   │  bulk-move Committed tasks to tasks/archive/YYYY-MM/<tier>/
        └────────────┘  via top-level `ark archive`
 ```
 
@@ -117,7 +117,7 @@ VERIFY is **single-pass**. Unlike REVIEW, it doesn't loop. If the verdict is rej
 
 ## ARCHIVE — preserve as memory
 
-**Purpose.** Move every `phase = Committed` task into `tasks/archive/YYYY-MM/<slug>/`, where the month is derived from the task's own `committed_at` timestamp. Side-effect-free: no SPEC promotion, no git work — that already happened at COMMIT time.
+**Purpose.** Move every `phase = Committed` task into `tasks/archive/YYYY-MM/<tier>/<slug>/`, where the month is derived from the task's own `committed_at` timestamp. Side-effect-free: no SPEC promotion, no git work — that already happened at COMMIT time.
 
 **Calls.**
 - `ark archive` (top-level, manager-only) — bulk-archives every committed task. `--month YYYY-MM` filters; `--dry-run` lists candidates without moving anything.

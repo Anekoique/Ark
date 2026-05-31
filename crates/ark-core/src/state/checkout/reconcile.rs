@@ -226,8 +226,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let layout = layout_for(&tmp);
         write_task(&layout, "active", Phase::Design);
-        // Manually create a fake archived task under archive/2026-01/old.
-        let arch = layout.tasks_archive_dir().join("2026-01").join("old");
+        // Manually create a fake archived task under archive/2026-01/quick/old.
+        let arch = layout
+            .tasks_archive_dir()
+            .join("2026-01")
+            .join("quick")
+            .join("old");
         arch.ensure_dir().unwrap();
         let toml = TaskToml {
             id: "old".into(),

@@ -9,7 +9,7 @@ Remove an unarchived Ark task: drop the slug from the active set, clear any sess
 ## Preconditions
 
 - `.ark/` is initialized.
-- The task is **not** archived. Already-archived tasks live under `tasks/archive/YYYY-MM/<slug>/` and are not touched by this command.
+- The task is **not** archived. Already-archived tasks live under `tasks/archive/YYYY-MM/<tier>/<slug>/` and are not touched by this command.
 
 ## Steps
 

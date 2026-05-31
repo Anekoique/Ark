@@ -1,17 +1,22 @@
-//! `ark archive` — bulk-archive every committed task into its month bucket.
+//! `ark archive` — bulk-archive every committed task into its month/tier bucket.
 //!
 //! Manager-only (visible) top-level CLI. Iterates `.ark/tasks/<slug>/` for
 //! every entry with `phase = Committed && committed_at = Some(...)` and
 //! invokes [`task_archive_move`] per slug, deriving the `YYYY-MM` bucket
-//! from the task's own `committed_at` timestamp. **No SPEC promotion.**
-//! That already happened at `task_commit` time.
+//! from the task's own `committed_at` timestamp and the tier from its
+//! `task.toml`. **No SPEC promotion.** That already happened at
+//! `task_commit` time. A real (non-`--dry-run`) run then regenerates
+//! `tasks/archive/INDEX.md` from the tree via [`write_archive_index`].
 
 use std::{fmt, path::PathBuf};
 
 use crate::{
-    commands::agent::{
-        state::{Phase, TaskToml},
-        task::archive::{TaskArchiveMoveOptions, TaskArchiveMoveSummary, task_archive_move},
+    commands::{
+        agent::{
+            state::{Phase, TaskToml},
+            task::archive::{TaskArchiveMoveOptions, TaskArchiveMoveSummary, task_archive_move},
+        },
+        archive_index::write_archive_index,
     },
     error::{Error, Result},
     layout::Layout,
@@ -100,7 +105,14 @@ pub fn ark_archive(opts: ArchiveOptions) -> Result<ArchiveSummary> {
             continue;
         }
         if opts.dry_run {
-            let dest = layout.tasks_archive_dir().join(&archive_month).join(&slug);
+            // Read the task's tier so the previewed path matches what
+            // `task_archive_move` would actually write: <month>/<tier>/<slug>.
+            let tier = TaskToml::load(&layout.task_dir(&slug))?.tier;
+            let dest = layout
+                .tasks_archive_dir()
+                .join(&archive_month)
+                .join(tier.dir_name())
+                .join(&slug);
             summary
                 .planned
                 .push((slug, dest.to_string_lossy().into_owned()));
@@ -114,6 +126,16 @@ pub fn ark_archive(opts: ArchiveOptions) -> Result<ArchiveSummary> {
             Ok(s) => summary.successes.push(s),
             Err(e) => summary.failures.push((slug, e.to_string())),
         }
+    }
+
+    // Regenerate the tier-grouped index so it always reflects the post-move
+    // tree. Real runs only (`--dry-run` is read-only). Runs even when nothing
+    // moved (e.g. a `--month` filter matched no candidates) so a hand-edited
+    // or stale index is reconciled on any real invocation — but only when an
+    // archive tree actually exists, so a no-op run on a fresh install does not
+    // fabricate an empty index.
+    if !opts.dry_run && layout.tasks_archive_dir().is_dir() {
+        write_archive_index(&layout)?;
     }
 
     Ok(summary)
@@ -266,8 +288,12 @@ mod tests {
 
         // not_ready stays put.
         assert!(tmp.path().join(".ark/tasks/not_ready").exists());
-        // ready moved to 2026-05.
-        assert!(tmp.path().join(".ark/tasks/archive/2026-05/ready").exists());
+        // ready moved to 2026-05 under its tier bucket.
+        assert!(
+            tmp.path()
+                .join(".ark/tasks/archive/2026-05/quick/ready")
+                .exists()
+        );
     }
 
     /// Verifies that `archive_month` is derived from `committed_at`, not the
@@ -294,7 +320,7 @@ mod tests {
         assert!(
             archive_path
                 .to_string_lossy()
-                .contains(".ark/tasks/archive/2026-03/old"),
+                .contains(".ark/tasks/archive/2026-03/quick/old"),
             "archive_path must use committed_at's YYYY-MM (2026-03), got {}",
             archive_path.display()
         );
@@ -350,7 +376,65 @@ mod tests {
         assert_eq!(summary.planned.len(), 1);
         assert!(summary.successes.is_empty());
         assert!(tmp.path().join(".ark/tasks/demo").exists());
-        assert!(!tmp.path().join(".ark/tasks/archive/2026-05/demo").exists());
+        assert!(
+            !tmp.path()
+                .join(".ark/tasks/archive/2026-05/quick/demo")
+                .exists()
+        );
+    }
+
+    /// Verifies a real archive run regenerates `archive/INDEX.md` so it lists
+    /// the just-archived task.
+    #[test]
+    fn ark_archive_regenerates_index() {
+        use crate::io::PathExt;
+        let tmp = tempfile::tempdir().unwrap();
+        quick_task(tmp.path(), "indexed");
+        force_committed_at(
+            tmp.path(),
+            "indexed",
+            Utc.with_ymd_and_hms(2026, 5, 1, 0, 0, 0).unwrap(),
+        );
+
+        ark_archive(ArchiveOptions {
+            project_root: tmp.path().to_path_buf(),
+            month: None,
+            dry_run: false,
+        })
+        .unwrap();
+
+        let layout = Layout::new(tmp.path());
+        let index = layout.tasks_archive_index().read_text().unwrap();
+        assert!(index.contains("## quick (1)"), "{index}");
+        assert!(
+            index.contains("[indexed](2026-05/quick/indexed/)"),
+            "{index}"
+        );
+    }
+
+    /// Verifies `--dry-run` does not write `archive/INDEX.md`.
+    #[test]
+    fn ark_archive_dry_run_does_not_write_index() {
+        let tmp = tempfile::tempdir().unwrap();
+        quick_task(tmp.path(), "demo");
+        force_committed_at(
+            tmp.path(),
+            "demo",
+            Utc.with_ymd_and_hms(2026, 5, 1, 0, 0, 0).unwrap(),
+        );
+
+        ark_archive(ArchiveOptions {
+            project_root: tmp.path().to_path_buf(),
+            month: None,
+            dry_run: true,
+        })
+        .unwrap();
+
+        let layout = Layout::new(tmp.path());
+        assert!(
+            !layout.tasks_archive_index().exists(),
+            "dry-run must not write INDEX.md"
+        );
     }
 
     /// Verifies idempotency: re-running over the same set is a no-op.

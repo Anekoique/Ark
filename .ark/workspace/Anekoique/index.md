@@ -36,6 +36,7 @@
 | 27  | 2026-05-31 | add spec actuators                                                 | `spec-actuators`           | `feat/spec-actuators`          | <PENDING:spec-actuators>          | `journal-1.md` |
 | 28  | 2026-05-31 | tag feature SPECs with actuators                                   | `tag-feature-specs`        | `feat/spec-actuators`          | <PENDING:tag-feature-specs>       | `journal-1.md` |
 | 29 | 2026-05-31 | add `-a` stage-all option to ark-commit | `commit-stage-all` | `main` | <PENDING:commit-stage-all> | `journal-1.md` |
+| 30 | 2026-06-01 | categorize archived tasks by tier | `categorize-ark-archive` | `main` | <PENDING:categorize-ark-archive> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

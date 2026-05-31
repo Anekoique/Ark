@@ -4,6 +4,8 @@
 pub mod agent;
 /// `ark archive` bulk-archive command implementation.
 pub mod archive;
+/// `tasks/archive/INDEX.md` renderer + writer.
+pub mod archive_index;
 /// `ark cleanup` worktree-pruning command implementation.
 pub mod cleanup;
 /// `ark context` state snapshot command implementation.

@@ -58,7 +58,10 @@ impl fmt::Display for TaskArchiveMoveSummary {
     }
 }
 
-/// Moves a committed task into `tasks/archive/<archive_month>/<slug>/`.
+/// Moves a committed task into `tasks/archive/<archive_month>/<tier>/<slug>/`.
+///
+/// The `<tier>` segment is read from the task's own `task.toml`, so quick /
+/// standard / deep / research tasks land in separate buckets within a month.
 ///
 /// Performs no SPEC promotion — that happens at
 /// `task_commit` time and are already part of the task-closing commit.
@@ -68,7 +71,7 @@ impl fmt::Display for TaskArchiveMoveSummary {
 /// Returns [`Error::TaskNotFound`] if the slug has no active task directory,
 /// [`Error::IllegalPhaseTransition`] if the task is not in `Committed`, and
 /// [`Error::TaskAlreadyExists`] if a same-slug archive entry already exists
-/// in the destination month.
+/// in the destination month/tier bucket.
 pub fn task_archive_move(opts: TaskArchiveMoveOptions) -> Result<TaskArchiveMoveSummary> {
     validate_slug(&opts.slug)?;
 
@@ -82,12 +85,20 @@ pub fn task_archive_move(opts: TaskArchiveMoveOptions) -> Result<TaskArchiveMove
     check_transition(toml.tier, toml.phase, Phase::Archived)?;
     let tier = toml.tier;
 
-    let archive_parent = layout.tasks_archive_dir().join(&opts.archive_month);
+    let archive_parent = layout
+        .tasks_archive_dir()
+        .join(&opts.archive_month)
+        .join(tier.dir_name());
     archive_parent.ensure_dir()?;
     let archive_path = archive_parent.join(&opts.slug);
     if archive_path.exists() {
         return Err(Error::TaskAlreadyExists {
-            slug: format!("archive/{}/{}", opts.archive_month, opts.slug),
+            slug: format!(
+                "archive/{}/{}/{}",
+                opts.archive_month,
+                tier.dir_name(),
+                opts.slug
+            ),
         });
     }
 
@@ -372,6 +383,40 @@ mod tests {
         toml.save(&task_dir).unwrap();
     }
 
+    /// Places a quick task and a standard task in different tier buckets under
+    /// the same month, proving the archive path's `<tier>` segment is read from
+    /// each task's own `task.toml`.
+    #[test]
+    fn ark_archive_writes_tier_segment() {
+        let tmp = tempfile::tempdir().unwrap();
+        standard_at_committed(tmp.path()); // slug "demo", Standard
+        quick_at_committed(tmp.path()); // slug "qd", Quick
+
+        let std_move = task_archive_move(TaskArchiveMoveOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+            archive_month: "2026-05".into(),
+        })
+        .unwrap();
+        let quick_move = task_archive_move(TaskArchiveMoveOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "qd".into(),
+            archive_month: "2026-05".into(),
+        })
+        .unwrap();
+
+        assert!(
+            std_move.archive_path.ends_with("2026-05/standard/demo"),
+            "got {}",
+            std_move.archive_path.display()
+        );
+        assert!(
+            quick_move.archive_path.ends_with("2026-05/quick/qd"),
+            "got {}",
+            quick_move.archive_path.display()
+        );
+    }
+
     #[test]
     fn standard_archive_moves_dir_and_clears_current() {
         let tmp = tempfile::tempdir().unwrap();
@@ -390,8 +435,8 @@ mod tests {
         assert!(
             s.archive_path
                 .to_string_lossy()
-                .contains(".ark/tasks/archive/2026-05/demo"),
-            "archive_month must select the directory: got {}",
+                .contains(".ark/tasks/archive/2026-05/standard/demo"),
+            "archive path must be <month>/<tier>/<slug>: got {}",
             s.archive_path.display()
         );
         let state = crate::state::load_state(&Layout::new(tmp.path())).unwrap();

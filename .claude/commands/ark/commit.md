@@ -1,6 +1,6 @@
 ---
 description: Close out the current (or a named) Ark task. Atomically commits work + task.toml + (deep) SPEC in one git commit.
-argument-hint: "[-m <message>] [--no-commit] [<slug>]"
+argument-hint: "[-m <message>] [-a] [--no-commit] [<slug>]"
 ---
 
 # `/ark:commit $ARGUMENTS`
@@ -12,7 +12,7 @@ Close an Ark task by committing the user's staged work plus the Ark-managed clos
 - Task has reached its tier's pre-commit phase:
   - **Quick:** `phase = "execute"`
   - **Standard / Deep:** `phase = "verify"` (VERIFY.md filled)
-- **User has staged work first.** `/ark:commit` only stages Ark-managed artifacts; user code must already be in the index. Empty staging area → `NothingStaged` error.
+- **User has staged work first.** `/ark:commit` only stages Ark-managed artifacts; user code must already be in the index. Empty staging area → `NothingStaged` error. Pass `-a` to stage every tracked + untracked change (`git add -A`) first; incompatible with `--no-commit`.
 - **Deep tier:** VERIFY.md has no `PENDING` items / unresolved Findings (gate refuses).
 - **Standard tier:** pending VERIFY entries warn but do not block.
 
@@ -69,6 +69,8 @@ If `.ark/.developer` is absent, skip this step.
 
 ```bash
 ark agent task commit -m "<message>"
+# pass -a to stage every tracked + untracked change before committing:
+ark agent task commit -a -m "<message>"
 # or to skip the git commit entirely:
 ark agent task commit --no-commit
 ```

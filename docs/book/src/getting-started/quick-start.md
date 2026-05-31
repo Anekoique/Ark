@@ -61,7 +61,7 @@ Open Claude Code (or Codex, or OpenCode) in the project and trigger a slash comm
 /ark:commit              # atomically close out the current task
 ```
 
-The full slash-command set: `quick`, `design`, `commit`, `research`, plus the helpers `resume` (refocus this session on an active slug), `discard` (drop an unarchived task), `spec-extract` (author a SPEC from existing code), `spec-audit` (check SPEC actuator-tag health), and `record` (journal a note). Each command kicks off a workflow with the matching tier. The agent walks you through writing a PRD, then a PLAN (for standard/deep), then implements, then verifies. Tasks live in `.ark/tasks/<slug>/` while active and move to `.ark/tasks/archive/YYYY-MM/<slug>/` on close-out.
+The full slash-command set: `quick`, `design`, `commit`, `research`, plus the helpers `resume` (refocus this session on an active slug), `discard` (drop an unarchived task), `spec-extract` (author a SPEC from existing code), `spec-audit` (check SPEC actuator-tag health), and `record` (journal a note). Each command kicks off a workflow with the matching tier. The agent walks you through writing a PRD, then a PLAN (for standard/deep), then implements, then verifies. Tasks live in `.ark/tasks/<slug>/` while active and move to `.ark/tasks/archive/YYYY-MM/<tier>/<slug>/` on close-out.
 
 For the full mental model, jump to [Workflow → Tiers](../workflow/tiers.md). For a complete walkthrough of one task end-to-end, see [Your First Task](./first-task.md).
 

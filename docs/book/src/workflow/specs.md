@@ -64,7 +64,7 @@ The block is **required on deep tier**; a missing or malformed block fails the c
 
 For a project adopting Ark mid-life — where the feature already exists in code but has no SPEC — use `/ark:spec-extract <feature-name>` (which drives `ark agent spec import`). It produces a `specs/features/<slug>/SPEC.md` from the existing codebase without faking a deep-tier task.
 
-To trace a feature back to the originating task: every entry in the features INDEX has a `Promoted` column with the date and source slug, and the archived task dir under `.ark/tasks/archive/YYYY-MM/<slug>/` carries the full PRD/PLAN/REVIEW history.
+To trace a feature back to the originating task: every entry in the features INDEX has a `Promoted` column with the date and source slug, and the archived task dir under `.ark/tasks/archive/YYYY-MM/<tier>/<slug>/` carries the full PRD/PLAN/REVIEW history.
 
 ## Read pattern
 

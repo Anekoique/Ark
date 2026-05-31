@@ -62,7 +62,7 @@ This calls `ark agent task commit`, which lands the staged work in a single git 
 ## What you have at the end
 
 - One commit on the branch (the typo fix itself, plus the `task.toml` flip).
-- A `phase = committed` task ready for `ark archive` to move it into `.ark/tasks/archive/<YYYY-MM>/`.
+- A `phase = committed` task ready for `ark archive` to move it into `.ark/tasks/archive/<YYYY-MM>/<tier>/`.
 - An archived `PRD.md` you can grep for later.
 
 ## What about the other tiers?

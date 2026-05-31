@@ -26,6 +26,22 @@ pub enum Tier {
     Research,
 }
 
+impl Tier {
+    /// Returns the lowercase directory segment used in the archive layout
+    /// (`tasks/archive/<YYYY-MM>/<tier>/<slug>/`).
+    ///
+    /// Single source of truth for the segment — matches the `serde`
+    /// `rename_all = "lowercase"` form without coupling to `Debug` output.
+    pub fn dir_name(self) -> &'static str {
+        match self {
+            Tier::Quick => "quick",
+            Tier::Standard => "standard",
+            Tier::Deep => "deep",
+            Tier::Research => "research",
+        }
+    }
+}
+
 /// Lifecycle phase recorded in a task's `task.toml`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -459,6 +475,15 @@ mod tests {
         assert!(s.contains(r#"phase = "research""#), "{s}");
         let back: Wrap = toml::from_str(&s).unwrap();
         assert_eq!(back.phase, Phase::Research);
+    }
+
+    /// Verifies the archive-layout tier segment matches the serde lowercase form.
+    #[test]
+    fn tier_dir_name_is_lowercase() {
+        assert_eq!(Tier::Quick.dir_name(), "quick");
+        assert_eq!(Tier::Standard.dir_name(), "standard");
+        assert_eq!(Tier::Deep.dir_name(), "deep");
+        assert_eq!(Tier::Research.dir_name(), "research");
     }
 
     /// Verifies that `Archived` is reachable only from `Committed`, across every tier.

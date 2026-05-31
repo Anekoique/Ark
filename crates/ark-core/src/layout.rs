@@ -267,6 +267,11 @@ impl Layout {
         self.root.join(TASKS_ARCHIVE_DIR)
     }
 
+    /// Returns the tier-grouped archive index file (`tasks/archive/INDEX.md`).
+    pub fn tasks_archive_index(&self) -> PathBuf {
+        self.tasks_archive_dir().join("INDEX.md")
+    }
+
     /// Returns the file that records the current Ark task slug.
     pub fn tasks_current(&self) -> PathBuf {
         self.root.join(TASKS_CURRENT_FILE)
