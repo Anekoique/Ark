@@ -263,7 +263,7 @@ enum SpecCommand {
     /// Import a feature SPEC authored from an existing codebase.
     ///
     /// Brownfield counterpart to `spec extract`: the SPEC body is authored
-    /// externally (typically by `/ark:extract-spec`) and imported as
+    /// externally (typically by `/ark:spec-extract`) and imported as
     /// `specs/features/<feature>/SPEC.md` with a provenance CHANGELOG entry
     /// and a `from-task = "extracted"` row in the features INDEX.
     Import(SpecImportCliArgs),

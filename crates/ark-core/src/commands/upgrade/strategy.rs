@@ -138,7 +138,7 @@ mod tests {
         (tmp, layout)
     }
 
-    /// V-UT-1: missing file and missing section both yield empty sets.
+    /// Missing file and missing section both yield empty sets.
     #[test]
     fn load_or_default_empty_when_absent() {
         let tmp = tempfile::tempdir().unwrap();
@@ -151,7 +151,7 @@ mod tests {
         assert!(cfg.ejected.is_empty() && cfg.merged.is_empty());
     }
 
-    /// V-UT-1: a full `[upgrade]` section round-trips.
+    /// A full `[upgrade]` section round-trips.
     #[test]
     fn load_or_default_round_trips_full_section() {
         let (_t, layout) = layout_with_config(
@@ -166,7 +166,7 @@ mod tests {
         );
     }
 
-    /// V-UT-9: corrupt `[upgrade]` is an upgrade error, never a worktree one.
+    /// Corrupt `[upgrade]` is an upgrade error, never a worktree one.
     #[test]
     fn corrupt_upgrade_section_is_upgrade_error() {
         let (_t, layout) = layout_with_config("[upgrade]\nejected = \"not-an-array\"\n");
@@ -177,7 +177,7 @@ mod tests {
         );
     }
 
-    /// V-003: an unknown key under `[upgrade]` (e.g. a typo) fails fast.
+    /// An unknown key under `[upgrade]` (e.g. a typo) fails fast.
     #[test]
     fn unknown_upgrade_key_is_rejected() {
         let (_t, layout) = layout_with_config("[upgrade]\nejcted = [\".ark/workflow.md\"]\n");
@@ -188,7 +188,7 @@ mod tests {
         );
     }
 
-    /// V-UT-2: a managed-block file in `merged` is rejected.
+    /// A managed-block file in `merged` is rejected.
     #[test]
     fn validate_rejects_merged_managed_block_file() {
         let layout = Layout::new("/proj");
@@ -206,7 +206,7 @@ mod tests {
         ));
     }
 
-    /// V-UT-3: overlap and unsafe paths are rejected.
+    /// Overlap and unsafe paths are rejected.
     #[test]
     fn validate_rejects_overlap_and_unsafe() {
         let layout = Layout::new("/proj");
@@ -229,7 +229,7 @@ mod tests {
         ));
     }
 
-    /// V-UT-4: `strategy_for` resolves each strategy.
+    /// `strategy_for` resolves each strategy.
     #[test]
     fn strategy_for_resolves() {
         let cfg = UpgradeConfig {

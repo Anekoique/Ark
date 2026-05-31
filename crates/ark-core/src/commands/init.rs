@@ -603,7 +603,7 @@ mod tests {
     }
 
     /// Verifies that `ark init` installs all three Ark subagents under each
-    /// selected platform (V-IT-2 from the `subagent-support` PLAN).
+    /// selected platform.
     #[test]
     fn init_installs_agents_for_all_selected_platforms() {
         let tmp = tempfile::tempdir().unwrap();
@@ -625,7 +625,7 @@ mod tests {
     }
 
     /// Verifies that `ark init --claude --no-codex --no-opencode` installs only
-    /// Claude's agents (V-IT-4 from the `subagent-support` PLAN).
+    /// Claude's agents.
     #[test]
     fn init_skips_agents_for_unselected_platforms() {
         use crate::platforms::CLAUDE_PLATFORM;
@@ -637,7 +637,7 @@ mod tests {
     }
 
     /// Verifies that a user-authored agent at a non-reserved stem survives
-    /// `ark init` (V-F-4 from the `subagent-support` PLAN).
+    /// `ark init`.
     #[test]
     fn user_authored_agent_at_non_reserved_stem_survives_init() {
         let tmp = tempfile::tempdir().unwrap();
@@ -657,7 +657,7 @@ mod tests {
     }
 
     /// Verifies that a user-authored agent at a RESERVED stem is overwritten
-    /// by `ark init` (V-E-4 from the `subagent-support` PLAN; closes V-002).
+    /// by `ark init`.
     #[test]
     fn init_overwrites_user_agent_at_reserved_stem() {
         let tmp = tempfile::tempdir().unwrap();

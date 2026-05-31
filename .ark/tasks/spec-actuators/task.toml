@@ -1,0 +1,14 @@
+id = "spec-actuators"
+title = "add SPEC actuators"
+tier = "deep"
+phase = "committed"
+iteration = 1
+max_iterations = 3
+created_at = "2026-05-30T07:52:46.500727Z"
+updated_at = "2026-05-31T04:31:20.761727Z"
+committed_at = "2026-05-31T04:31:20.761727Z"
+branch = "feat/spec-actuators"
+worktree_path = ".ark/worktrees/feat/spec-actuators"
+base_branch = "main"
+start_head = "e702f30b1c96c22f560072ebfc26c1644f1f3f52"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

@@ -111,7 +111,7 @@ ark agent spec extract --slug auth                # extract PLAN's `## Spec` →
 ark agent spec register --slug auth               # upsert row in specs/features/INDEX.md
 ```
 
-The destination path comes from the PRD's `[**SPEC Path**]` block — slash-separated, leaf-to-root INDEX upsert. See [Specs](../workflow/specs.md) for the recursive layout. For a feature that already exists in code but has no SPEC, `ark agent spec import` (via `/ark:extract-spec`) authors one without a deep-tier task.
+The destination path comes from the PRD's `[**SPEC Path**]` block — slash-separated, leaf-to-root INDEX upsert. See [Specs](../workflow/specs.md) for the recursive layout. For a feature that already exists in code but has no SPEC, `ark agent spec import` (via `/ark:spec-extract`) authors one without a deep-tier task.
 
 ## Defaults
 

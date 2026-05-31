@@ -32,7 +32,7 @@ pub fn three_way_merge(base: &[u8], ours: &[u8], theirs: &[u8]) -> MergeOutcome 
 mod tests {
     use super::*;
 
-    /// V-UT-5 (clean): disjoint edits merge without conflict.
+    /// Disjoint edits merge without conflict.
     #[test]
     fn disjoint_edits_merge_clean() {
         let base = b"line1\nline2\nline3\n";
@@ -47,7 +47,7 @@ mod tests {
         assert!(!text.contains("<<<<<<<"));
     }
 
-    /// V-UT-5 (conflict): overlapping edits produce Git-style markers.
+    /// Overlapping edits produce Git-style markers.
     #[test]
     fn overlapping_edits_conflict_with_git_markers() {
         let base = b"shared line\n";
@@ -64,7 +64,7 @@ mod tests {
         assert!(text.contains("their version"));
     }
 
-    /// V-UT-6: non-UTF-8 bytes round-trip through a clean merge.
+    /// Non-UTF-8 bytes round-trip through a clean merge.
     #[test]
     fn non_utf8_round_trips() {
         // A disjoint edit that keeps the non-UTF-8 byte sequence intact.

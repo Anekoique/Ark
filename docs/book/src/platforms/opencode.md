@@ -13,7 +13,8 @@
 │   ├── research.md       # /ark:research $ARGUMENTS
 │   ├── resume.md         # /ark:resume $ARGUMENTS
 │   ├── discard.md        # /ark:discard $ARGUMENTS
-│   ├── extract-spec.md   # /ark:extract-spec $ARGUMENTS
+│   ├── spec-extract.md   # /ark:spec-extract $ARGUMENTS
+│   ├── spec-audit.md     # /ark:spec-audit $ARGUMENTS
 │   └── record.md         # /ark:record $ARGUMENTS
 ├── agents/               # ark-researcher, ark-reviewer, ark-verifier
 │   ├── ark-researcher.md

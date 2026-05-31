@@ -321,6 +321,8 @@ Two layers, opposite ownership rules.
 
 **Divergence:** REVIEW must flag a PLAN that contradicts an existing feature SPEC as CRITICAL. The PLAN either conforms or explicitly updates the SPEC.
 
+**Actuator tags (optional):** a constraint may end its first line with `⟨@<kind>: <arg>⟩` saying how it is enforced — `tool`, `source-scan`, `test-binding`, or `judgment`. VERIFY runs the check for the first three and judges `judgment`/untagged rules itself; untagged defaults to judgment. `/ark:spec-audit` checks tag health and helps add tags.
+
 ---
 
 ## CLI surfaces

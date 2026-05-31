@@ -24,3 +24,7 @@ Use `INDEX.md` when an area has multiple sub-specs that need their own hierarchy
 
 - **Read:** scan the table; open the relevant `SPEC.md`. If the entry is an `INDEX.md`, follow it recursively until you reach the concrete specs that apply to the files you'll touch.
 - **Add:** create either `<name>/SPEC.md` (single focused spec) or `<name>/INDEX.md` (area with multiple child specs). Append a row here, or in the nearest parent `INDEX.md`.
+
+## Optional: actuator tags
+
+A rule may end with an actuator tag saying how it is enforced: `⟨@tool: <cmd>⟩`, `⟨@source-scan: <pattern> @ <glob>⟩`, `⟨@test-binding: <test>⟩`, or `⟨@judgment⟩`. Optional and per-rule — untagged means judgment-by-default. Run `/ark:spec-audit` to check tag health and help add tags.

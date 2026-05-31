@@ -251,7 +251,7 @@ mod tests {
     }
 
     /// Multi-line body (two tokens on separate lines) → InvalidFeaturePath
-    /// with reason "body must be a single token" (V-003 closure).
+    /// with reason "body must be a single token".
     #[test]
     fn multi_line_body_errors() {
         let body = "[**SPEC Path**]\n\nxemu/csr\nklib\n";
@@ -263,7 +263,7 @@ mod tests {
     }
 
     /// Multi-token body on one line → InvalidFeaturePath with reason
-    /// "body must be a single token" (V-003 closure).
+    /// "body must be a single token".
     #[test]
     fn multi_token_body_errors() {
         let body = "[**SPEC Path**]\n\n`xemu/csr` `klib`\n";

@@ -711,3 +711,31 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 27: add spec actuators
+
+**Date**: 2026-05-31
+**Slug**: spec-actuators
+**Branch**: `feat/spec-actuators`
+**Base Branch**: `main`
+**Start Head**: `e702f30`
+**Closing Commit**: <PENDING:spec-actuators>
+
+### Summary
+
+SPEC constraints can declare an inline actuator tag (tool/source-scan/test-binding/judgment); the verifier honors it and `/ark:spec-audit` checks tag health.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| specs | Ark's COMMENTS/STYLE/ERRORS rules tagged; LAYOUT.md L-9 adds the inline tag grammar |
+| skill | `/ark:spec-audit` added; `extract-spec` renamed `spec-extract`, across all platforms |
+| agent | `ark-verifier` honors actuator tags; judges only judgment/untagged rules |
+| docs | workflow.md Specs section + book pages document actuator tags and the rename |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

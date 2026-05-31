@@ -455,7 +455,7 @@ mod tests {
         assert!(s.features.is_empty());
     }
 
-    /// V-IT-9 / R-204: the commit projection is body-free per the
+    /// The commit projection is body-free per the
     /// `ark-context` SPEC's additive-only schema. Slash commands must read
     /// VERIFY.md and the latest plan from the artifact paths the projection
     /// already carries on `current_task`, not from any payload field.

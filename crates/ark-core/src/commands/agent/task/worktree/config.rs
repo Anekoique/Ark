@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(cfg.post_create, default_post_create());
     }
 
-    /// V-UT-1: default `post_create` initializes submodules.
+    /// Default `post_create` initializes submodules.
     #[test]
     fn worktree_config_default_post_create_has_submodule_init() {
         assert_eq!(
@@ -164,7 +164,7 @@ mod tests {
         );
     }
 
-    /// V-UT-2: shipped template's `[worktree].post_create` matches the code default.
+    /// Shipped template's `[worktree].post_create` matches the code default.
     #[test]
     fn worktree_template_default_matches_code() {
         let template = include_str!("../../../../../../../templates/ark/config.toml");

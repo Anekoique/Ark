@@ -1,9 +1,9 @@
 ---
-name: ark-extract-spec
+name: ark-spec-extract
 description: Extract a feature SPEC from an existing codebase for brownfield Ark adoption. Produces specs/features/<slug>/SPEC.md without faking a deep-tier task. Use when the project already implements the feature and Ark needs a SPEC to reference.
 ---
 
-# `ark-extract-spec <feature-name> [hint]`
+# `ark-spec-extract <feature-name> [hint]`
 
 Author a feature SPEC for an existing implementation, then register it in the features INDEX with a provenance CHANGELOG entry. Use when the project already ships the feature (an OS kernel with copy-on-write, a webapp with auth) and Ark needs a SPEC to reference, but no deep-tier task ever produced one.
 
@@ -56,7 +56,7 @@ Read every confirmed source in full. Then author the SPEC body in the feature-SP
 - Do NOT add a `[**CHANGELOG**]` section — `spec import` stamps the provenance entry.
 - The SPEC describes *what was built*, not *how the extraction happened*. Process metadata belongs nowhere in the body.
 
-Write the body to a tempfile (`.ark/.extract-spec-<slug>.md` or any path the skill can clean up).
+Write the body to a tempfile (`.ark/.spec-extract-<slug>.md` or any path the skill can clean up).
 
 ## Phase 4 — Import
 
@@ -65,7 +65,7 @@ SHA=$(git rev-parse --short HEAD)
 ark agent spec import \
     --feature "<slug>" \
     --scope "<one-line intent from Phase 2>" \
-    --from-file ".ark/.extract-spec-<slug>.md" \
+    --from-file ".ark/.spec-extract-<slug>.md" \
     --from-commit "$SHA"
 ```
 

@@ -13,7 +13,8 @@
 │   ├── research.md       # /ark:research <topic>
 │   ├── resume.md         # /ark:resume <slug>
 │   ├── discard.md        # /ark:discard [<slug>] [--force]
-│   ├── extract-spec.md   # /ark:extract-spec <feature-name> [hint]
+│   ├── spec-extract.md   # /ark:spec-extract <feature-name> [hint]
+│   ├── spec-audit.md     # /ark:spec-audit
 │   └── record.md         # /ark:record [<title>]
 ├── agents/
 │   ├── ark-researcher.md # dispatched during DESIGN/PLAN
@@ -36,7 +37,8 @@ The `.claude/commands/ark/` files are slash-command bodies. Each one carries Cla
 | `/ark:commit`      | `/ark:commit [-m <msg>] [<slug>]`    | Atomically close the current (or named) task in one git commit. Deep tier promotes SPEC. |
 | `/ark:resume`      | `/ark:resume <slug>`                 | Refocus this session on an existing active slug. Idempotent.                          |
 | `/ark:discard`     | `/ark:discard [<slug>] [--force]`    | Remove an unarchived task. Refuses without `--force` if seeded files have user content. |
-| `/ark:extract-spec`| `/ark:extract-spec <feature> [hint]` | Author a feature SPEC from existing code (brownfield), no deep-tier task required.    |
+| `/ark:spec-extract`| `/ark:spec-extract <feature> [hint]` | Author a feature SPEC from existing code (brownfield), no deep-tier task required.    |
+| `/ark:spec-audit`  | `/ark:spec-audit`                   | Audit SPEC constraints for actuator-tag health; offers self-fix or agent-assisted.    |
 | `/ark:record`      | `/ark:record [<title>]`              | Append a manual entry to the developer's workspace journal.                           |
 
 Each tier command body starts by calling `ark context --scope phase --for <phase> --format json` to orient itself, then guides the agent through the rest of the phase.

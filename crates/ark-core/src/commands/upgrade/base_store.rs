@@ -46,7 +46,7 @@ impl<'a> UpgradeBaseStore<'a> {
 mod tests {
     use super::*;
 
-    /// V-UT-7: record / read round-trip; `base_for` is `None` when absent.
+    /// Record / read round-trip; `base_for` is `None` when absent.
     #[test]
     fn record_read_round_trip_and_absent() {
         let tmp = tempfile::tempdir().unwrap();

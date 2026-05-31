@@ -82,7 +82,7 @@ mod tests {
     use super::*;
     use crate::io::PathExt;
 
-    /// V-UT-7: Claude stems include user agents alongside Ark canonicals,
+    /// Claude stems include user agents alongside Ark canonicals,
     /// sorted, emitted with the `claude` `cli_flag` tag.
     #[test]
     fn enumerates_claude_stems_with_user_agents() {
@@ -98,7 +98,7 @@ mod tests {
         assert_eq!(out[0].stems, vec!["ark-reviewer", "code-reviewer"]);
     }
 
-    /// V-UT-8: Platform dir absent → no row emitted (not an empty-stems
+    /// Platform dir absent → no row emitted (not an empty-stems
     /// row).
     #[test]
     fn skips_platform_dir_that_does_not_exist() {
@@ -108,7 +108,7 @@ mod tests {
         assert!(out.is_empty(), "expected no rows, got {out:?}");
     }
 
-    /// V-UT-9: Codex stems derive from `.toml` filenames; non-matching
+    /// Codex stems derive from `.toml` filenames; non-matching
     /// extensions are skipped.
     #[test]
     fn enumerates_codex_stems_from_toml_files() {
@@ -126,7 +126,7 @@ mod tests {
         assert_eq!(out[0].stems, vec!["ark-reviewer", "custom-helper"]);
     }
 
-    /// V-UT-10: Symlinked entries are skipped.
+    /// Symlinked entries are skipped.
     #[cfg(unix)]
     #[test]
     fn skips_symlinked_entries() {
@@ -142,7 +142,7 @@ mod tests {
         assert_eq!(out[0].stems, vec!["real"]);
     }
 
-    /// V-E-2: Zero installed agents anywhere → empty `Vec`.
+    /// Zero installed agents anywhere → empty `Vec`.
     #[test]
     fn returns_empty_when_no_platform_dirs_exist() {
         let tmp = tempfile::tempdir().unwrap();

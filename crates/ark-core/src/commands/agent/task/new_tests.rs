@@ -447,9 +447,9 @@ fn worktree_branch_type_override() {
     assert!(tmp.path().join(".ark/worktrees/fix/foo").is_dir());
 }
 
-// ---- V-IT-1 / V-IT-2 / V-IT-3 / V-E-1: identity-sync + submodule defaults ----
+// ---- / / / : identity-sync + submodule defaults ----
 
-/// V-IT-1: parent identity is mirrored into the new worktree.
+/// Parent identity is mirrored into the new worktree.
 #[test]
 fn worktree_creation_mirrors_parent_identity() {
     let tmp = init_repo(); // seeds .ark/.developer = "test-dev"
@@ -475,7 +475,7 @@ fn worktree_creation_mirrors_parent_identity() {
     assert_eq!(content.trim(), "test-dev");
 }
 
-/// V-IT-2: missing parent identity in non-TTY context returns MissingIdentity
+/// Missing parent identity in non-TTY context returns MissingIdentity
 /// and rolls back the worktree dir.
 #[test]
 fn worktree_creation_fails_on_missing_identity_when_non_tty() {
@@ -502,7 +502,7 @@ fn worktree_creation_fails_on_missing_identity_when_non_tty() {
     );
 }
 
-/// V-IT-3: default `post_create` (submodule init) is a safe no-op in repos
+/// Default `post_create` (submodule init) is a safe no-op in repos
 /// without `.gitmodules`.
 #[test]
 fn worktree_post_create_default_runs_submodule_init() {
@@ -520,7 +520,7 @@ fn worktree_post_create_default_runs_submodule_init() {
     assert!(tmp.path().join(".ark/worktrees/feat/foo").is_dir());
 }
 
-/// V-E-1: explicit `post_create = []` overrides the default.
+/// Explicit `post_create = []` overrides the default.
 #[test]
 fn worktree_creation_succeeds_when_user_overrides_post_create_to_empty() {
     let tmp = init_repo();

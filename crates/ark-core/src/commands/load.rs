@@ -453,7 +453,7 @@ mod tests {
     }
 
     /// Verifies that `unload` then `load` round-trips agent files for every
-    /// platform (V-IT-5a/b/c from the `subagent-support` PLAN; closes R-001).
+    /// platform.
     ///
     /// Claude is the load-bearing case: its narrow `removal_root`
     /// (`.claude/commands/ark/`) does not cover `.claude/agents/`, so this

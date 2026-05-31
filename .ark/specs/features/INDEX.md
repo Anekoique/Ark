@@ -25,6 +25,7 @@ The table below is managed by `ark agent spec register` — new rows appear when
 | `ark-context`              | improve ark context                                                     | 2026-05-24 from task `improve-ark-context`      |
 | `ark-upgrade` | improve ark upgrade | 2026-05-26 from task `improve-ark-upgrade` |
 | `ark-sandbox` | add ark sandbox | 2026-05-30 from task `ark-sandbox` |
+| `spec-actuators` | add SPEC actuators | 2026-05-31 from task `spec-actuators` |
 
 <!-- ARK:FEATURES:END -->
 

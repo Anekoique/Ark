@@ -2,7 +2,7 @@
 //!
 //! The brownfield counterpart to [`super::extract::spec_extract`]: instead of
 //! pulling a `## Spec` section out of a deep-tier PLAN, the SPEC body is
-//! authored externally (typically by `/ark:extract-spec`) and handed to this
+//! authored externally (typically by `/ark:spec-extract`) and handed to this
 //! verb as a file. Writes `specs/features/<slug>/SPEC.md`, stamps a
 //! provenance entry into `[**CHANGELOG**]`, and upserts the index row through
 //! the same managed-block helper `spec_register` uses.

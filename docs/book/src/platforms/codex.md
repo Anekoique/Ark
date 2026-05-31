@@ -13,7 +13,8 @@
 │   ├── ark-research/SKILL.md
 │   ├── ark-resume/SKILL.md
 │   ├── ark-discard/SKILL.md
-│   ├── ark-extract-spec/SKILL.md
+│   ├── ark-spec-extract/SKILL.md
+│   ├── ark-spec-audit/SKILL.md
 │   └── ark-record/SKILL.md
 ├── agents/               # ark-researcher, ark-reviewer, ark-verifier (TOML)
 │   ├── ark-researcher.toml

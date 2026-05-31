@@ -1168,7 +1168,7 @@ mod tests {
         std::fs::write(&cfg, format!("{head}\n\n[upgrade]\n{body}")).unwrap();
     }
 
-    /// V-IT-1: an `ejected` path is untouched even under `--force`.
+    /// An `ejected` path is untouched even under `--force`.
     #[test]
     fn ejected_path_untouched_by_force() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1188,7 +1188,7 @@ mod tests {
         assert!(summary.ejected_skipped >= 1);
     }
 
-    /// V-IT-2 + V-UT-8: `--dry-run` after an edit reports an action and mutates nothing.
+    /// `--dry-run` after an edit reports an action and mutates nothing.
     #[test]
     fn dry_run_reports_and_mutates_nothing() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1215,7 +1215,7 @@ mod tests {
         assert!(!tmp.path().join(".ark/.upgrade-backup").exists());
     }
 
-    /// V-002: `--dry-run --force` previews the chosen non-interactive policy
+    /// `--dry-run --force` previews the chosen non-interactive policy
     /// (overwrite), not a coerced Skip, and still mutates nothing.
     #[test]
     fn dry_run_force_previews_overwrite() {
@@ -1246,7 +1246,7 @@ mod tests {
         store.record(Path::new(relative), &current).unwrap();
     }
 
-    /// V-IT-3: a `merged` file with disjoint edits merges cleanly.
+    /// A `merged` file with disjoint edits merges cleanly.
     #[test]
     fn merged_disjoint_edits_merge_clean() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1273,7 +1273,7 @@ mod tests {
         );
     }
 
-    /// V-IT-4: overlapping edits produce conflict markers.
+    /// Overlapping edits produce conflict markers.
     #[test]
     fn merged_overlapping_edits_write_conflict_markers() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1293,7 +1293,7 @@ mod tests {
         // User changes the shared line; "theirs" (desired) is just the manifest
         // file again — to force a real conflict we drive three_way_merge via a
         // diverged on-disk + diverged desired. Use the merge module directly
-        // for the marker assertion (the apply path is covered by V-IT-3).
+        // for the marker assertion (the apply path is covered by the disjoint-merge test).
         let outcome = merge::three_way_merge(b"shared\n", b"ours\n", b"theirs\n");
         let merge::MergeOutcome::Conflict(bytes) = outcome else {
             panic!("expected conflict");
@@ -1302,7 +1302,7 @@ mod tests {
         assert!(text.contains("<<<<<<<") && text.contains(">>>>>>>"));
     }
 
-    /// V-IT-5 + V-E-4: a `merged` path with no base falls back to the conflict pipeline.
+    /// A `merged` path with no base falls back to the conflict pipeline.
     #[test]
     fn merged_without_base_falls_back_to_conflict_skip() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1327,7 +1327,7 @@ mod tests {
         );
     }
 
-    /// V-IT-8 (C-19): a no-base merged path the user Skips stays on fallback
+    /// A no-base merged path the user Skips stays on fallback
     /// across repeated upgrades — it never silently starts merging.
     #[test]
     fn merged_no_base_skip_stays_on_fallback() {
@@ -1357,7 +1357,7 @@ mod tests {
         );
     }
 
-    /// V-IT-7: the user's existing `[upgrade]` section survives upgrade
+    /// The user's existing `[upgrade]` section survives upgrade
     /// byte-for-byte as a prefix; any template-shipped sections the user is
     /// missing get appended without disturbing what they wrote.
     #[test]
@@ -1488,7 +1488,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&cfg).unwrap(), user);
     }
 
-    /// V-F-4: invalid `[upgrade]` config halts before any file is written.
+    /// Invalid `[upgrade]` config halts before any file is written.
     #[test]
     fn invalid_upgrade_config_halts_pre_mutation() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1507,7 +1507,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "user edit");
     }
 
-    /// V-F-3 + V-IT-9: a successful upgrade leaves a backup that `--restore`
+    /// A successful upgrade leaves a backup that `--restore`
     /// rolls back to the pre-upgrade tree.
     #[test]
     fn restore_after_success_returns_pre_upgrade_tree() {
@@ -1529,7 +1529,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "user edit");
     }
 
-    /// V-F-2: `--restore` with no backup errors.
+    /// `--restore` with no backup errors.
     #[test]
     fn restore_without_backup_errors() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1538,7 +1538,7 @@ mod tests {
         assert!(matches!(err, Error::NoBackupToRestore { .. }));
     }
 
-    /// V-F-1 + V-F-5 + C-20: when apply fails mid-flight, the backup restores
+    /// When apply fails mid-flight, the backup restores
     /// both the user's files and the manifest to their pre-upgrade state.
     #[test]
     fn apply_failure_rolls_back_files_and_manifest() {
@@ -1580,7 +1580,7 @@ mod tests {
         );
     }
 
-    /// V-E-1: empty `[upgrade]` sets behave exactly like today (no regression).
+    /// Empty `[upgrade]` sets behave exactly like today (no regression).
     #[test]
     fn empty_upgrade_config_is_noop_after_init() {
         let tmp = tempfile::tempdir().unwrap();

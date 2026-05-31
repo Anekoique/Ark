@@ -33,6 +33,7 @@
 | 24 | 2026-05-27 | improve ark upgrade | `improve-ark-upgrade` | `feat/improve-ark-upgrade` | <PENDING:improve-ark-upgrade> | `journal-1.md` |
 | 25 | 2026-05-30 | `ark sandbox` confines a task's worktree in a Docker container | `ark-sandbox` | `feat/ark-sandbox` | <PENDING:ark-sandbox> | `journal-1.md` |
 | 26 | 2026-05-30 | `ark upgrade` appends missing config.toml sections | `fix-config-toml-upgrade` | `main` | <PENDING:fix-config-toml-upgrade> | `journal-1.md` |
+| 27 | 2026-05-31 | add spec actuators | `spec-actuators` | `feat/spec-actuators` | <PENDING:spec-actuators> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

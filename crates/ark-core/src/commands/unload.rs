@@ -267,7 +267,7 @@ mod tests {
         assert!(!tmp.path().join(".gitignore").exists());
     }
 
-    /// V-E-2: the upgrade sidecar dirs are skipped by both unload walks (so a
+    /// The upgrade sidecar dirs are skipped by both unload walks (so a
     /// round-trip drops recorded bases) and the snapshot never carries them.
     #[test]
     fn unload_skips_upgrade_sidecar_dirs() {

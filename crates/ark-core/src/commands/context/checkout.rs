@@ -119,7 +119,7 @@ mod tests {
         (tmp, layout)
     }
 
-    /// V-UT-1a: `detect_checkout` returns `Main` when `Layout::root` is
+    /// `detect_checkout` returns `Main` when `Layout::root` is
     /// the main git checkout.
     #[test]
     fn returns_main_when_layout_is_main_checkout() {
@@ -129,7 +129,7 @@ mod tests {
         assert_eq!(info.branch, "main");
     }
 
-    /// V-UT-1b: `detect_checkout` returns `Worktree` when `Layout::root`
+    /// `detect_checkout` returns `Worktree` when `Layout::root`
     /// is a worktree checkout created via `git worktree add`.
     #[test]
     fn returns_worktree_when_layout_is_worktree() {
@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(info.branch, "feat/test");
     }
 
-    /// V-UT-2 / V-F-1: `detect_checkout` defaults to `Main` when no git
+    /// `detect_checkout` defaults to `Main` when no git
     /// repo is present (and never panics).
     #[test]
     fn defaults_to_main_in_non_git_tempdir() {
@@ -166,7 +166,7 @@ mod tests {
         assert_eq!(info.root_kind, CheckoutRootKind::Main);
     }
 
-    /// V-UT-3: `detect_checkout` populates `focus_slug` from
+    /// `detect_checkout` populates `focus_slug` from
     /// `.state.toml` and returns `None` when no focus is bound.
     #[test]
     fn focus_slug_reads_state_toml_when_bound() {

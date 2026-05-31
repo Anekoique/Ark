@@ -615,7 +615,7 @@ mod tests {
         assert_eq!(keys, sorted, "actions must be sort-key-ordered");
     }
 
-    /// V-UT-10: the new variants occupy their C-16 buckets and stay sorted.
+    /// The new variants occupy their C-16 buckets and stay sorted.
     #[test]
     fn new_action_variants_sort_into_their_buckets() {
         let p = PathBuf::from("z.md");

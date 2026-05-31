@@ -4,7 +4,7 @@ An agent harness and development workflow for orchestrating AI-driven programmin
 
 Use the simple CLI `ark` to define your AI workflow and manage coding agents in your project.
 
-📖 **See the [deck](https://anekoique.github.io/Ark/ark-deck.html)** for the design.
+**See the [deck](https://anekoique.github.io/Ark/ark-deck.html)** for design details.
 
 > **Status**: Ark is experimental and some features are unstable.
 
@@ -67,7 +67,7 @@ On first run, Ark scaffolds:
 ├── quick.md              # /ark:quick
 ├── design.md             # /ark:design [--deep]
 ├── research.md           # /ark:research
-└── …                     # commit, resume, discard, record, extract-spec
+└── …                     # commit, resume, discard, record, spec-extract, spec-audit
 
 CLAUDE.md                 # managed block pointing the agent at .ark/
 ```

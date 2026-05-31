@@ -711,7 +711,7 @@ mod tests {
         );
     }
 
-    /// V-IT-3 (Claude+OpenCode half): the `research.md` bodies under
+    /// The `research.md` bodies under
     /// `templates/claude/commands/ark/` and `templates/opencode/commands/ark/`
     /// are byte-identical after stripping their respective frontmatter blocks.
     #[test]
@@ -735,7 +735,7 @@ mod tests {
         );
     }
 
-    /// V-IT-3 (Codex half): the Codex `ark-research/SKILL.md` body matches the
+    /// The Codex `ark-research/SKILL.md` body matches the
     /// Claude `research.md` body after applying the inverse of C-11's
     /// substitution map.
     ///

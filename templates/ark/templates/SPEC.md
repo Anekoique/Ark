@@ -48,7 +48,9 @@ fn ...
 
 > Invariants the implementation must hold. One declarative sentence each, ≤120 chars. Cite the source of truth (a constant, a test, a file path) when one exists. **No paragraphs, no multi-sentence rationale** — if a rule needs justification, the *why* belongs in PLAN's Trade-offs, not here.
 >
-> Good: `C-1: ark context emits exactly one stdout write per invocation.`
+> Optionally end a constraint with an actuator tag `⟨@<kind>: <arg>⟩`: `tool`, `source-scan` (`<pattern> @ <glob>`), `test-binding` (a test id), or `judgment`. The arg names a real test or command — never a `V-*` label.
+>
+> Good: `C-1: ark context emits exactly one stdout write per invocation. ⟨@test-binding: <your_test_fn_name>⟩` (the arg names a real test in your suite)
 > Bad:  `C-1: ark context emits exactly one stdout write per invocation: JSON via a single pre-rendered string + trailing newline, text via a single Display write + trailing newline. No interspersed debug prints.`  ← the elaboration is the *how*; the constraint is the first sentence.
 
 - C-1:
