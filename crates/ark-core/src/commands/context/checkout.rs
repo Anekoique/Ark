@@ -190,7 +190,6 @@ mod tests {
                   title = \"demo\"\n\
                   tier = \"quick\"\n\
                   phase = \"execute\"\n\
-                  iteration = 0\n\
                   created_at = \"2026-05-24T00:00:00Z\"\n\
                   updated_at = \"2026-05-24T00:00:00Z\"\n",
             )

@@ -15,7 +15,7 @@ ark context [OPTIONS]
 The output covers:
 
 - Git state: current branch, HEAD, dirty file count and a capped list of dirty paths, recent commits.
-- Active task: slug, tier, phase, iteration, artifact paths.
+- Active task: slug, tier, phase, artifact paths.
 - Other active tasks (across worktrees).
 - Project specs index.
 - Feature specs index, optionally filtered by the active PRD's `[**Related Specs**]`.

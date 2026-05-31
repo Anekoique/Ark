@@ -63,7 +63,6 @@ fn creates_task_dir_prd_toml_and_current() {
 
     let loaded = TaskToml::load(&task_dir).unwrap();
     assert_eq!(loaded.phase, Phase::Design);
-    assert_eq!(loaded.iteration, 0);
 }
 
 #[test]
@@ -119,21 +118,6 @@ fn rejects_invalid_title() {
     })
     .unwrap_err();
     assert!(matches!(err, Error::InvalidTaskField { .. }));
-}
-
-#[test]
-fn deep_tier_seeds_max_iterations() {
-    let tmp = tempfile::tempdir().unwrap();
-    task_new(TaskNewOptions {
-        project_root: tmp.path().to_path_buf(),
-        slug: "deep1".into(),
-        title: "t".into(),
-        tier: Tier::Deep,
-        worktree: None,
-    })
-    .unwrap();
-    let toml = TaskToml::load(&tmp.path().join(".ark/tasks/deep1")).unwrap();
-    assert_eq!(toml.max_iterations, Some(3));
 }
 
 /// Verifies that `task new --worktree` scaffolds inside the worktree.
@@ -561,8 +545,6 @@ fn task_new_with_tier_research_starts_in_phase_research() {
     let toml = TaskToml::load(&task_dir).unwrap();
     assert_eq!(toml.tier, Tier::Research);
     assert_eq!(toml.phase, Phase::Research);
-    // Research tier does not allocate review iterations.
-    assert!(toml.max_iterations.is_none());
 }
 
 /// `task_new` on the research tier with `--worktree` produces the same

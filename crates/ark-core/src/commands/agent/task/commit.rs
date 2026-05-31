@@ -1610,8 +1610,8 @@ mod e2e {
         })
         .unwrap();
         tmp.path()
-            .join(".ark/tasks/deep/00_PLAN.md")
-            .write_bytes(b"# plan 00\n## Spec\n\n[**Goals**]\n- G-1: v1\n\n## Runtime\nrt\n")
+            .join(".ark/tasks/deep/PLAN.md")
+            .write_bytes(b"# plan\n## Spec\n\n[**Goals**]\n- G-1: v1\n\n## Runtime\nrt\n")
             .unwrap();
         task_review(TaskPhaseOptions {
             project_root: tmp.path().to_path_buf(),

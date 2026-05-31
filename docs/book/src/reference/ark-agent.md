@@ -60,23 +60,21 @@ ark agent task commit
 ark agent task new --slug rate-limit --title "add rate limit" --tier standard
 # ... fill PRD ...
 ark agent task plan
-# ... fill 00_PLAN.md ...
+# ... fill PLAN.md ...
 ark agent task execute
 # ... edit code, stage work ...
 ark agent task verify
 # ... fill VERIFY.md ...
 ark agent task commit
 
-# Deep — review loop adds two more.
+# Deep — adds a single REVIEW step.
 ark agent task new --slug auth --title "auth refactor" --tier deep --worktree
 cd .ark/worktrees/feat/auth
 # ... fill PRD ...
 ark agent task plan
-# ... fill 00_PLAN.md ...
+# ... fill PLAN.md ...
 ark agent task review
-# ... fill 00_REVIEW.md ...
-# If revisions needed: copy NN_PLAN.md / NN_REVIEW.md to NN+1_*, bump iteration in task.toml,
-# reset phase = "plan", and run `ark agent task review` again.
+# ... fill REVIEW.md, then fold its findings into PLAN.md in place ...
 ark agent task execute
 # ... edit, stage ...
 ark agent task verify
@@ -130,7 +128,7 @@ The state machine enforces legal transitions and rejects illegal ones. Common er
 - `WorktreeDirty` — `worktree cleanup` without `--force` on a worktree with uncommitted changes.
 - `NoFocus` — a non-targeted verb run with no `[focus]` bound; run `task new` or `task resume --slug <s>` first.
 
-Hand-edits to `task.toml` are sometimes the right escape hatch (specifically: bumping `iteration`, resetting `phase` to `plan`, or reopening an archived task). The state machine is small and the file is short; the agent does this when needed and the slash commands document when.
+Hand-edits to `task.toml` are sometimes the right escape hatch (specifically: reopening an archived task by resetting `phase` to `verify` and clearing `archived_at`). The state machine is small and the file is short; the agent does this when needed and the slash commands document when.
 
 ## See also
 

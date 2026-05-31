@@ -31,7 +31,7 @@
 
 ## Plan Fidelity
 
-> Auto-seeded from the latest `NN_PLAN.md`'s `## Spec` Goals (`G-N`). PASS when delivered, FAIL when not, N/A when withdrawn (PLAN's Log explains).
+> Auto-seeded from `PLAN.md`'s `## Spec` Goals (`G-N`). PASS when delivered, FAIL when not, N/A when withdrawn (the PLAN explains).
 
 {{PLAN_FIDELITY}}
 

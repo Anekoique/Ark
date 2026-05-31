@@ -518,7 +518,6 @@ mod tests {
             title: "title".to_string(),
             tier: crate::commands::agent::state::Tier::Deep,
             phase: crate::commands::agent::state::Phase::Plan,
-            iteration: 0,
             path: PathBuf::from(".ark/tasks/task"),
             updated_at: Utc::now(),
         }

@@ -11,7 +11,7 @@ Ark is a small CLI (`ark`) plus a directory layout (`.ark/`) that gives an AI co
 AI coding agents work better with a harness.
 
 - **Right ceremony, right task.** Four tiers — quick fix, feature, deep refactor, and research — each with the minimum process that fits.
-- **Reviewed, not rubber-stamped.** PLAN ↔ REVIEW iteration on deep work; a VERIFY gate before every archive. Optional `ark-researcher` / `ark-reviewer` / `ark-verifier` subagents at the phases where a second set of eyes pays off.
+- **Reviewed, not rubber-stamped.** A REVIEW gate before EXECUTE on deep work; a VERIFY gate before every archive. Optional `ark-researcher` / `ark-reviewer` / `ark-verifier` subagents at the phases where a second set of eyes pays off.
 - **Plain markdown, no hidden magic.** Tasks and specs live in `.ark/`, diffable and git-tracked. Ark writes only what it tracks; round-tripping `unload` → `load` preserves user-edited and user-added files losslessly.
 - **Multi-platform.** Ships first-class integrations for Claude Code, Codex, and OpenCode out of the box.
 

@@ -404,7 +404,6 @@ mod tests {
             title: "demo".to_string(),
             tier: Tier::Quick,
             phase: Phase::Execute,
-            iteration: 0,
             path: PathBuf::from(".ark/tasks/demo"),
             updated_at: Utc::now(),
         };
@@ -459,7 +458,6 @@ mod tests {
 title = "{title}"
 tier = "quick"
 phase = "archived"
-iteration = 0
 created_at = "2026-05-01T00:00:00Z"
 updated_at = "2026-05-01T00:00:00Z"
 archived_at = "2026-05-01T00:00:00Z"

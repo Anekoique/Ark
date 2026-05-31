@@ -6,7 +6,7 @@ Ark has four tiers. Pick the smallest that fits.
 | -------- | -------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------- |
 | Quick    | `/ark:quick`         | `PRD.md`                                                               | design → execute → archived                          |
 | Standard | `/ark:design`        | `PRD.md`, `PLAN.md`, `VERIFY.md`                                       | design → plan → execute → verify → archived          |
-| Deep     | `/ark:design --deep` | `PRD.md`, `NN_PLAN.md`, `NN_REVIEW.md`, `VERIFY.md`, promoted `SPEC.md` | design → plan ⇄ review → execute → verify → archived |
+| Deep     | `/ark:design --deep` | `PRD.md`, `PLAN.md`, `REVIEW.md`, `VERIFY.md`, promoted `SPEC.md`       | design → plan → review → execute → verify → archived |
 | Research | `/ark:research`      | `PRD.md`, `research/`                                                  | research → committed → archived                      |
 
 The same triggers exist for every supported platform: Claude Code slash commands (`/ark:quick`), Codex skills (`ark-quick`), OpenCode commands (`/ark:quick`).
@@ -24,7 +24,7 @@ standard: everything else
 
 **Standard** is the default for feature work. The PRD captures the *what and why*; the PLAN elaborates *how* with explicit Goals (G-1, G-2, …), Constraints (C-1, …), and a Validation table that maps every Goal to at least one test. VERIFY checks the shipped code against the PLAN's Validation matrix.
 
-**Deep** adds a REVIEW step between PLAN and EXECUTE. The agent (or a separate reviewer model) writes a verdict — *Approved* / *Approved with Revisions* / *Rejected* — and findings (R-001, …). If revisions are needed, the agent copies the artifacts to `01_PLAN.md` / `01_REVIEW.md` and iterates. Loop continues until verdict is *Approved* with zero open CRITICAL findings. On commit, the final PLAN's `## Spec` section is promoted to a permanent feature SPEC under `.ark/specs/features/<path>/`.
+**Deep** adds a single REVIEW step between PLAN and EXECUTE. The agent (or a separate reviewer model) writes a verdict — *Approved* / *Approved with Revisions* / *Rejected* — and findings (R-001, …) into `REVIEW.md`. There is no loop: the author folds every CRITICAL/HIGH finding back into `PLAN.md` in place, then advances to EXECUTE. On commit, the PLAN's `## Spec` section is promoted to a permanent feature SPEC under `.ark/specs/features/<path>/`.
 
 **Research** is for the question *before* the PRD — when you can't yet state what to build, or whether to build at all. The deliverable is a reference corpus under `research/`, not shipped code; follow-up implementation is optional. There's no PLAN, REVIEW, VERIFY, or SPEC promotion — the lifecycle is just `research → committed → archived`. See [Subagents](./subagents.md) for the distinction between a research-tier task and dispatching the embedded `ark-researcher` inside a tiered task.
 

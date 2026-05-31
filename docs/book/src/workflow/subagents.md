@@ -5,7 +5,7 @@ Ark ships three subagents that the main session can dispatch at specific phases.
 | Subagent        | Phase                | Writes only to                                | Role                                                       |
 | --------------- | -------------------- | --------------------------------------------- | ---------------------------------------------------------- |
 | `ark-researcher` | DESIGN / PLAN, research tier | `.ark/tasks/<slug>/research/*.md`     | Gather third-party / prior-art / codebase-pattern findings |
-| `ark-reviewer`   | REVIEW (deep)        | the current iteration's `NN_REVIEW.md`        | Judge the latest PLAN; write verdict + findings            |
+| `ark-reviewer`   | REVIEW (deep)        | `REVIEW.md`                                   | Judge the PLAN; write verdict + findings                   |
 | `ark-verifier`   | VERIFY               | `VERIFY.md`                                   | Audit shipped work against PLAN/PRD; run build/test/lint   |
 
 All three ship for every installed platform — Claude Code (`.claude/agents/*.md`), Codex (`.codex/agents/*.toml`), and OpenCode (`.opencode/agents/*.md`). The prompt body is identical across platforms; only the per-platform frontmatter differs.

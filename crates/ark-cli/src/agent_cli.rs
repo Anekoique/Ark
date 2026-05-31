@@ -284,7 +284,7 @@ enum SpecCommand {
 struct SpecExtractCliArgs {
     #[command(flatten)]
     target: TargetArgs,
-    /// Optional explicit PLAN path. Default: highest-NN `NN_PLAN.md`.
+    /// Optional explicit PLAN path. Default: `PLAN.md` (legacy fallback: highest-NN `NN_PLAN.md`).
     #[arg(long)]
     plan: Option<PathBuf>,
 }
@@ -651,8 +651,9 @@ mod tests {
         let dir = layout.task_dir(slug);
         dir.ensure_dir().unwrap();
         let toml = format!(
-            "id = \"{slug}\"\ntitle = \"{slug}\"\ntier = \"quick\"\nphase = \"design\"\niteration \
-             = 0\ncreated_at = \"2026-01-01T00:00:00Z\"\nupdated_at = \"2026-01-01T00:00:00Z\"\n",
+            "id = \"{slug}\"\ntitle = \"{slug}\"\ntier = \"quick\"\nphase = \
+             \"design\"\ncreated_at = \"2026-01-01T00:00:00Z\"\nupdated_at = \
+             \"2026-01-01T00:00:00Z\"\n",
         );
         std::fs::write(dir.join("task.toml"), toml).unwrap();
     }

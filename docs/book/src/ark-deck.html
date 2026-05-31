@@ -553,7 +553,7 @@
       <tr><td>🧠 Context &amp; state</td><td>structured artifacts on disk · <code class="inline">ark context</code> projection</td></tr>
       <tr><td>📦 Substrates</td><td>worktree-per-task · <code class="inline">.ark.db</code> snapshots</td></tr>
       <tr><td>🔌 Protocols</td><td>AGENTS.md · slash commands · per-platform templates</td></tr>
-      <tr><td>📊 Evaluation</td><td>VERIFY gate · PLAN ⇄ REVIEW loop</td></tr>
+      <tr><td>📊 Evaluation</td><td>VERIFY gate · PLAN → REVIEW step</td></tr>
       <tr><td>🛡 Guardrails</td><td>state machine · user-staged atomic commit</td></tr>
     </table>
     <p class="note frag">Same seven axes — Ark's take is <b>opinionated workflow discipline</b>.</p>
@@ -587,7 +587,7 @@
 
 <span class="c-prompt">$</span> ark context                       <span class="c-cmt"># orient: git + tasks + specs</span>
 <span class="c-prompt">›</span> /ark:design --deep <span class="c-flag">"refactor auth layer"</span>
-<span class="c-cmt">  DESIGN → PLAN ⇄ REVIEW → EXECUTE → VERIFY → COMMIT</span>
+<span class="c-cmt">  DESIGN → PLAN → REVIEW → EXECUTE → VERIFY → COMMIT</span>
 <span class="c-ok">✓</span> one atomic commit: work + task.toml + SPEC + journal</pre>
     </div>
     <p class="note frag">Two layers of commands: the public lifecycle (<code class="inline">init / context / …</code>) and what you type inside the agent (<code class="inline">/ark:*</code>).</p>
@@ -621,7 +621,7 @@
     <div class="grid g2">
       <div class="tier quick frag"><h3>⚡ Quick</h3><div class="sub">/ark:quick · reversible</div><div class="arti"><span>PRD</span></div></div>
       <div class="tier standard frag"><h3>◆ Standard</h3><div class="sub">/ark:design · feature scope</div><div class="arti"><span>PRD</span><span>PLAN</span><span>VERIFY</span></div></div>
-      <div class="tier deep frag"><h3>◈ Deep</h3><div class="sub">/ark:design --deep · architectural</div><div class="arti"><span>PRD</span><span>NN_PLAN ⇄ NN_REVIEW</span><span>VERIFY</span><span>SPEC</span></div></div>
+      <div class="tier deep frag"><h3>◈ Deep</h3><div class="sub">/ark:design --deep · architectural</div><div class="arti"><span>PRD</span><span>PLAN → REVIEW</span><span>VERIFY</span><span>SPEC</span></div></div>
       <div class="tier research frag"><h3>🔬 Research</h3><div class="sub">/ark:research · corpus = deliverable</div><div class="arti"><span>PRD</span><span>research/</span></div></div>
     </div>
     <p class="note frag">When in doubt, pick lower — promotion is cheap.</p>
@@ -660,15 +660,14 @@
         <line class="edge" x1="170" y1="72" x2="226" y2="72" marker-end="url(#arr)"/>
       </g>
 
-      <!-- f2: review + iterate -->
+      <!-- f2: review (single pass) -->
       <g class="gG" data-step="2">
         <rect x="440" y="40" width="150" height="64" rx="12" fill="url(#node)" stroke="#818cf8" stroke-width="1.6"/>
         <text x="515" y="62" text-anchor="middle" class="lbl">REVIEW</text>
         <text x="515" y="80" text-anchor="middle" class="cmd2">task review</text>
         <text x="515" y="96" text-anchor="middle" class="ph">deep only</text>
         <line class="edge" x1="380" y1="72" x2="436" y2="72" marker-end="url(#arr)"/>
-        <path class="edgeA" d="M460 104 C 430 158, 350 158, 320 106" marker-end="url(#arrA)"/>
-        <text x="388" y="156" text-anchor="middle" class="elblA">iterate ⇄ (≤ max)</text>
+        <text x="515" y="156" text-anchor="middle" class="elblA">fold findings → PLAN</text>
       </g>
 
       <!-- f3: execute + verify -->
@@ -728,7 +727,7 @@
       </div>
       <div class="lane v frag">
         <span class="bdg" style="background:rgba(129,140,248,.16)">🟣</span>
-        <div class="lmain"><div class="lname">REVIEW <span style="font-weight:400;color:var(--ink-faint);font-size:.7em">deep · looped ⟳</span></div><div class="ldesc">independent reviewer files <code class="inline">R-NNN</code> — iterate until approved, 0 critical</div></div>
+        <div class="lmain"><div class="lname">REVIEW <span style="font-weight:400;color:var(--ink-faint);font-size:.7em">deep · single pass</span></div><div class="ldesc">independent reviewer files <code class="inline">R-NNN</code> — fold findings into PLAN, then execute</div></div>
         <code class="lcmd">ark agent task review</code>
         <span class="lgate">you pick the reviewer</span>
       </div>

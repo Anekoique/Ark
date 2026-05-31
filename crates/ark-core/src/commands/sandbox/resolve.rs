@@ -249,8 +249,6 @@ mod tests {
             title: "inbox".into(),
             tier: Tier::Deep,
             phase: Phase::Execute,
-            iteration: 0,
-            max_iterations: None,
             created_at: now,
             updated_at: now,
             archived_at: None,

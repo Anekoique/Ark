@@ -122,8 +122,6 @@ pub struct TaskSummary {
     pub tier: Tier,
     /// Current lifecycle phase.
     pub phase: Phase,
-    /// Current deep-tier iteration.
-    pub iteration: u32,
     /// Path to the task directory.
     pub path: PathBuf,
     /// Timestamp when the task was last updated.

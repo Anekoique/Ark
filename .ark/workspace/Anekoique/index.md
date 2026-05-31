@@ -37,6 +37,7 @@
 | 28  | 2026-05-31 | tag feature SPECs with actuators                                   | `tag-feature-specs`        | `feat/spec-actuators`          | <PENDING:tag-feature-specs>       | `journal-1.md` |
 | 29 | 2026-05-31 | add `-a` stage-all option to ark-commit | `commit-stage-all` | `main` | <PENDING:commit-stage-all> | `journal-1.md` |
 | 30 | 2026-06-01 | categorize archived tasks by tier | `categorize-ark-archive` | `main` | <PENDING:categorize-ark-archive> | `journal-1.md` |
+| 31 | 2026-06-01 | simplify deep tier — drop the PLAN/REVIEW loop | `simplify-deep-tier` | `feat/simplify-deep-tier` | <PENDING:simplify-deep-tier> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

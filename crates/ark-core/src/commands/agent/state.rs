@@ -85,11 +85,6 @@ pub struct TaskToml {
     pub tier: Tier,
     /// Current lifecycle phase.
     pub phase: Phase,
-    /// Current deep-tier plan/review iteration.
-    pub iteration: u32,
-    /// Maximum deep-tier review iterations.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub max_iterations: Option<u32>,
     /// Timestamp when the task was created.
     pub created_at: DateTime<Utc>,
     /// Timestamp when the task state last changed.
@@ -174,13 +169,13 @@ impl TaskToml {
 ///
 /// - Quick:    Design → Execute → Committed → Archived
 /// - Standard: Design → Plan → Execute → Verify → Committed → Archived
-/// - Deep:     Design → Plan ⇄ Review → Execute → Verify → Committed → Archived
+/// - Deep:     Design → Plan → Review → Execute → Verify → Committed → Archived
 /// - Research: Research → Committed → Archived
 ///
-/// `Review → Plan` is the "iterate" transition (deep tier only). `Archived`
-/// is reachable only from `Committed`; the legacy direct
-/// `Verify → Archived` / `Execute → Archived` transitions were removed by
-/// the workflow refactor.
+/// Deep tier is linear — there is no `Review → Plan` back-edge; REVIEW
+/// findings are folded into the single PLAN in place. `Archived` is reachable
+/// only from `Committed`; the legacy direct `Verify → Archived` /
+/// `Execute → Archived` transitions were removed by the workflow refactor.
 pub fn can_transition(tier: Tier, from: Phase, to: Phase) -> bool {
     // `Tier::Research` and `Phase::Research` share the name `Research`. Using
     // glob imports here would shadow one with the other, so we qualify both.
@@ -195,10 +190,9 @@ pub fn can_transition(tier: Tier, from: Phase, to: Phase) -> bool {
         (Tier::Standard, Phase::Execute, Phase::Verify) => true,
         (Tier::Standard, Phase::Verify, Phase::Committed) => true,
         (Tier::Standard, Phase::Committed, Phase::Archived) => true,
-        // Deep
+        // Deep — linear, no Review → Plan back-edge
         (Tier::Deep, Phase::Design, Phase::Plan) => true,
         (Tier::Deep, Phase::Plan, Phase::Review) => true,
-        (Tier::Deep, Phase::Review, Phase::Plan) => true, // iterate
         (Tier::Deep, Phase::Review, Phase::Execute) => true,
         (Tier::Deep, Phase::Execute, Phase::Verify) => true,
         (Tier::Deep, Phase::Verify, Phase::Committed) => true,
@@ -283,8 +277,6 @@ mod tests {
             title: "demo task".into(),
             tier: Tier::Standard,
             phase: Phase::Design,
-            iteration: 0,
-            max_iterations: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,
@@ -385,7 +377,6 @@ mod tests {
     fn can_transition_deep() {
         assert!(can_transition(Tier::Deep, Phase::Design, Phase::Plan));
         assert!(can_transition(Tier::Deep, Phase::Plan, Phase::Review));
-        assert!(can_transition(Tier::Deep, Phase::Review, Phase::Plan));
         assert!(can_transition(Tier::Deep, Phase::Review, Phase::Execute));
         assert!(can_transition(Tier::Deep, Phase::Execute, Phase::Verify));
         assert!(can_transition(Tier::Deep, Phase::Verify, Phase::Committed));
@@ -394,6 +385,8 @@ mod tests {
             Phase::Committed,
             Phase::Archived
         ));
+        // The loop is gone: Review never returns to Plan.
+        assert!(!can_transition(Tier::Deep, Phase::Review, Phase::Plan));
         assert!(!can_transition(Tier::Deep, Phase::Verify, Phase::Archived));
         assert!(!can_transition(Tier::Deep, Phase::Plan, Phase::Execute));
         assert!(!can_transition(Tier::Deep, Phase::Design, Phase::Review));
@@ -580,7 +573,9 @@ mod tests {
         }
     }
 
-    /// Verifies that a pre-existing `task.toml` without the optional fields still loads.
+    /// A pre-existing `task.toml` still loads, including the retired
+    /// `iteration` / `max_iterations` keys (now ignored as unknown fields)
+    /// and absent optional fields.
     #[test]
     fn task_toml_loads_without_optional_fields() {
         let tmp = tempfile::tempdir().unwrap();
@@ -589,7 +584,8 @@ id = "legacy"
 title = "legacy task"
 tier = "deep"
 phase = "design"
-iteration = 0
+iteration = 2
+max_iterations = 5
 created_at = "2026-01-01T00:00:00Z"
 updated_at = "2026-01-01T00:00:00Z"
 "#;
@@ -598,6 +594,8 @@ updated_at = "2026-01-01T00:00:00Z"
             .write_bytes(legacy.as_bytes())
             .unwrap();
         let loaded = TaskToml::load(tmp.path()).unwrap();
+        assert_eq!(loaded.id, "legacy");
+        assert_eq!(loaded.tier, Tier::Deep);
         assert!(loaded.branch.is_none());
         assert!(loaded.worktree_path.is_none());
         assert!(loaded.base_branch.is_none());

@@ -1,9 +1,9 @@
 //! `ark agent task new` — scaffold a new task directory.
 //!
 //! Creates `.ark/tasks/<slug>/`, seeds `PRD.md` from the embedded template,
-//! writes `task.toml` with phase=Design + iteration=0, then registers the
-//! slug in `.ark/.state.toml` as both an active task and the focus of this
-//! checkout. Refuses to overwrite an existing task directory.
+//! writes `task.toml` with phase=Design, then registers the slug in
+//! `.ark/.state.toml` as both an active task and the focus of this checkout.
+//! Refuses to overwrite an existing task directory.
 //!
 //! When `opts.worktree.is_some()`, creation uses the worktree-first protocol.
 //!
@@ -357,11 +357,6 @@ fn build_task_toml(opts: &TaskNewOptions) -> TaskToml {
         phase: match opts.tier {
             Tier::Research => Phase::Research,
             _ => Phase::Design,
-        },
-        iteration: 0,
-        max_iterations: match opts.tier {
-            Tier::Deep => Some(3),
-            _ => None,
         },
         created_at: now,
         updated_at: now,

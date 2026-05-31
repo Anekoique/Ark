@@ -3,10 +3,10 @@
 //! Pulls the final PLAN's `## Spec` section into
 //! `specs/features/<slug>/SPEC.md`.
 //!
-//! Deep-tier only. Resolves the final PLAN by picking the highest-NN
-//! `NN_PLAN.md` in the task dir (overridable). On fresh write, emits the
-//! extracted body; on overwrite, emits the new body followed by a dated
-//! CHANGELOG entry noting the replacement.
+//! Deep-tier only. Resolves the PLAN as `PLAN.md`, falling back to the
+//! highest-NN `NN_PLAN.md` for legacy archives (overridable). On fresh
+//! write, emits the extracted body; on overwrite, emits the new body
+//! followed by a dated CHANGELOG entry noting the replacement.
 
 use std::{
     fmt,
@@ -33,7 +33,8 @@ pub struct SpecExtractOptions {
     /// must equal `slug`. Defaults to `vec![slug.clone()]` (single-segment
     /// root-level leaf) when callers want the legacy flat layout.
     pub feature_path: Vec<String>,
-    /// Optional explicit plan path; defaults to highest-NN `NN_PLAN.md`.
+    /// Optional explicit plan path; defaults to `PLAN.md` (legacy fallback:
+    /// highest-NN `NN_PLAN.md`).
     pub plan_override: Option<PathBuf>,
     /// Optional task directory override.
     ///
@@ -112,15 +113,19 @@ pub fn spec_extract(opts: SpecExtractOptions) -> Result<SpecExtractSummary> {
     let target_path = target_dir.join("SPEC.md");
     let was_update = target_path.exists();
 
-    let iteration = plan_iteration_nn(&plan_path).unwrap_or(toml.iteration);
     let mut content = extracted.trim_end().to_string();
     content.push('\n');
     if was_update {
         let today = Utc::now().format("%Y-%m-%d");
+        // Cite the plan file actually extracted from — `PLAN.md` for current
+        // tasks, `NN_PLAN.md` for legacy archives — so provenance stays exact.
+        let plan_name = plan_path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "PLAN.md".to_string());
         content.push_str(&format!(
-            "\n[**CHANGELOG**]\n\n- {today}: replaced from {nn:02}_PLAN.md (prior body preserved \
-             in git history)\n",
-            nn = iteration,
+            "\n[**CHANGELOG**]\n\n- {today}: replaced from {plan_name} (prior body preserved in \
+             git history)\n",
         ));
     }
     target_path.write_bytes(content.as_bytes())?;
@@ -132,11 +137,12 @@ pub fn spec_extract(opts: SpecExtractOptions) -> Result<SpecExtractSummary> {
     })
 }
 
-/// Locates the latest plan in a task directory.
+/// Locates the plan to extract in a task directory.
 ///
-/// Prefers the highest-numbered `NN_PLAN.md` (deep tier's iterating form);
-/// falls back to plain `PLAN.md` (standard tier or legacy single-plan
-/// archives) when no `NN_` files are present.
+/// Current tasks have a single flat `PLAN.md`. For legacy archives that
+/// predate the loop removal, the highest-numbered `NN_PLAN.md` is the final
+/// iteration and takes precedence; `PLAN.md` is the fallback when no `NN_`
+/// files are present.
 fn find_final_plan(task_dir: &Path) -> Result<PathBuf> {
     let mut best: Option<(u32, PathBuf)> = None;
     for entry in task_dir.list_dir()? {
@@ -160,15 +166,14 @@ fn find_final_plan(task_dir: &Path) -> Result<PathBuf> {
     })
 }
 
-/// Parses `NN` out of a filename like `"03_PLAN.md"`.
+/// Parses `NN` out of a legacy filename like `"03_PLAN.md"`.
+///
+/// Retained so `find_final_plan` still resolves the final plan of legacy
+/// archived deep tasks created before the loop was removed.
 fn parse_nn_plan(name: &str) -> Option<u32> {
     let stripped = name.strip_suffix("_PLAN.md")?;
     (stripped.len() == 2).then_some(())?;
     stripped.parse().ok()
-}
-
-fn plan_iteration_nn(plan_path: &Path) -> Option<u32> {
-    parse_nn_plan(&plan_path.file_name()?.to_string_lossy())
 }
 
 /// Extract the `## Spec` section body. Returns `None` if no start line matches.
@@ -222,7 +227,7 @@ mod tests {
             slug: "demo".into(),
         })
         .unwrap();
-        let plan_path = tmp_path.join(".ark/tasks/demo/00_PLAN.md");
+        let plan_path = tmp_path.join(".ark/tasks/demo/PLAN.md");
         plan_path.write_bytes(plan_body.as_bytes()).unwrap();
     }
 
@@ -295,7 +300,7 @@ mod tests {
         .unwrap();
 
         tmp.path()
-            .join(".ark/tasks/demo/00_PLAN.md")
+            .join(".ark/tasks/demo/PLAN.md")
             .write_bytes(b"## Spec\n\n[**Goals**]\n- G-1: v2\n\n## Runtime\n")
             .unwrap();
 
@@ -312,6 +317,48 @@ mod tests {
         assert!(spec.contains("G-1: v2"));
         assert!(!spec.contains("G-1: v1"));
         assert!(spec.contains("CHANGELOG"));
+        // CHANGELOG cites the resolved plan filename (flat PLAN.md here).
+        assert!(spec.contains("replaced from PLAN.md"));
+    }
+
+    /// SPEC extraction over a legacy task dir whose only plan is `NN_PLAN.md`
+    /// (no flat `PLAN.md`) still resolves the final plan via the retained
+    /// `find_final_plan` fallback, and the CHANGELOG cites that name.
+    #[test]
+    fn spec_extract_resolves_legacy_nn_plan() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_deep_with_plan_body(
+            tmp.path(),
+            "## Spec\n\n[**Goals**]\n- G-1: v1\n\n## Runtime\n",
+        );
+        // Simulate a legacy archive: replace the flat plan with `01_PLAN.md`.
+        let task_dir = tmp.path().join(".ark/tasks/demo");
+        std::fs::remove_file(task_dir.join("PLAN.md")).unwrap();
+        task_dir
+            .join("01_PLAN.md")
+            .write_bytes(b"## Spec\n\n[**Goals**]\n- G-1: legacy\n\n## Runtime\n")
+            .unwrap();
+        // First extract creates the SPEC.
+        spec_extract(SpecExtractOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+            feature_path: vec![],
+            plan_override: None,
+            task_dir_override: None,
+        })
+        .unwrap();
+        // Second extract updates it and cites the legacy filename.
+        let s = spec_extract(SpecExtractOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "demo".into(),
+            feature_path: vec![],
+            plan_override: None,
+            task_dir_override: None,
+        })
+        .unwrap();
+        let spec = s.target_path.read_text().unwrap();
+        assert!(spec.contains("G-1: legacy"));
+        assert!(spec.contains("replaced from 01_PLAN.md"));
     }
 
     #[test]

@@ -819,3 +819,30 @@ Archive is now bucketed `tasks/archive/<YYYY-MM>/<tier>/<slug>/` and `ark archiv
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 31: simplify deep tier — drop the PLAN/REVIEW loop
+
+**Date**: 2026-06-01
+**Slug**: simplify-deep-tier
+**Branch**: `feat/simplify-deep-tier`
+**Base Branch**: `main`
+**Start Head**: `ab9cfd3`
+**Closing Commit**: <PENDING:simplify-deep-tier>
+
+### Summary
+
+Deep tier is now linear PLAN → REVIEW → EXECUTE; the reviewer's findings are folded into PLAN.md in place.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| state | drop `Review → Plan` edge + `iteration`/`max_iterations` from `TaskToml` (legacy loads) |
+| artifacts | deep tier seeds flat `PLAN.md`/`REVIEW.md`; `NN_` kept only as legacy fallback |
+| docs | rewrote templates, all 3 platform agents/commands, workflow.md, and the ark-book |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

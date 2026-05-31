@@ -143,7 +143,6 @@ fn gather_tasks(layout: &Layout) -> Result<TasksState> {
             title: toml.title.clone(),
             tier: toml.tier,
             phase: toml.phase,
-            iteration: toml.iteration,
             path: relative,
             updated_at: toml.updated_at,
         });
@@ -577,6 +576,10 @@ fn classify_artifact(filename: &str) -> Option<ArtifactKind> {
     if filename == "PLAN.md" {
         return Some(ArtifactKind::Plan { iteration: 0 });
     }
+    if filename == "REVIEW.md" {
+        return Some(ArtifactKind::Review { iteration: 0 });
+    }
+    // Legacy archived deep tasks carry `NN_PLAN.md` / `NN_REVIEW.md`.
     if let Some(n) = parse_iteration_artifact(filename, "_PLAN.md") {
         return Some(ArtifactKind::Plan { iteration: n });
     }
@@ -652,6 +655,9 @@ mod tests {
         dir.join("PRD.md").write_bytes(b"# stub PRD\n").unwrap();
     }
 
+    /// Emits a deep-tier `task.toml`. Includes the retired `iteration` key so
+    /// the gather path is exercised against a legacy file (the key is now an
+    /// ignored unknown field).
     fn deep_task_toml(slug: &str, phase: &str, iteration: u32) -> String {
         format!(
             "id = \"{slug}\"\ntitle = \"Test {slug}\"\ntier = \"deep\"\nphase = \
@@ -682,7 +688,6 @@ mod tests {
         assert_eq!(t.slug, "feat-x");
         assert_eq!(t.tier, Tier::Deep);
         assert_eq!(t.phase, Phase::Plan);
-        assert_eq!(t.iteration, 0);
     }
 
     #[test]
@@ -691,14 +696,14 @@ mod tests {
         let layout = Layout::new(tmp.path());
         write_task(&layout, "feat-x", &deep_task_toml("feat-x", "plan", 0));
         register_focus(&layout, "feat-x");
-        // Add NN_PLAN, NN_REVIEW, VERIFY artifacts.
+        // Flat PLAN.md / REVIEW.md are the current deep-tier artifact names.
         let task_dir = layout.task_dir("feat-x");
         task_dir
-            .join("00_PLAN.md")
+            .join("PLAN.md")
             .write_bytes(b"plan body\nline2\n")
             .unwrap();
         task_dir
-            .join("00_REVIEW.md")
+            .join("REVIEW.md")
             .write_bytes(b"review body\n")
             .unwrap();
 
@@ -707,9 +712,32 @@ mod tests {
         assert_eq!(current.slug, "feat-x");
         let kinds: Vec<ArtifactKind> = current.artifacts.iter().map(|a| a.kind).collect();
         assert!(kinds.contains(&ArtifactKind::Prd));
+        // Flat plan/review classify as iteration 0.
         assert!(kinds.contains(&ArtifactKind::Plan { iteration: 0 }));
         assert!(kinds.contains(&ArtifactKind::Review { iteration: 0 }));
         assert!(kinds.contains(&ArtifactKind::TaskToml));
+    }
+
+    /// Legacy archived deep tasks still carry `NN_PLAN.md` / `NN_REVIEW.md`.
+    /// The filename-derived `ArtifactKind` iteration keeps rendering them so
+    /// `ark context` over an archive is unchanged after the loop was removed.
+    #[test]
+    fn gather_classifies_legacy_nn_artifacts_by_iteration() {
+        let tmp = arked_tempdir();
+        let layout = Layout::new(tmp.path());
+        write_task(&layout, "feat-y", &deep_task_toml("feat-y", "execute", 1));
+        register_focus(&layout, "feat-y");
+        let task_dir = layout.task_dir("feat-y");
+        task_dir.join("00_PLAN.md").write_bytes(b"v0\n").unwrap();
+        task_dir.join("01_PLAN.md").write_bytes(b"v1\n").unwrap();
+        task_dir.join("01_REVIEW.md").write_bytes(b"r1\n").unwrap();
+
+        let ctx = gather_context(&layout).unwrap();
+        let current = ctx.current_task.expect("current task present");
+        let kinds: Vec<ArtifactKind> = current.artifacts.iter().map(|a| a.kind).collect();
+        assert!(kinds.contains(&ArtifactKind::Plan { iteration: 0 }));
+        assert!(kinds.contains(&ArtifactKind::Plan { iteration: 1 }));
+        assert!(kinds.contains(&ArtifactKind::Review { iteration: 1 }));
     }
 
     #[test]
@@ -943,6 +971,8 @@ mod tests {
         // Both tasks are tier=deep → stored under archive/2026-04/deep/.
         let tier_dir = layout.tasks_archive_dir().join("2026-04").join("deep");
         tier_dir.ensure_dir().unwrap();
+        // Legacy archived deep tasks: their `task.toml` still carries the
+        // retired `iteration` key, which must load as an ignored unknown field.
         for (slug, archived) in [("a", "2026-04-01T00:00:00Z"), ("b", "2026-04-22T00:00:00Z")] {
             let task_dir = tier_dir.join(slug);
             task_dir.ensure_dir().unwrap();

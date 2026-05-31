@@ -3,9 +3,8 @@
 //! Swaps `task.toml.tier`. Refuses if the current phase would be illegal under
 //! the target tier (e.g. promoting deep→quick while `phase == Review`, since
 //! quick has no Review phase). Does NOT rewrite artifact bodies — the agent
-//! decides what to reshape after the tier change. The one structural rename
-//! happens on Standard→Deep: the lone `PLAN.md` is moved to `00_PLAN.md` so
-//! deep-tier iteration semantics apply without losing the existing body.
+//! decides what to reshape after the tier change. Standard and deep tiers share
+//! the flat `PLAN.md` name, so no artifact rename is needed on promotion.
 
 use std::{fmt, path::PathBuf};
 
@@ -81,26 +80,11 @@ pub fn task_promote(opts: TaskPromoteOptions) -> Result<TaskPromoteSummary> {
         });
     }
 
-    // When promoting Standard→Deep, the lone `PLAN.md` becomes the first
-    // iteration of the deep loop. Rename it to `00_PLAN.md` so subsequent
-    // `task plan` calls (deep iterations) don't shadow the existing body
-    // with a fresh empty template.
-    if from != Tier::Deep && opts.to == Tier::Deep {
-        let plain = task_dir.join("PLAN.md");
-        let nn = task_dir.join("00_PLAN.md");
-        if plain.is_file() && !nn.exists() {
-            std::fs::rename(&plain, &nn).map_err(|e| Error::io(&plain, e))?;
-        }
-    }
+    // Deep and standard tiers share the flat `PLAN.md` name, so promoting
+    // into deep leaves the plan body in place — no rename needed.
 
     toml.tier = opts.to;
     toml.updated_at = Utc::now();
-    // Keep `max_iterations` consistent with tier semantics: it is Deep-only
-    // metadata. Seed on promote-into-Deep; clear on promote-out-of-Deep.
-    toml.max_iterations = match opts.to {
-        Tier::Deep => Some(toml.max_iterations.unwrap_or(3)),
-        _ => None,
-    };
     toml.save(&task_dir)?;
 
     Ok(TaskPromoteSummary {
@@ -154,8 +138,8 @@ mod tests {
             .join(".ark/tasks/demo/PRD.md")
             .read_bytes()
             .unwrap();
-        // Standard tier seeds the unprefixed `PLAN.md`; capture it before
-        // the promote renames it to `00_PLAN.md`.
+        // Both standard and deep tiers seed the unprefixed `PLAN.md`, so the
+        // promote must leave it in place — no rename.
         let plan_before = tmp
             .path()
             .join(".ark/tasks/demo/PLAN.md")
@@ -177,19 +161,18 @@ mod tests {
                 .read_bytes()
                 .unwrap()
         );
-        // Promote renamed `PLAN.md` → `00_PLAN.md`; body is preserved.
-        assert!(!tmp.path().join(".ark/tasks/demo/PLAN.md").exists());
+        // `PLAN.md` is preserved verbatim and not renamed to `00_PLAN.md`.
+        assert!(!tmp.path().join(".ark/tasks/demo/00_PLAN.md").exists());
         assert_eq!(
             plan_before,
             tmp.path()
-                .join(".ark/tasks/demo/00_PLAN.md")
+                .join(".ark/tasks/demo/PLAN.md")
                 .read_bytes()
                 .unwrap()
         );
 
         let toml = TaskToml::load(&tmp.path().join(".ark/tasks/demo")).unwrap();
         assert_eq!(toml.tier, Tier::Deep);
-        assert_eq!(toml.max_iterations, Some(3));
     }
 
     #[test]
@@ -222,37 +205,6 @@ mod tests {
         })
         .unwrap_err();
         assert!(matches!(err, Error::IllegalPhaseTransition { .. }));
-    }
-
-    #[test]
-    fn deep_to_standard_clears_max_iterations() {
-        let tmp = tempfile::tempdir().unwrap();
-        task_new(TaskNewOptions {
-            project_root: tmp.path().to_path_buf(),
-            slug: "demo".into(),
-            title: "t".into(),
-            tier: Tier::Deep,
-            worktree: None,
-        })
-        .unwrap();
-        assert_eq!(
-            TaskToml::load(&tmp.path().join(".ark/tasks/demo"))
-                .unwrap()
-                .max_iterations,
-            Some(3),
-        );
-        task_promote(TaskPromoteOptions {
-            project_root: tmp.path().to_path_buf(),
-            slug: "demo".into(),
-            to: Tier::Standard,
-        })
-        .unwrap();
-        assert_eq!(
-            TaskToml::load(&tmp.path().join(".ark/tasks/demo"))
-                .unwrap()
-                .max_iterations,
-            None,
-        );
     }
 
     #[test]

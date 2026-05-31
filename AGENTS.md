@@ -71,7 +71,7 @@ ark-core/src/
 - Extract SPEC bodies from PLANs and upsert rows in `specs/features/INDEX.md`'s managed block.
 
 **Not** this layer's responsibility:
-- Rare lifecycle operations — iteration and task reopening — the workflow doc tells the agent to hand-edit these. Tier promotion is supported mid-flight via `ark agent task promote`; other ad hoc lifecycle edits remain manual.
+- Rare lifecycle operations — task reopening — the workflow doc tells the agent to hand-edit these. Tier promotion is supported mid-flight via `ark agent task promote`; other ad hoc lifecycle edits remain manual.
 - Artifact content (PRD prose, PLAN sections, REVIEW verdicts) — agent's judgment.
 - Git / GH operations — agent uses them directly.
 - Consistency checks / doctoring — reviewer judgment.

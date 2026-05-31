@@ -13,14 +13,12 @@ Every task moves through the same states. Quick skips most of them; standard and
              │  (quick skips plan/review/verify)
              ▼
        ┌────────────┐
-       │    PLAN    │  write NN_PLAN.md — elaborate how
+       │    PLAN    │  write PLAN.md — elaborate how
        └─────┬──────┘
-             │         (deep only — plan review loop)
              │         ┌──────────────┐
-             ├────────►│    REVIEW    │  NN_REVIEW.md
-             │         └──────┬───────┘
-             │ ◄─── rejected ─┘
-             ▼
+             ├────────►│    REVIEW    │  REVIEW.md (deep only, single pass)
+             │         └──────┬───────┘  fold findings into PLAN.md in place
+             ▼ ◄──────────────┘
        ┌────────────┐
        │  EXECUTE   │  implement; update PLAN's Spec section if gaps emerge
        └─────┬──────┘
@@ -54,31 +52,31 @@ State is recorded in `task.toml.phase`. Each transition is mediated by a CLI com
 
 ## PLAN — elaborate how
 
-**Purpose.** Fill `NN_PLAN.md` from the embedded template (Spec, Runtime, Implementation, Trade-offs, Validation). Every Goal mapped to ≥1 Validation in the Acceptance Mapping table.
+**Purpose.** Fill `PLAN.md` from the embedded template (Spec, Runtime, Implementation, Trade-offs, Validation). Every Goal mapped to ≥1 Validation in the Acceptance Mapping table.
 
 **Calls.**
 - `ark context --scope phase --for plan` — current PRD + related feature specs (filtered to the PRD's `[**Related Specs**]`) + project specs.
-- `ark agent task plan` — transitions DESIGN → PLAN and seeds `00_PLAN.md`.
+- `ark agent task plan` — transitions DESIGN → PLAN and seeds `PLAN.md`.
 
 **Gate.** PLAN complete; Acceptance Mapping fills every Goal. Standard → EXECUTE; deep → REVIEW.
 
-**Rule.** `## Spec` must be self-contained every iteration (deltas go in `## Log`). It's copied verbatim to `specs/features/<path>/SPEC.md` on commit (deep tier).
+**Rule.** `## Spec` must be self-contained. It's copied verbatim to `specs/features/<path>/SPEC.md` on commit (deep tier).
 
-## REVIEW — pre-execute gate (deep only, iterative)
+## REVIEW — pre-execute gate (deep only, single pass)
 
-**Purpose.** Evaluate the latest `NN_PLAN.md` against PRD and project specs; write `NN_REVIEW.md` with verdict + findings. Loop until verdict is *Approved* with zero open CRITICAL.
+**Purpose.** Evaluate `PLAN.md` against PRD and project specs; write `REVIEW.md` with verdict + findings. There is no loop — REVIEW runs once, and its findings are folded back into the PLAN.
 
 **Calls.**
-- `ark context --scope phase --for review` — current task, latest PLAN, related feature specs, project specs.
-- `ark agent task review` — transitions PLAN → REVIEW and seeds `NN_REVIEW.md`.
+- `ark context --scope phase --for review` — current task, PLAN, related feature specs, project specs.
+- `ark agent task review` — transitions PLAN → REVIEW and seeds `REVIEW.md`.
 
-**Who reviews.** At REVIEW entry the slash command stops and asks you to pick the reviewer: the `ark-reviewer` subagent, a different model, or self-review. The chosen reviewer fills `NN_REVIEW.md`; it never edits the PLAN or code. See [Subagents](./subagents.md).
+**Who reviews.** At REVIEW entry the slash command stops and asks you to pick the reviewer: the `ark-reviewer` subagent, a different model, or self-review. The chosen reviewer fills `REVIEW.md`; it never edits the PLAN or code. See [Subagents](./subagents.md).
 
-**Reject (HIGH)** if the latest PLAN's `## Spec` references prior iterations instead of restating in full.
+**Reject (HIGH)** if the PLAN's `## Spec` is not self-contained (leans on external docs or diff-style phrasing).
 
-**Iteration.** Copy `NN_PLAN.md` and `NN_REVIEW.md` to the next number, bump `task.toml.iteration`, reset `phase = "plan"`. The state machine is small enough that this is a hand-edit (the agent does it, but no `ark agent` command wraps it).
+**Folding findings.** Edit `PLAN.md` in place to address every CRITICAL/HIGH finding, keeping `## Spec` self-contained. `REVIEW.md` plus git history are the audit trail; there is no response-matrix section and no `(NN+1)_*` copy. If a finding warrants a redraft beyond in-place edits, halt and ask the user.
 
-**Gate.** Verdict *Approved*, zero open CRITICAL → EXECUTE.
+**Gate.** CRITICAL/HIGH findings folded into the PLAN → EXECUTE.
 
 ## EXECUTE — implement
 

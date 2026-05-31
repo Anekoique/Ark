@@ -107,8 +107,8 @@ fn deep_tier_archive_after_commit_does_not_promote_spec() {
     .unwrap();
     task_plan(opts("deep1")).unwrap();
     tmp.path()
-        .join(".ark/tasks/deep1/00_PLAN.md")
-        .write_bytes(b"# plan 00\n## Spec\n\n[**Goals**]\n- G-1: v1\n\n## Runtime\nrt\n")
+        .join(".ark/tasks/deep1/PLAN.md")
+        .write_bytes(b"# plan\n## Spec\n\n[**Goals**]\n- G-1: v1\n\n## Runtime\nrt\n")
         .unwrap();
     task_review(opts("deep1")).unwrap();
     task_execute(opts("deep1")).unwrap();
@@ -125,8 +125,8 @@ fn deep_tier_archive_after_commit_does_not_promote_spec() {
     })
     .unwrap();
 
-    assert!(s.archive_path.join("00_PLAN.md").exists());
-    assert!(s.archive_path.join("00_REVIEW.md").exists());
+    assert!(s.archive_path.join("PLAN.md").exists());
+    assert!(s.archive_path.join("REVIEW.md").exists());
     // Archive must not promote a SPEC: that's task_commit's job.
     assert!(
         !pre_spec_dir.exists(),
@@ -164,7 +164,7 @@ fn quick_tier_archive_after_commit() {
     assert_eq!(s.tier, Tier::Quick);
     assert!(s.archive_path.exists());
     assert!(s.archive_path.join("PRD.md").exists());
-    assert!(!s.archive_path.join("00_PLAN.md").exists());
+    assert!(!s.archive_path.join("PLAN.md").exists());
     assert!(!s.archive_path.join("VERIFY.md").exists());
 }
 

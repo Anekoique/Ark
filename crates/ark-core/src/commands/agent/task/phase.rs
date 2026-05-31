@@ -86,7 +86,7 @@ fn transition(opts: TaskPhaseOptions, to: Phase) -> Result<TaskPhaseSummary> {
     // fails, the toml on disk still reflects the old phase and the caller can
     // retry the same transition. Saving first would advance the phase and
     // leave a missing artifact that no legal transition can re-seed.
-    if let Some((template, filename)) = artifact_for(to, toml.tier, toml.iteration) {
+    if let Some((template, filename)) = artifact_for(to, toml.tier) {
         let path = task_dir.join(filename);
         if !path.exists() {
             copy_template(template, &path)?;
@@ -112,26 +112,20 @@ fn transition(opts: TaskPhaseOptions, to: Phase) -> Result<TaskPhaseSummary> {
 
 /// Returns the template and filename to seed when entering `phase`.
 ///
-/// Standard tier never iterates the plan, so its lone PLAN is named
-/// `PLAN.md` (parallel to `VERIFY.md`). Deep tier keeps the `NN_PLAN.md`
-/// form to support the iteration loop. Quick tier never enters Plan.
+/// Standard and deep tiers share flat artifact names — `PLAN.md`, `REVIEW.md`
+/// (deep only), `VERIFY.md` — now that deep tier is linear with no iteration
+/// loop. Quick tier never enters Plan.
 ///
 /// Research tier never seeds any artifact: the head-of-function early-return
 /// defends against any future refactor that might reorder `transition()` so
 /// the artifact seed runs before `check_transition`.
-fn artifact_for(phase: Phase, tier: Tier, iteration: u32) -> Option<(&'static str, String)> {
+fn artifact_for(phase: Phase, tier: Tier) -> Option<(&'static str, String)> {
     if matches!(tier, Tier::Research) {
         return None;
     }
     match phase {
-        Phase::Plan => {
-            let name = match tier {
-                Tier::Deep => format!("{iteration:02}_PLAN.md"),
-                _ => "PLAN.md".into(),
-            };
-            Some(("PLAN", name))
-        }
-        Phase::Review => Some(("REVIEW", format!("{iteration:02}_REVIEW.md"))),
+        Phase::Plan => Some(("PLAN", "PLAN.md".into())),
+        Phase::Review => Some(("REVIEW", "REVIEW.md".into())),
         Phase::Verify => Some(("VERIFY", "VERIFY.md".into())),
         _ => None,
     }
@@ -299,11 +293,13 @@ mod tests {
             slug: s.into(),
         };
         task_plan(o(&slug)).unwrap();
-        // Deep tier preserves the iterating `NN_PLAN.md` form.
-        assert!(tmp.path().join(".ark/tasks/demo/00_PLAN.md").exists());
+        // Deep tier seeds the flat `PLAN.md` / `REVIEW.md` — no `NN_` prefix.
+        assert!(tmp.path().join(".ark/tasks/demo/PLAN.md").exists());
+        assert!(!tmp.path().join(".ark/tasks/demo/00_PLAN.md").exists());
         let s = task_review(o(&slug)).unwrap();
         assert_eq!((s.from, s.to), (Phase::Plan, Phase::Review));
-        assert!(tmp.path().join(".ark/tasks/demo/00_REVIEW.md").exists());
+        assert!(tmp.path().join(".ark/tasks/demo/REVIEW.md").exists());
+        assert!(!tmp.path().join(".ark/tasks/demo/00_REVIEW.md").exists());
     }
 
     /// Verifies the research-tier early-return in `artifact_for`.
@@ -316,8 +312,8 @@ mod tests {
     fn artifact_for_research_tier_returns_none() {
         for phase in [Phase::Plan, Phase::Review, Phase::Verify] {
             assert!(
-                artifact_for(phase, Tier::Research, 0).is_none(),
-                "expected None for (phase={phase:?}, tier=Research, iter=0)",
+                artifact_for(phase, Tier::Research).is_none(),
+                "expected None for (phase={phase:?}, tier=Research)",
             );
         }
     }

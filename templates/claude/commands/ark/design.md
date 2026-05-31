@@ -1,5 +1,5 @@
 ---
-description: Start a standard or deep-tier task. Produces PRD → PLAN → (REVIEW loop if --deep) → EXECUTE → VERIFY.
+description: Start a standard or deep-tier task. Produces PRD → PLAN → (REVIEW if --deep) → EXECUTE → VERIFY.
 argument-hint: "[--deep] <title>"
 ---
 
@@ -7,8 +7,8 @@ argument-hint: "[--deep] <title>"
 
 Create a **standard**-tier task (default) or **deep**-tier task (if `--deep` is in `$ARGUMENTS`).
 
-- **Standard** — feature work with testable scope. Single PLAN, no REVIEW loop, single VERIFY gate.
-- **Deep** — architectural / cross-cutting work. Iterated PLAN ⇄ REVIEW loop, VERIFY gate, SPEC extracted on commit.
+- **Standard** — feature work with testable scope. Single PLAN, no REVIEW, single VERIFY gate.
+- **Deep** — architectural / cross-cutting work. PLAN → REVIEW → EXECUTE (single pass), VERIFY gate, SPEC extracted on commit.
 
 Parse `$ARGUMENTS`: if it contains `--deep`, tier = deep, title = remainder; else tier = standard, title = `$ARGUMENTS`.
 
@@ -73,11 +73,11 @@ ark context --scope phase --for plan --format json
 ark agent task plan
 ```
 
-Transitions to `Plan` and seeds `PLAN.md` (standard) or `00_PLAN.md` (deep).
+Transitions to `Plan` and seeds `PLAN.md` (standard and deep).
 
 ### Step 2.3: Fill the PLAN `[AI]`
 
-Per the template: `## Summary`, `## Log` (*None in 00_PLAN*), `## Spec` (Goals/NG/Architecture/Data Structure/API Surface/Constraints), `## Runtime`, `## Implementation`, `## Trade-offs`, `## Validation` with Acceptance Mapping.
+Per the template: `## Summary`, `## Spec` (Goals/NG/Architecture/Data Structure/API Surface/Constraints), `## Runtime`, `## Implementation`, `## Trade-offs`, `## Validation` with Acceptance Mapping.
 
 **Spec discipline (the `## Spec` section is what gets promoted to a feature SPEC verbatim on deep commit — write it like a contract, not a narrative):**
 
@@ -100,7 +100,7 @@ ark agent task execute   # → Phase 4
 ark agent task review    # → Phase 3
 ```
 
-## Phase 3 — REVIEW (deep only, looped)
+## Phase 3 — REVIEW (deep only, single pass)
 
 ### Step 3.1: Refresh phase context `[AI]`
 
@@ -112,22 +112,14 @@ ark context --scope phase --for review --format json
 
 **STOP. Ask the user: `ark-reviewer` subagent, a different model, or self-review?** Wait for the answer; do not pick.
 
-- **`ark-reviewer`:** dispatch it. `git status` after; `git restore` edits outside `NN_REVIEW.md` and `git clean -fd` any new files.
-- **Self-review:** switch framing — *you are now the reviewer*. Read the latest `NN_PLAN.md` against the PRD and project specs; fill `NN_REVIEW.md` with verdict, findings (`R-NNN`), trade-off advice (`TR-N`).
+- **`ark-reviewer`:** dispatch it. `git status` after; `git restore` edits outside `REVIEW.md` and `git clean -fd` any new files.
+- **Self-review:** switch framing — *you are now the reviewer*. Read `PLAN.md` against the PRD and project specs; fill `REVIEW.md` with verdict, findings (`R-NNN`), trade-off advice (`TR-N`).
 
-**Reject (HIGH)** if the latest PLAN's `## Spec` references prior iterations instead of restating in full.
+**Reject (HIGH)** if the PLAN's `## Spec` is not self-contained (leans on external docs or diff-style phrasing).
 
-### Step 3.3: Loop if revisions needed `[AI]`
+### Step 3.3: Fold findings into the PLAN `[AI]`
 
-If verdict is *Rejected* or *Approved with Revisions*:
-
-1. Copy `.ark/templates/PLAN.md` → `(NN+1)_PLAN.md`; copy `.ark/templates/REVIEW.md` → `(NN+1)_REVIEW.md`.
-2. Edit `task.toml`: bump `iteration` to `NN+1`, set `phase = "plan"`, refresh `updated_at`.
-3. Fill `(NN+1)_PLAN.md`'s `## Log` Response Matrix — every prior CRITICAL/HIGH finding listed with Accepted/Rejected/Deferred + reasoning. `## Spec` stays self-contained.
-4. `ark agent task review` → fill `(NN+1)_REVIEW.md`.
-5. Repeat until verdict is *Approved* with zero open CRITICAL.
-
-`task.toml.max_iterations` (typically 3–5 for deep). If exhausted without approval, halt and ask the user.
+There is no review loop. Edit `PLAN.md` **in place** to address every CRITICAL/HIGH finding — keep the `## Spec` self-contained. `REVIEW.md` and git history are the audit trail; do not add a response-matrix section. If a finding is genuinely architectural and warrants a redraft beyond in-place edits, halt and ask the user.
 
 ### Step 3.4: Advance `[AI]`
 

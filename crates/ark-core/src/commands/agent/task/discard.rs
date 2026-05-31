@@ -1,9 +1,10 @@
 //! `ark agent task discard` — remove an unarchived task in one step.
 //!
 //! Refuses if the task is already archived (use the archive cleanup path
-//! instead) or if any seeded artifact (`PRD.md`, `NN_PLAN.md`, `NN_REVIEW.md`,
-//! `VERIFY.md`) has user content. The `--force` flag bypasses the user-content
-//! guard but still refuses on archived tasks.
+//! instead) or if any seeded artifact (`PRD.md`, `PLAN.md`, `REVIEW.md`,
+//! `VERIFY.md`, or legacy `NN_PLAN.md` / `NN_REVIEW.md`) has user content. The
+//! `--force` flag bypasses the user-content guard but still refuses on archived
+//! tasks.
 
 use std::{fmt, path::PathBuf};
 
@@ -30,6 +31,10 @@ fn template_for(filename: &str) -> Option<&'static str> {
     if filename == "PLAN.md" {
         return Some("PLAN");
     }
+    if filename == "REVIEW.md" {
+        return Some("REVIEW");
+    }
+    // Legacy archived deep tasks may still carry `NN_PLAN.md` / `NN_REVIEW.md`.
     if filename.ends_with("_PLAN.md") && filename_has_iter_prefix(filename) {
         return Some("PLAN");
     }

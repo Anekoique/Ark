@@ -163,7 +163,6 @@ fn write_current_task(f: &mut fmt::Formatter<'_>, ct: &CurrentTask) -> fmt::Resu
     writeln!(f, "title: {}", ct.summary.title)?;
     writeln!(f, "tier: {:?}", ct.summary.tier)?;
     writeln!(f, "phase: {:?}", ct.summary.phase)?;
-    writeln!(f, "iteration: {}", ct.summary.iteration)?;
     writeln!(f, "path: {}", ct.summary.path.display())?;
     if !ct.artifacts.is_empty() {
         writeln!(f, "artifacts:")?;
@@ -183,9 +182,13 @@ fn write_current_task(f: &mut fmt::Formatter<'_>, ct: &CurrentTask) -> fmt::Resu
 }
 
 fn artifact_label(k: &ArtifactKind) -> String {
+    // The flat `PLAN.md` / `REVIEW.md` classify as iteration 0 and render
+    // bare; legacy `NN_PLAN.md` archives (iteration ≥ 1) keep the number.
     match k {
         ArtifactKind::Prd => "PRD".to_string(),
+        ArtifactKind::Plan { iteration: 0 } => "PLAN".to_string(),
         ArtifactKind::Plan { iteration } => format!("PLAN {iteration:02}"),
+        ArtifactKind::Review { iteration: 0 } => "REVIEW".to_string(),
         ArtifactKind::Review { iteration } => format!("REVIEW {iteration:02}"),
         ArtifactKind::Verify => "VERIFY".to_string(),
         ArtifactKind::TaskToml => "task.toml".to_string(),
@@ -198,11 +201,7 @@ fn write_active_tasks(f: &mut fmt::Formatter<'_>, tasks: &TasksState) -> fmt::Re
         writeln!(f, "(none)")?;
     } else {
         for t in &tasks.active {
-            writeln!(
-                f,
-                "  {} [{:?} {:?} iter={}] {}",
-                t.slug, t.tier, t.phase, t.iteration, t.title
-            )?;
+            writeln!(f, "  {} [{:?} {:?}] {}", t.slug, t.tier, t.phase, t.title)?;
         }
     }
     writeln!(f)?;

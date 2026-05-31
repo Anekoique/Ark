@@ -70,7 +70,7 @@ This calls `ark agent task commit`, which lands the staged work in a single git 
 The flow is the same shape but with more (or fewer) artifacts:
 
 - **Standard** adds a `PLAN.md` between design and execute, plus a `VERIFY.md` between execute and archive.
-- **Deep** does what standard does, plus a `00_REVIEW.md` paired with `00_PLAN.md`. If the review verdict isn't *Approved*, the agent copies both to `01_*` and iterates. On commit, the final PLAN's `## Spec` section gets promoted to `.ark/specs/features/<path>/SPEC.md`.
+- **Deep** does what standard does, plus a `REVIEW.md` step on `PLAN.md` before EXECUTE. The reviewer's CRITICAL/HIGH findings are folded back into `PLAN.md` in place — there's no loop. On commit, the PLAN's `## Spec` section gets promoted to `.ark/specs/features/<path>/SPEC.md`.
 - **Research** (`/ark:research`) goes the *other* direction — no PLAN, no VERIFY. It gathers a reference corpus under `research/` when you can't yet write a PRD. See [Tiers → Research](../workflow/tiers.md).
 
 For details, see [Lifecycle](../workflow/lifecycle.md).

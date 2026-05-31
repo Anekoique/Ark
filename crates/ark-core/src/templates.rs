@@ -618,15 +618,15 @@ mod tests {
         }
     }
 
-    /// Verifies that the reviewer prompt names the iteration-rejection rule with HIGH severity.
+    /// Verifies that the reviewer prompt names the self-containment rule with HIGH severity.
     #[test]
-    fn reviewer_prompt_carries_iteration_rejection_rule() {
+    fn reviewer_prompt_carries_self_containment_rule() {
         for platform in &["claude", "codex", "opencode"] {
             let body = agent_body(platform, "ark-reviewer");
             let body_str = std::str::from_utf8(&body).expect("utf8");
             assert!(
-                body_str.contains("references prior iterations"),
-                "{platform}/ark-reviewer must carry the iteration-rejection rule"
+                body_str.contains("not self-contained"),
+                "{platform}/ark-reviewer must carry the self-containment rule"
             );
             assert!(
                 body_str.contains("HIGH"),

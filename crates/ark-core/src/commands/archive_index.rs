@@ -161,9 +161,8 @@ mod tests {
             .write_bytes(
                 format!(
                     "id = \"{slug}\"\ntitle = \"{title}\"\ntier = \"{}\"\nphase = \
-                     \"archived\"\niteration = 0\ncreated_at = \
-                     \"2026-05-01T00:00:00Z\"\nupdated_at = \"2026-05-01T00:00:00Z\"\narchived_at \
-                     = \"2026-05-01T00:00:00Z\"\n",
+                     \"archived\"\ncreated_at = \"2026-05-01T00:00:00Z\"\nupdated_at = \
+                     \"2026-05-01T00:00:00Z\"\narchived_at = \"2026-05-01T00:00:00Z\"\n",
                     tier.dir_name(),
                 )
                 .as_bytes(),
@@ -223,6 +222,8 @@ mod tests {
             .join("quick")
             .join("mismatch");
         dir.ensure_dir().unwrap();
+        // Legacy archived deep task: still carries the retired `iteration` key,
+        // which must load as an ignored unknown field.
         dir.join("task.toml")
             .write_bytes(
                 b"id = \"mismatch\"\ntitle = \"m\"\ntier = \"deep\"\nphase = \"archived\"\n\
