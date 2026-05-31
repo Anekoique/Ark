@@ -46,15 +46,18 @@ fn ...
 
 [**Constraints**]
 
-> Invariants the implementation must hold. One declarative sentence each, ≤120 chars. Cite the source of truth (a constant, a test, a file path) when one exists. **No paragraphs, no multi-sentence rationale** — if a rule needs justification, the *why* belongs in PLAN's Trade-offs, not here.
+> Invariants the implementation must hold, each a two-line bullet. Line 1 is the actuator tag `- C-N: @<kind>[: <arg>]` — `tool`, `source-scan` (`<pattern> @ <glob>`), `test-binding` (a test id), or `judgment`; the arg names a real test or command, never a `V-*` label. Line 2 is one declarative sentence (≤120 chars). The *why* belongs in PLAN's Trade-offs, not here.
 >
-> Optionally end a constraint with an actuator tag `⟨@<kind>: <arg>⟩`: `tool`, `source-scan` (`<pattern> @ <glob>`), `test-binding` (a test id), or `judgment`. The arg names a real test or command — never a `V-*` label.
+> Good:
+> - C-1: @test-binding: <your_test_fn_name>
+> ark context emits exactly one stdout write per invocation.
 >
-> Good: `C-1: ark context emits exactly one stdout write per invocation. ⟨@test-binding: <your_test_fn_name>⟩` (the arg names a real test in your suite)
-> Bad:  `C-1: ark context emits exactly one stdout write per invocation: JSON via a single pre-rendered string + trailing newline, text via a single Display write + trailing newline. No interspersed debug prints.`  ← the elaboration is the *how*; the constraint is the first sentence.
+> Bad (elaboration is the *how*, belongs in Implementation): `ark context emits one stdout write: JSON via a pre-rendered string + newline, text via a single Display write. No interspersed debug prints.`
 
-- C-1:
-- C-2:
+- C-1: @judgment
+<constraint>
+- C-2: @judgment
+<constraint>
 
 [**CHANGELOG**]
 

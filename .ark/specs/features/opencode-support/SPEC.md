@@ -159,21 +159,36 @@ Parity tests (tree-walked, not hand-listed):
 
 [**Constraints**]
 
-- C-1: All paths under `.opencode/` route through `Layout` getters or `OPENCODE_*` consts; no `".opencode/"` literal outside `layout.rs` and `templates.rs`.
-- C-2: `OPENCODE_TEMPLATES` is rooted at `templates/opencode/commands`; the plugin file ships via `extra_files` + `include_str!`, mirroring Codex's `config.toml`.
-- C-3: `OPENCODE_PLATFORM.hook_file = None`; `Platform::capture_hook` and `remove_hook` short-circuit to `Ok(None)` / `Ok(false)`.
-- C-4: `OPENCODE_PLATFORM.removal_root == dest_dir == ".opencode"`; the directory is wholly Ark-owned.
-- C-5: `Manifest::record_block` dedupes on `(file, marker)`; calling it twice with `(AGENTS.md, ARK)` writes one entry.
-- C-6: OpenCode command bodies are mechanical translations of Claude commands: drop Claude frontmatter, prepend OpenCode frontmatter (`description` only), preserve slash-invocation idioms (`# /ark:<name> $ARGUMENTS`) verbatim.
-- C-7: Plugin file is hand-authored TypeScript at `templates/opencode/plugins/ark-context.ts`; size ≤ 95 lines including comments.
-- C-8: Plugin's exec target is the `ark` binary on `PATH`; missing binary or non-zero exit → log warning + skip injection.
-- C-9: `extra_files` (plugin TS) is not hash-tracked; re-applied unconditionally on every `init` / `load` / `upgrade`.
-- C-10: Parity tests are tree-walked: every Claude command has an OpenCode sibling; every OpenCode command's frontmatter starts with `---\ndescription:` and contains no `argument-hint:` line.
-- C-11: `OPENCODE_PLATFORM` shape asserted by `opencode_platform_shape` test in `platforms.rs::tests`.
-- C-12: Bun syntax check is developer guidance, not a CI test (`bun build --no-bundle <file> > /dev/null`).
-- C-13: No changes to `Snapshot` schema, `HookFileSpec`, hook helpers, or any command body apart from registry growth and layout consts.
-- C-14: Forward compat: an older `ark` binary reading a manifest with `.opencode/` paths leaves them on disk during `unload`; user upgrades the binary to recover round-trip.
-- C-15: `experimental.chat.messages.transform` is named experimental by OpenCode for a reason; if renamed/removed, the plugin source is the only artifact that needs to change.
+- C-1: @source-scan: .opencode/ @ crates/ark-core/src/commands/**/*.rs
+All paths under `.opencode/` route through `Layout` getters or `OPENCODE_*` consts; no `".opencode/"` literal outside `layout.rs` and `templates.rs`.
+- C-2: @test-binding: opencode_templates_ships_no_package_json
+`OPENCODE_TEMPLATES` is rooted at `templates/opencode/commands`; the plugin file ships via `extra_files` + `include_str!`, mirroring Codex's `config.toml`.
+- C-3: @test-binding: opencode_capture_hook_returns_none
+`OPENCODE_PLATFORM.hook_file = None`; `Platform::capture_hook` and `remove_hook` short-circuit to `Ok(None)` / `Ok(false)`.
+- C-4: @test-binding: opencode_platform_shape
+`OPENCODE_PLATFORM.removal_root == dest_dir == ".opencode"`; the directory is wholly Ark-owned.
+- C-5: @test-binding: opencode_apply_managed_state_writes_block_and_plugin
+`Manifest::record_block` dedupes on `(file, marker)`; calling it twice with `(AGENTS.md, ARK)` writes one entry.
+- C-6: @test-binding: opencode_command_bodies_have_opencode_frontmatter_and_arguments_token
+OpenCode command bodies are mechanical translations of Claude commands: drop Claude frontmatter, prepend OpenCode frontmatter (`description` only), preserve slash-invocation idioms (`# /ark:<name> $ARGUMENTS`) verbatim.
+- C-7: @tool: cargo build
+Plugin file is hand-authored TypeScript at `templates/opencode/plugins/ark-context.ts`; size ≤ 95 lines including comments.
+- C-8: @judgment
+Plugin's exec target is the `ark` binary on `PATH`; missing binary or non-zero exit → log warning + skip injection.
+- C-9: @source-scan: .opencode/ @ crates/ark-core/src/commands/init.rs
+`extra_files` (plugin TS) is not hash-tracked; re-applied unconditionally on every `init` / `load` / `upgrade`.
+- C-10: @test-binding: every_claude_command_has_an_opencode_command_sibling
+Parity tests are tree-walked: every Claude command has an OpenCode sibling; every OpenCode command's frontmatter starts with `---\ndescription:` and contains no `argument-hint:` line.
+- C-11: @test-binding: opencode_platform_shape
+`OPENCODE_PLATFORM` shape asserted by `opencode_platform_shape` test in `platforms.rs::tests`.
+- C-12: @judgment
+Bun syntax check is developer guidance, not a CI test (`bun build --no-bundle <file> > /dev/null`).
+- C-13: @judgment
+No changes to `Snapshot` schema, `HookFileSpec`, hook helpers, or any command body apart from registry growth and layout consts.
+- C-14: @judgment
+Forward compat: an older `ark` binary reading a manifest with `.opencode/` paths leaves them on disk during `unload`; user upgrades the binary to recover round-trip.
+- C-15: @judgment
+`experimental.chat.messages.transform` is named experimental by OpenCode for a reason; if renamed/removed, the plugin source is the only artifact that needs to change.
 
 [**CHANGELOG**]
 

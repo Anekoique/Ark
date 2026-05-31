@@ -96,32 +96,58 @@ impl Layout { pub fn upgrade_base_dir(&self) -> PathBuf; pub fn upgrade_backup_d
 
 [**Constraints**]
 
-- C-1: `[upgrade]` is parsed by `strategy.rs`'s own private raw-config struct off `layout.config_file()`; missing section → empty sets.
-- C-2: An `ejected` path is excluded before classification, conflict resolution, write, and removal.
-- C-3: Ejection wins over `--force`, `--skip-modified`, `--create-new`, and interactive policy.
-- C-4: A `merged` entry naming a managed-block file fails as `UpgradeConfigInvalid`.
-- C-5: A path in both `ejected` and `merged` fails as `UpgradeConfigInvalid`.
-- C-6: Every `[upgrade]` path is validated via `Layout::resolve_safe` before any I/O.
-- C-7: The diff3 base is the bytes Ark last wrote, read from `.ark/.upgrade-base/`; never fetched.
-- C-8: A `merged` path with no recorded base routes through the existing conflict pipeline.
-- C-9: A clean diff3 writes the merged bytes; a conflict writes git-style markers via `diffy::merge_bytes`.
-- C-10: Merge operates on raw bytes so non-UTF-8 content round-trips losslessly.
-- C-11: Base bytes are recorded only for `merged`-eligible paths, scoping sidecar size.
-- C-12: `--dry-run` performs no write, delete, manifest, managed-block, hook, base, or backup mutation.
-- C-13: A non-dry-run upgrade backs up each to-be-mutated/deleted file before its first write.
-- C-14: On any apply error, the backup is restored (files + manifest) before the error propagates.
-- C-15: `--restore` restores the most recent backup or fails `NoBackupToRestore` when none exists.
-- C-16: Action sort order is `Write{Add}` < `Write{AutoUpdate}` < `Write{Overwrite}` < `Merged` < `MergeConflict` < `AppendConfigSections` < `CreateNew` < `RefreshHashOnly` < `Preserve` < `EjectSkip` < `Delete` < `DropManifestEntry`, secondary key `relative`.
-- C-17: New `UpgradeSummary` counters print in fixed order even when zero.
-- C-18: All filesystem access routes through `io::PathExt`; all path composition through `layout::Layout`.
-- C-19: A diverged `merged` path the user never lets Ark overwrite never acquires a base and stays on fallback permanently.
-- C-20: The backup set includes `.ark/.installed.json`; rollback restores the manifest to its pre-write bytes alongside the files.
-- C-21: One backup dir per non-dry-run upgrade replaces any prior backup, is retained after success, and is left untouched by an auto-rollback (so `--restore` returns the genuine pre-upgrade tree).
-- C-22: A malformed `[upgrade]` section fails as `UpgradeConfigCorrupt`, never as `WorktreeConfigCorrupt`.
-- C-23: `Merged`/`MergeConflict` occupy write-adjacent buckets; `EjectSkip` shares `Preserve`'s position class (per C-16).
-- C-24: The dry-run preview is a `Display`-able `DryRunPreview`; one render per dispatch (project convention).
-- C-25: `capture_skip_paths` includes both sidecar dirs and both `unload` walk sites consume the widened set.
-- C-26: `.ark/config.toml` is seed-only (never overwritten or hash-classified) but receives an additive section merge: any top-level `[name]` table the current template ships that the user's file lacks is appended verbatim (header + leading-comment block + body). The user's existing bytes are preserved as a prefix; no existing section is rewritten, reordered, or inspected. Ejection beats append. The merge is reversible via `--restore` (the file joins the backup set).
+- C-1: @test-binding: load_or_default_empty_when_absent
+`[upgrade]` is parsed by `strategy.rs`'s own private raw-config struct off `layout.config_file()`; missing section → empty sets.
+- C-2: @test-binding: load_or_default_round_trips_full_section
+An `ejected` path is excluded before classification, conflict resolution, write, and removal.
+- C-3: @test-binding: ejected_path_untouched_by_force
+Ejection wins over `--force`, `--skip-modified`, `--create-new`, and interactive policy.
+- C-4: @test-binding: validate_rejects_merged_managed_block_file
+A `merged` entry naming a managed-block file fails as `UpgradeConfigInvalid`.
+- C-5: @test-binding: validate_rejects_overlap_and_unsafe
+A path in both `ejected` and `merged` fails as `UpgradeConfigInvalid`.
+- C-6: @test-binding: validate_rejects_overlap_and_unsafe
+Every `[upgrade]` path is validated via `Layout::resolve_safe` before any I/O.
+- C-7: @test-binding: record_read_round_trip_and_absent
+The diff3 base is the bytes Ark last wrote, read from `.ark/.upgrade-base/`; never fetched.
+- C-8: @test-binding: merged_without_base_falls_back_to_conflict_skip
+A `merged` path with no recorded base routes through the existing conflict pipeline.
+- C-9: @test-binding: overlapping_edits_conflict_with_git_markers
+A clean diff3 writes the merged bytes; a conflict writes git-style markers via `diffy::merge_bytes`.
+- C-10: @test-binding: non_utf8_round_trips
+Merge operates on raw bytes so non-UTF-8 content round-trips losslessly.
+- C-11: @test-binding: nested_path_mirrors_under_base_dir
+Base bytes are recorded only for `merged`-eligible paths, scoping sidecar size.
+- C-12: @test-binding: upgrade_source_has_no_bare_std_fs_or_dot_ark_literals
+`--dry-run` performs no write, delete, manifest, managed-block, hook, base, or backup mutation.
+- C-13: @test-binding: upgrade_source_has_no_bare_std_fs_or_dot_ark_literals
+A non-dry-run upgrade backs up each to-be-mutated/deleted file before its first write.
+- C-14: @test-binding: apply_failure_rolls_back_files_and_manifest
+On any apply error, the backup is restored (files + manifest) before the error propagates.
+- C-15: @test-binding: restore_without_backup_errors
+`--restore` restores the most recent backup or fails `NoBackupToRestore` when none exists.
+- C-16: @test-binding: plan_actions_sorts_output_by_bucket_then_path
+Action sort order is `Write{Add}` < `Write{AutoUpdate}` < `Write{Overwrite}` < `Merged` < `MergeConflict` < `AppendConfigSections` < `CreateNew` < `RefreshHashOnly` < `Preserve` < `EjectSkip` < `Delete` < `DropManifestEntry`, secondary key `relative`.
+- C-17: @test-binding: summary_display_prints_fixed_order_even_when_zero
+New `UpgradeSummary` counters print in fixed order even when zero.
+- C-18: @judgment
+All filesystem access routes through `io::PathExt`; all path composition through `layout::Layout`.
+- C-19: @test-binding: merged_no_base_skip_stays_on_fallback
+A diverged `merged` path the user never lets Ark overwrite never acquires a base and stays on fallback permanently.
+- C-20: @test-binding: apply_failure_rolls_back_files_and_manifest
+The backup set includes `.ark/.installed.json`; rollback restores the manifest to its pre-write bytes alongside the files.
+- C-21: @test-binding: restore_after_success_returns_pre_upgrade_tree
+One backup dir per non-dry-run upgrade replaces any prior backup, is retained after success, and is left untouched by an auto-rollback (so `--restore` returns the genuine pre-upgrade tree).
+- C-22: @test-binding: corrupt_upgrade_section_is_upgrade_error
+A malformed `[upgrade]` section fails as `UpgradeConfigCorrupt`, never as `WorktreeConfigCorrupt`.
+- C-23: @test-binding: new_action_variants_sort_into_their_buckets
+`Merged`/`MergeConflict` occupy write-adjacent buckets; `EjectSkip` shares `Preserve`'s position class (per C-16).
+- C-24: @test-binding: dry_run_reports_and_mutates_nothing
+The dry-run preview is a `Display`-able `DryRunPreview`; one render per dispatch (project convention).
+- C-25: @judgment
+`capture_skip_paths` includes both sidecar dirs and both `unload` walk sites consume the widened set.
+- C-26: @test-binding: upgrade_appends_missing_top_level_sections_to_config_toml
+`.ark/config.toml` is seed-only (never overwritten or hash-classified) but receives an additive section merge: any top-level `[name]` table the current template ships that the user's file lacks is appended verbatim (header + leading-comment block + body). The user's existing bytes are preserved as a prefix; no existing section is rewritten, reordered, or inspected. Ejection beats append. The merge is reversible via `--restore` (the file joins the backup set).
 
 ---
 

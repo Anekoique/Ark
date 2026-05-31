@@ -739,3 +739,30 @@ SPEC constraints can declare an inline actuator tag (tool/source-scan/test-bindi
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 28: tag feature SPECs with actuators
+
+**Date**: 2026-05-31
+**Slug**: tag-feature-specs
+**Branch**: `feat/spec-actuators`
+**Base Branch**: `main`
+**Start Head**: `53b6c79`
+**Closing Commit**: <PENDING:tag-feature-specs>
+
+### Summary
+
+Actuator tags move to a compact two-line form (`- C-N: @kind[: arg]` / prose); every feature + project SPEC constraint is tagged, bindings grep-verified.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| specs | 16 SPECs reformatted to two-line tags; 150 test-bindings resolve, 0 dead |
+| grammar | LAYOUT.md L-3/L-9 + SPEC/PLAN templates define the two-line form |
+| docs | workflow.md + spec-audit + ark-verifier wording synced across 3 platforms |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

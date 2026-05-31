@@ -170,33 +170,61 @@ No CLI surface change. No new `ark agent` verbs.
 
 [**Constraints**]
 
-- C-1: `Platform` registry exposes `agents_templates` + `agents_dest_dir`; agent install reuses the iterate-the-slice pattern (no new arms per platform).
-- C-2: Each platform ships exactly the three agents `ark-researcher`, `ark-reviewer`, `ark-verifier`; parity tested against `CLAUDE_AGENT_TEMPLATES` as canonical.
-- C-3: `Layout::owned_dirs()` is derived from `PLATFORMS` (each platform contributes `removal_root` + `extra_dirs`); call sites are unchanged.
-- C-4: Agent files route through `Layout` getters or `<PLATFORM>_AGENTS_DIR` consts; no `".claude/agents/"`, `".codex/agents/"`, `".opencode/agents/"` literal outside `layout.rs` and `templates.rs`.
-- C-5: Agent files are re-applied unconditionally on `init` / `load` / `upgrade` via `Platform::apply_managed_state` (which calls `path.write_bytes` regardless of `WriteMode`); they are hash-tracked in `manifest.{files,hashes}` so `is_installed` and the upgrade-conflict pipeline see them, but the unconditional write in `apply_managed_state` bypasses the conflict pipeline at install time. Re-application is content-idempotent (post-write bytes equal pre-write bytes for an unchanged template) but not mtime-idempotent — every re-apply rewrites the file.
-- C-6: Each agent prompt body contains a `## Recursion Guard` section forbidding the agent from spawning `ark-researcher`, `ark-reviewer`, or `ark-verifier`.
-- C-7: Each agent prompt enumerates explicit `Write ALLOWED` and `Write FORBIDDEN` lists; no other paths may be written.
-- C-8: `ark-researcher` Write ALLOWED is `.ark/tasks/<slug>/research/*.md`; FORBIDDEN includes code, SPECs, PRD, PLAN, REVIEW, VERIFY, `task.toml`, all git operations.
-- C-9: `ark-reviewer` Write ALLOWED is the seeded `NN_REVIEW.md` for the current iteration; FORBIDDEN includes the latest `NN_PLAN.md`, code, SPECs, all git operations.
-- C-10: `ark-verifier` Write ALLOWED is `VERIFY.md`; FORBIDDEN includes code, SPECs, PLAN, all git operations.
-- C-11: `ark-verifier` does not self-fix findings; FAIL items return to the main session for resolution.
-- C-12: `ark-reviewer` rejects as HIGH a PLAN whose `## Spec` references prior iterations rather than restating in full.
-- C-13: `ark-reviewer` flags as CRITICAL any PLAN that contradicts an existing feature SPEC without an explicit `## Log` Removed/Changed entry naming the supersede.
-- C-14: `ark-researcher` returns to the main session a list of `<task>/research/*.md` paths plus one-line summaries; the literal contract phrase "paths plus one-line summaries" appears in the prompt.
-- C-15: Recursive subagent spawning is forbidden by every agent's Recursion Guard section; only the main session may dispatch the three Ark subagents.
-- C-16: `/ark:design` Step 1.2 / 1.4 names the trigger signals for researcher dispatch (named third-party library, prior-art comparison, codebase pattern map) and instructs main session to *announce-then-dispatch* on signal.
-- C-17: `/ark:design` Step 3.2 (REVIEW, deep) keeps workflow.md's "self-review or run the reviewer?" prompt; on the agent path, names `ark-reviewer` as the dispatch target.
-- C-18: `/ark:design` Step 5.2 (VERIFY, standard + deep) keeps the same self-or-agent prompt; on the agent path, names `ark-verifier`.
-- C-19: `codex-support` SPEC's NG-2 ("No `.codex/agents/*.toml` custom subagents") is superseded; an explicit CHANGELOG entry records the supersede + the new `Platform` fields.
-- C-20: `opencode-support` SPEC's `OPENCODE_PLATFORM` shape gains the three new `Platform` fields; CHANGELOG entry records the addition.
-- C-21: Each platform ships exactly the three Ark agents. For Claude, `CLAUDE_TEMPLATES.get_dir("agents")` yields three `.md` files; for Codex / OpenCode, `walk` of `<PLATFORM>_AGENT_TEMPLATES` yields three top-level `.toml` (Codex) or `.md` (OpenCode) files. Parity tested.
-- C-22: Every agent prompt body is byte-identical across platforms after stripping per-platform frontmatter; V-UT-8 asserts this.
-- C-23: `Platform::extra_dirs` lists project-relative directories owned by the platform that lie outside `removal_root`. Claude's `extra_dirs = [".claude/agents"]`; Codex/OpenCode's `extra_dirs = []`. `Layout::owned_dirs()` concatenates these per C-3.
-- C-24: `Platform::is_installed` / `is_in_snapshot` continue to work unchanged; agent files are recorded in `manifest.files` per C-5 and inherit the existing membership semantics for all three platforms.
-- C-25: Codex agent file format is TOML with the keys `name`, `description`, `sandbox_mode = "workspace-write"`, `developer_instructions` (multi-line triple-quoted body), `[features].multi_agent = false`, `[features.multi_agent_v2].enabled = false`. Authoritative example: `reference/Trellis/.codex/agents/trellis-research.toml`.
-- C-26: Filenames `ark-researcher`, `ark-reviewer`, `ark-verifier` (with the platform-appropriate extension) are reserved by Ark under each platform's `agents_dest_dir`. User-authored siblings with the same stem are overwritten on `init` / `upgrade` / `load`. Documented in `/ark:design`'s VERIFY note.
-- C-27: `Platform` struct is `#[non_exhaustive]`; all `Platform` literals use struct-update syntax or named-field initializers in the registry.
-- C-28: After dispatching any Ark subagent, main session checks `git status`. If files were written outside the agent's documented Write-ALLOWED paths, main session reverts the out-of-scope writes via `git restore` before incorporating the agent's findings.
+- C-1: @test-binding: agents_templates_and_dest_dir_are_paired
+`Platform` registry exposes `agents_templates` + `agents_dest_dir`; agent install reuses the iterate-the-slice pattern (no new arms per platform).
+- C-2: @test-binding: each_platform_ships_three_agents
+Each platform ships exactly the three agents `ark-researcher`, `ark-reviewer`, `ark-verifier`; parity tested against `CLAUDE_AGENT_TEMPLATES` as canonical.
+- C-3: @test-binding: owned_dirs_derives_from_registry
+`Layout::owned_dirs()` is derived from `PLATFORMS` (each platform contributes `removal_root` + `extra_dirs`); call sites are unchanged.
+- C-4: @source-scan: .claude/agents/ @ crates/ark-core/src/commands/**/*.rs
+Agent files route through `Layout` getters or `<PLATFORM>_AGENTS_DIR` consts; no `".claude/agents/"`, `".codex/agents/"`, `".opencode/agents/"` literal outside `layout.rs` and `templates.rs`.
+- C-5: @test-binding: unload_load_round_trips_agent_files_for_every_platform
+Agent files are re-applied unconditionally on `init` / `load` / `upgrade` via `Platform::apply_managed_state` (which calls `path.write_bytes` regardless of `WriteMode`); they are hash-tracked in `manifest.{files,hashes}` so `is_installed` and the upgrade-conflict pipeline see them, but the unconditional write in `apply_managed_state` bypasses the conflict pipeline at install time. Re-application is content-idempotent (post-write bytes equal pre-write bytes for an unchanged template) but not mtime-idempotent — every re-apply rewrites the file.
+- C-6: @test-binding: agent_prompts_carry_recursion_guard
+Each agent prompt body contains a `## Recursion Guard` section forbidding the agent from spawning `ark-researcher`, `ark-reviewer`, or `ark-verifier`.
+- C-7: @test-binding: agent_prompts_carry_write_scope_walls
+Each agent prompt enumerates explicit `Write ALLOWED` and `Write FORBIDDEN` lists; no other paths may be written.
+- C-8: @judgment
+`ark-researcher` Write ALLOWED is `.ark/tasks/<slug>/research/*.md`; FORBIDDEN includes code, SPECs, PRD, PLAN, REVIEW, VERIFY, `task.toml`, all git operations.
+- C-9: @judgment
+`ark-reviewer` Write ALLOWED is the seeded `NN_REVIEW.md` for the current iteration; FORBIDDEN includes the latest `NN_PLAN.md`, code, SPECs, all git operations.
+- C-10: @judgment
+`ark-verifier` Write ALLOWED is `VERIFY.md`; FORBIDDEN includes code, SPECs, PLAN, all git operations.
+- C-11: @test-binding: verifier_prompt_carries_no_self_fix_rule
+`ark-verifier` does not self-fix findings; FAIL items return to the main session for resolution.
+- C-12: @test-binding: reviewer_prompt_carries_iteration_rejection_rule
+`ark-reviewer` rejects as HIGH a PLAN whose `## Spec` references prior iterations rather than restating in full.
+- C-13: @test-binding: reviewer_prompt_carries_spec_contradiction_rule
+`ark-reviewer` flags as CRITICAL any PLAN that contradicts an existing feature SPEC without an explicit `## Log` Removed/Changed entry naming the supersede.
+- C-14: @test-binding: researcher_prompt_carries_paths_summaries_contract
+`ark-researcher` returns to the main session a list of `<task>/research/*.md` paths plus one-line summaries; the literal contract phrase "paths plus one-line summaries" appears in the prompt.
+- C-15: @test-binding: agent_prompts_carry_recursion_guard
+Recursive subagent spawning is forbidden by every agent's Recursion Guard section; only the main session may dispatch the three Ark subagents.
+- C-16: @judgment
+`/ark:design` Step 1.2 / 1.4 names the trigger signals for researcher dispatch (named third-party library, prior-art comparison, codebase pattern map) and instructs main session to *announce-then-dispatch* on signal.
+- C-17: @judgment
+`/ark:design` Step 3.2 (REVIEW, deep) keeps workflow.md's "self-review or run the reviewer?" prompt; on the agent path, names `ark-reviewer` as the dispatch target.
+- C-18: @judgment
+`/ark:design` Step 5.2 (VERIFY, standard + deep) keeps the same self-or-agent prompt; on the agent path, names `ark-verifier`.
+- C-19: @test-binding: codex_support_spec_changelog_present
+`codex-support` SPEC's NG-2 ("No `.codex/agents/*.toml` custom subagents") is superseded; an explicit CHANGELOG entry records the supersede + the new `Platform` fields.
+- C-20: @test-binding: opencode_support_spec_changelog_present
+`opencode-support` SPEC's `OPENCODE_PLATFORM` shape gains the three new `Platform` fields; CHANGELOG entry records the addition.
+- C-21: @test-binding: each_platform_ships_three_agents
+Each platform ships exactly the three Ark agents. For Claude, `CLAUDE_TEMPLATES.get_dir("agents")` yields three `.md` files; for Codex / OpenCode, `walk` of `<PLATFORM>_AGENT_TEMPLATES` yields three top-level `.toml` (Codex) or `.md` (OpenCode) files. Parity tested.
+- C-22: @test-binding: agent_bodies_are_byte_identical_modulo_platform_idioms
+Every agent prompt body is byte-identical across platforms after stripping per-platform frontmatter; V-UT-8 asserts this.
+- C-23: @test-binding: claude_platform_lists_agents_dir_in_extra_dirs
+`Platform::extra_dirs` lists project-relative directories owned by the platform that lie outside `removal_root`. Claude's `extra_dirs = [".claude/agents"]`; Codex/OpenCode's `extra_dirs = []`. `Layout::owned_dirs()` concatenates these per C-3.
+- C-24: @test-binding: unload_load_round_trips_agent_files_for_every_platform
+`Platform::is_installed` / `is_in_snapshot` continue to work unchanged; agent files are recorded in `manifest.files` per C-5 and inherit the existing membership semantics for all three platforms.
+- C-25: @test-binding: codex_agent_frontmatter_shape
+Codex agent file format is TOML with the keys `name`, `description`, `sandbox_mode = "workspace-write"`, `developer_instructions` (multi-line triple-quoted body), `[features].multi_agent = false`, `[features.multi_agent_v2].enabled = false`. Authoritative example: `reference/Trellis/.codex/agents/trellis-research.toml`.
+- C-26: @test-binding: load_restores_canonical_agent_body_overwriting_snapshot_edits
+Filenames `ark-researcher`, `ark-reviewer`, `ark-verifier` (with the platform-appropriate extension) are reserved by Ark under each platform's `agents_dest_dir`. User-authored siblings with the same stem are overwritten on `init` / `upgrade` / `load`. Documented in `/ark:design`'s VERIFY note.
+- C-27: @judgment
+`Platform` struct is `#[non_exhaustive]`; all `Platform` literals use struct-update syntax or named-field initializers in the registry.
+- C-28: @judgment
+After dispatching any Ark subagent, main session checks `git status`. If files were written outside the agent's documented Write-ALLOWED paths, main session reverts the out-of-scope writes via `git restore` before incorporating the agent's findings.
 
 ---

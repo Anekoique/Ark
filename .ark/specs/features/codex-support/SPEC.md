@@ -240,21 +240,36 @@ struct InitArgs {
 
 [**Constraints**]
 
-- C-1: All paths under `.codex/` route through `Layout` getters or `CODEX_*` consts; no `".codex/"` literal outside `layout.rs` and `templates.rs`.
-- C-2: Skill bodies are mechanical translations of Claude commands: drop Claude frontmatter, prepend Codex frontmatter (`name`, `description`), rewrite `/ark:<name>` → `ark-<name>`, rewrite `$ARGUMENTS` → `<task description>`.
-- C-3: Source-scan tests cover `init`, `upgrade`, `unload`, `load`, `remove`, `platforms.rs`; each forbids `std::fs::`, `".ark/"`, `".claude/"`, `".codex/"`, `"AGENTS.md"`, `"CLAUDE.md"` literals (sanctioned site: `fs.rs`).
-- C-4: `update_hook_file` / `remove_hook_file` / `read_hook_file` accept `hooks_array_key: &str` validated against `[A-Za-z0-9_-]+`; both shipping platforms pass `"SessionStart"`.
-- C-5: `PLATFORMS` slice iteration order is canonical: `[CLAUDE_PLATFORM, CODEX_PLATFORM]`.
-- C-6: `Platform::by_id` and `Platform::by_cli_flag` give typed lookup paths.
-- C-7: `load` replays `snapshot.hook_bodies`, then iterates `PLATFORMS` and re-applies the canonical entry for every installed platform.
-- C-8: Deprecated helpers (`update_settings_hook`, etc.) are concrete `#[deprecated(since = "0.2.0", ...)]` thin wrappers, not `pub use` aliases.
-- C-9: `unload` captures hooks in two stages: (a) registered platforms via `read_hook_file` + `remove_hook_file`; (b) walk every `*.json` under `owned_dirs` and surgically capture/remove unrecognized Ark entries.
-- C-10: Codex hook timeout is `30` (seconds); Claude is `5000` (milliseconds). Both functions document the unit.
-- C-11: `.codex/hooks.json`, `.codex/config.toml`, and `AGENTS.md` managed block are not hash-tracked; re-applied unconditionally on every `init` / `load` / `upgrade`. Sibling user content preserved.
-- C-12: A platform is "installed" iff some path under `Platform::dest_dir` appears in `manifest.files`.
-- C-13: Parity tests assert: every Claude command has a Codex skill sibling; every shipped skill begins with `---\nname: ark-` (Codex frontmatter, not Claude's).
-- C-14: An existing Claude-only project remains Claude-only on `ark upgrade`; adding Codex requires re-running `ark init --codex` (additive, idempotent).
-- C-15: Snapshot forward compat: older `.ark.db` files without a Codex hook entry deserialize to `vec![]`; canonical re-apply restores both platforms regardless.
+- C-1: @source-scan: .codex/ @ crates/ark-core/src/commands/**/*.rs
+All paths under `.codex/` route through `Layout` getters or `CODEX_*` consts; no `".codex/"` literal outside `layout.rs` and `templates.rs`.
+- C-2: @judgment
+Skill bodies are mechanical translations of Claude commands: drop Claude frontmatter, prepend Codex frontmatter (`name`, `description`), rewrite `/ark:<name>` → `ark-<name>`, rewrite `$ARGUMENTS` → `<task description>`.
+- C-3: @source-scan: std::fs:: @ crates/ark-core/src/commands/**/*.rs
+Source-scan tests cover `init`, `upgrade`, `unload`, `load`, `remove`, `platforms.rs`; each forbids `std::fs::`, `".ark/"`, `".claude/"`, `".codex/"`, `"AGENTS.md"`, `"CLAUDE.md"` literals (sanctioned site: `fs.rs`).
+- C-4: @test-binding: update_hook_file_rejects_invalid_array_key
+`update_hook_file` / `remove_hook_file` / `read_hook_file` accept `hooks_array_key: &str` validated against `[A-Za-z0-9_-]+`; both shipping platforms pass `"SessionStart"`.
+- C-5: @test-binding: platform_by_id_resolves_known_platforms
+`PLATFORMS` slice iteration order is canonical: `[CLAUDE_PLATFORM, CODEX_PLATFORM]`.
+- C-6: @test-binding: platform_by_id_resolves_known_platforms
+`Platform::by_id` and `Platform::by_cli_flag` give typed lookup paths.
+- C-7: @test-binding: load_after_replay_re_applies_canonical_entries
+`load` replays `snapshot.hook_bodies`, then iterates `PLATFORMS` and re-applies the canonical entry for every installed platform.
+- C-8: @test-binding: deprecated_alias_delegates_to_update_hook_file
+Deprecated helpers (`update_settings_hook`, etc.) are concrete `#[deprecated(since = "0.2.0", ...)]` thin wrappers, not `pub use` aliases.
+- C-9: @test-binding: unload_captures_orphan_ark_hook_entries_in_unregistered_files
+`unload` captures hooks in two stages: (a) registered platforms via `read_hook_file` + `remove_hook_file`; (b) walk every `*.json` under `owned_dirs` and surgically capture/remove unrecognized Ark entries.
+- C-10: @test-binding: ark_codex_hook_entry_carries_canonical_command_in_seconds
+Codex hook timeout is `30` (seconds); Claude is `5000` (milliseconds). Both functions document the unit.
+- C-11: @judgment
+`.codex/hooks.json`, `.codex/config.toml`, and `AGENTS.md` managed block are not hash-tracked; re-applied unconditionally on every `init` / `load` / `upgrade`. Sibling user content preserved.
+- C-12: @judgment
+A platform is "installed" iff some path under `Platform::dest_dir` appears in `manifest.files`.
+- C-13: @test-binding: every_claude_command_has_a_codex_skill_sibling
+Parity tests assert: every Claude command has a Codex skill sibling; every shipped skill begins with `---\nname: ark-` (Codex frontmatter, not Claude's).
+- C-14: @judgment
+An existing Claude-only project remains Claude-only on `ark upgrade`; adding Codex requires re-running `ark init --codex` (additive, idempotent).
+- C-15: @judgment
+Snapshot forward compat: older `.ark.db` files without a Codex hook entry deserialize to `vec![]`; canonical re-apply restores both platforms regardless.
 
 [**CHANGELOG**]
 

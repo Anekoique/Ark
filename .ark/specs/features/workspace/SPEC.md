@@ -347,27 +347,48 @@ ark context --scope record [--format json]
 
 [**Constraints**]
 
-- C-1: Journal append uses `PathExt::append_text` (`O_APPEND`); per-call atomicity is the OS guarantee.
-- C-2: Sentinel format is exactly `<PENDING:<slug>>`.
-- C-3: `**Slug**: <slug>` is the pickaxe anchor; manual entries use `**Slug**: -`.
-- C-4: Pickaxe runs before archive's git commit so the closing commit is reachable.
-- C-5: Short SHA = 12 chars (`git rev-parse --short=12`).
-- C-6: No parent-resolution; the journal lives on the task's branch.
-- C-7: Managed-block markers reuse existing `io::fs::{read,update,remove,merge}_managed_block` API.
-- C-8: `ark upgrade` scaffolds the top-level workspace index, adds `[workspace]` config, scaffolds the developer dir if `.ark/.developer` exists.
-- C-9: `task.toml.journal_path` is project-relative POSIX-style.
-- C-10: `--no-commit` skips `workspace_record` entirely; `journal_path` stays None.
-- C-11: Workspace files are staged inside `CommitTransaction`; the staged set is tracked for rollback.
-- C-12: Identity prompt re-prompts on blank input + missing env.
-- C-13: Journal file scans sort descending; `scan_session_count` returns max-N.
-- C-14: `WorkspaceConfig::load_or_default` reads only the `[workspace]` section via a private `RawConfig`.
-- C-15: `CommitTransaction::rollback` is reverse-order: unstage workspace paths → restore top-level index → restore personal index → suffix-check truncate journal → restore `task.toml`.
-- C-16: `ArchiveTransaction::rollback` is reverse-order across tasks: undo any `mv` for the in-flight task, restore its journal/index, then prior tasks in reverse, then targeted `git reset HEAD -- <ark-paths>`.
-- C-17: `--entry-file` parser is strict; missing required sections → `Error::EntryFileMalformed`.
-- C-18: Skip audit body uses one line per skipped slug: `skipped slot-patch: <slug> (<reason-code>)`.
-- C-19: Suffix-checked journal rollback: `RecordTransaction` keeps appended bytes in memory. On rollback: read the last `len(appended_bytes)` bytes; byte-match → `set_len(snapshot_len)`; mismatch → `Error::JournalDriftDetected`, file untouched. Concurrent-appender data preserved.
-- C-20: `ark archive` requires a clean git index; runs `git diff --cached --quiet` first; dirty index → `Error::ArchiveIndexNotEmpty { staged_paths }` with hint.
-- C-21: `io::fs::write_atomic(path, bytes)` writes `<path>.<pid>.<rand>.tmp` in the same parent dir then renames (atomic on same filesystem). Used by transaction restores and archive patch writes. `io::fs::write_file` (content-aware Skip/Force) is unchanged.
+- C-1: @test-binding: record_task_stamps_auto_fields_and_updates_indices
+Journal append uses `PathExt::append_text` (`O_APPEND`); per-call atomicity is the OS guarantee.
+- C-2: @test-binding: commit_yields_snapshot_with_working_rollback
+Sentinel format is exactly `<PENDING:<slug>>`.
+- C-3: @test-binding: record_task_stamps_auto_fields_and_updates_indices
+`**Slug**: <slug>` is the pickaxe anchor; manual entries use `**Slug**: -`.
+- C-4: @judgment
+Pickaxe runs before archive's git commit so the closing commit is reachable.
+- C-5: @judgment
+Short SHA = 12 chars (`git rev-parse --short=12`).
+- C-6: @judgment
+No parent-resolution; the journal lives on the task's branch.
+- C-7: @judgment
+Managed-block markers reuse existing `io::fs::{read,update,remove,merge}_managed_block` API.
+- C-8: @test-binding: upgrade_appends_missing_top_level_sections_to_config_toml
+`ark upgrade` scaffolds the top-level workspace index, adds `[workspace]` config, scaffolds the developer dir if `.ark/.developer` exists.
+- C-9: @test-binding: record_task_stamps_auto_fields_and_updates_indices
+`task.toml.journal_path` is project-relative POSIX-style.
+- C-10: @test-binding: no_commit_flips_phase_without_committing
+`--no-commit` skips `workspace_record` entirely; `journal_path` stays None.
+- C-11: @test-binding: commit_phase_yields_paths_only_no_bodies
+Workspace files are staged inside `CommitTransaction`; the staged set is tracked for rollback.
+- C-12: @test-binding: identity_prompt_retries_on_blank
+Identity prompt re-prompts on blank input + missing env.
+- C-13: @judgment
+Journal file scans sort descending; `scan_session_count` returns max-N.
+- C-14: @test-binding: load_or_default_returns_defaults_when_section_missing
+`WorkspaceConfig::load_or_default` reads only the `[workspace]` section via a private `RawConfig`.
+- C-15: @test-binding: rollback_restores_indices_in_reverse
+`CommitTransaction::rollback` is reverse-order: unstage workspace paths → restore top-level index → restore personal index → suffix-check truncate journal → restore `task.toml`.
+- C-16: @judgment
+`ArchiveTransaction::rollback` is reverse-order across tasks: undo any `mv` for the in-flight task, restore its journal/index, then prior tasks in reverse, then targeted `git reset HEAD -- <ark-paths>`.
+- C-17: @judgment
+`--entry-file` parser is strict; missing required sections → `Error::EntryFileMalformed`.
+- C-18: @judgment
+Skip audit body uses one line per skipped slug: `skipped slot-patch: <slug> (<reason-code>)`.
+- C-19: @test-binding: rollback_detects_drift_and_preserves_concurrent_data
+Suffix-checked journal rollback: `RecordTransaction` keeps appended bytes in memory. On rollback: read the last `len(appended_bytes)` bytes; byte-match → `set_len(snapshot_len)`; mismatch → `Error::JournalDriftDetected`, file untouched. Concurrent-appender data preserved.
+- C-20: @test-binding: ensure_clean_index_errors_on_dirty_index
+`ark archive` requires a clean git index; runs `git diff --cached --quiet` first; dirty index → `Error::ArchiveIndexNotEmpty { staged_paths }` with hint.
+- C-21: @judgment
+`io::fs::write_atomic(path, bytes)` writes `<path>.<pid>.<rand>.tmp` in the same parent dir then renames (atomic on same filesystem). Used by transaction restores and archive patch writes. `io::fs::write_file` (content-aware Skip/Force) is unchanged.
 
 [**CHANGELOG**]
 

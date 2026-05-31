@@ -170,21 +170,36 @@ ark agent spec register  --feature <f> --scope "<s>" --from-task <t> [--date YYY
 
 [**Constraints**]
 
-- C-1: `ark --help` does not list `agent`.
-- C-2: `ark agent --help` includes the string "Not covered by semver".
-- C-3: Every subcommand's output goes through a `Display`-returning summary; no ad-hoc `println!`.
-- C-4: All filesystem access in `commands/agent/` routes through `io::PathExt`.
-- C-5: All `.ark/`-relative path composition routes through `layout::Layout`.
-- C-6: `task.toml` parsing/writing uses the `toml` crate; corrupt files produce `Error::TaskTomlCorrupt`.
-- C-7: `spec register` uses `io::update_managed_block` with marker `ARK:FEATURES`.
-- C-8: `task archive` directory move uses `PathExt::rename_to`; fails loud on cross-device.
-- C-9: Illegal phase transitions return `Error::IllegalPhaseTransition`; deep-only ops on wrong tier return `Error::WrongTier`.
-- C-10: `ark agent` subcommands depend on each other via direct calls only; never shell out to `ark`.
-- C-11: `## Spec` section-scan: start matches `line == "## Spec"` or `line.starts_with("## Spec ")`; end matches the next `^## ` H2 or EOF; rejects `## Speculation`.
-- C-12: `spec register` arg validation rejects empty strings or strings containing `|`, `\n`, `\r` → `Error::InvalidSpecField`.
-- C-13: `update_managed_block` refuses to write on orphan START marker → `Error::ManagedBlockCorrupt`.
-- C-14: `--slug` is required only on `task new`, `task resume`, `task discard`. Other verbs read `.state.toml`'s `[focus]` field; absent focus → `Error::NoFocus { project_root, candidates }`.
-- C-15: Archival is user-invoked via `/ark:archive`; `/ark:design` and `/ark:quick` never archive automatically.
+- C-1: @test-binding: top_level_help_does_not_mention_agent
+`ark --help` does not list `agent`.
+- C-2: @test-binding: agent_help_includes_stability_banner
+`ark agent --help` includes the string "Not covered by semver".
+- C-3: @judgment
+Every subcommand's output goes through a `Display`-returning summary; no ad-hoc `println!`.
+- C-4: @judgment
+All filesystem access in `commands/agent/` routes through `io::PathExt`.
+- C-5: @judgment
+All `.ark/`-relative path composition routes through `layout::Layout`.
+- C-6: @test-binding: load_errors_on_corrupt_toml
+`task.toml` parsing/writing uses the `toml` crate; corrupt files produce `Error::TaskTomlCorrupt`.
+- C-7: @test-binding: registers_fresh_row
+`spec register` uses `io::update_managed_block` with marker `ARK:FEATURES`.
+- C-8: @test-binding: rename_to_moves_file
+`task archive` directory move uses `PathExt::rename_to`; fails loud on cross-device.
+- C-9: @test-binding: illegal_phase_under_target_tier_errors
+Illegal phase transitions return `Error::IllegalPhaseTransition`; deep-only ops on wrong tier return `Error::WrongTier`.
+- C-10: @judgment
+`ark agent` subcommands depend on each other via direct calls only; never shell out to `ark`.
+- C-11: @test-binding: extracts_with_inline_code_suffix
+`## Spec` section-scan: start matches `line == "## Spec"` or `line.starts_with("## Spec ")`; end matches the next `^## ` H2 or EOF; rejects `## Speculation`.
+- C-12: @test-binding: rejects_pipe_in_feature
+`spec register` arg validation rejects empty strings or strings containing `|`, `\n`, `\r` → `Error::InvalidSpecField`.
+- C-13: @test-binding: errors_on_corrupt_managed_block
+`update_managed_block` refuses to write on orphan START marker → `Error::ManagedBlockCorrupt`.
+- C-14: @judgment
+`--slug` is required only on `task new`, `task resume`, `task discard`. Other verbs read `.state.toml`'s `[focus]` field; absent focus → `Error::NoFocus { project_root, candidates }`.
+- C-15: @judgment
+Archival is user-invoked via `/ark:archive`; `/ark:design` and `/ark:quick` never archive automatically.
 
 [**CHANGELOG**]
 

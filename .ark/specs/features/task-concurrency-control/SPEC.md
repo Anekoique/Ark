@@ -194,30 +194,54 @@ ark agent task discard --slug <s> [--force]
 
 [**Constraints**]
 
-- C-1: Locking primitive is stdlib `File::try_lock` (Rust 1.89+).
-- C-2: Lock file is `.ark/.state.toml.lock`; backoff: 5 attempts at 10/20/40/80/160 ms (≤ 320 ms cumulative).
-- C-3: State write is atomic: `.state.toml.tmp.<pid>` then `rename_to(.state.toml)`.
-- C-4: `state_mutate` unlinks `.state.toml.tmp.*` orphans on lock acquire.
-- C-5: Every successful `state_mutate` runs a best-effort sweep that unlinks `<temp>/ark-session-<this-project-hash>-*.id` orphans (legacy session-cache scheme; IO errors swallowed).
-- C-6: No `.unwrap()` in production; one allowed `.expect("StateFile serializes")` mirrors `TaskToml::save`.
-- C-7: All filesystem access in `state/checkout/` routes through `io::PathExt`.
-- C-8: All `.ark/`-relative paths route through `Layout` helpers. New consts `STATE_FILE`, `STATE_LOCK_FILE`. Legacy `tasks_current()` accessor kept for migration.
-- C-9: Reconcile drops a `tasks.active` entry when its `task.toml` is missing or `phase == Archived`.
-- C-10: Reconcile clears `state.focus` when its target is no longer in `tasks.active`.
-- C-11: `load_state` does NOT delete legacy files; migration deletion happens on the next successful `state_mutate`.
-- C-12: `state_mutate` is the sole path that mutates the state file.
-- C-13: `task_discard` reads each seeded file and compares to its template; first divergence → `Error::TaskStillActive`. `--force` skips the scan.
-- C-14: Legacy accessors carry a doc comment "legacy migration accessor; remove after migration window."
-- C-15: `[tasks].active` is sorted+deduped on every save.
-- C-16: No SessionStart hook integration.
-- C-17: Each worktree's state file is independent.
-- C-18: `task_new` and `task_resume` set `state.focus = Some(slug)` in the same `state_mutate` that updates `tasks.active`. Their summaries carry `overwrote_focus: Option<String>` populated when the prior focus differed from the new slug; `Display` renders a stderr-rendered warning suggesting `--worktree` for parallel work.
-- C-19: `task_archive`, `task_discard`, and `task_commit` set `state.focus = None` iff `state.focus.as_deref() == Some(slug)`. `task_commit` does NOT remove the slug from `tasks.active` (the slug stays active until `ark archive`).
-- C-20: `task_archive` ordering is rename-first: (0) `clear_focus_for_slug`; (1) rename to archive path; (2) save Archived metadata; (3) deep-tier `spec_extract + spec_register`. State integrity recoverable via reconcile if any step after (0) fails.
-- C-21: `unload.rs` skip set in BOTH walk sites: `[cfg.resolve_worktrees_dir(&layout), layout.state_file(), layout.state_lock_file()]`. `walk_files_excluding` extended to skip `.state.toml.tmp.*` orphans.
-- C-22: `reconcile_against_disk` runs in order: (1) enumerate `.ark/tasks/<slug>/task.toml` excluding `archive/`, push to `state.tasks.active` if absent; (2) drop `tasks.active` entries whose `task.toml` is missing or `phase == Archived`; (3) sort+dedup per C-15; (4) clear `state.focus` if its target is no longer active. Order matters: add precedes drop so a transient inconsistency never collapses an active slug.
-- C-23: `--slug` is required only on `task new`, `task resume`, `task discard`. Other verbs read `state.focus`; absent → `Error::NoFocus { project_root, candidates: state.tasks.active.clone() }`.
-- C-24: Loading a `.state.toml` carrying legacy `[sessions.*]` blocks does not error; serde drops unknown fields by default and the next save writes the file without them.
+- C-1: @test-binding: state_mutate_round_trips_atomically
+Locking primitive is stdlib `File::try_lock` (Rust 1.89+).
+- C-2: @test-binding: state_mutate_returns_lock_contended_after_backoff
+Lock file is `.ark/.state.toml.lock`; backoff: 5 attempts at 10/20/40/80/160 ms (≤ 320 ms cumulative).
+- C-3: @test-binding: state_mutate_round_trips_atomically
+State write is atomic: `.state.toml.tmp.<pid>` then `rename_to(.state.toml)`.
+- C-4: @test-binding: state_mutate_unlinks_orphan_tmp_files
+`state_mutate` unlinks `.state.toml.tmp.*` orphans on lock acquire.
+- C-5: @test-binding: cleanup_orphan_session_caches_removes_only_this_projects_files
+Every successful `state_mutate` runs a best-effort sweep that unlinks `<temp>/ark-session-<this-project-hash>-*.id` orphans (legacy session-cache scheme; IO errors swallowed).
+- C-6: @judgment
+No `.unwrap()` in production; one allowed `.expect("StateFile serializes")` mirrors `TaskToml::save`.
+- C-7: @judgment
+All filesystem access in `state/checkout/` routes through `io::PathExt`.
+- C-8: @judgment
+All `.ark/`-relative paths route through `Layout` helpers. New consts `STATE_FILE`, `STATE_LOCK_FILE`. Legacy `tasks_current()` accessor kept for migration.
+- C-9: @test-binding: drops_active_slug_with_missing_dir
+Reconcile drops a `tasks.active` entry when its `task.toml` is missing or `phase == Archived`.
+- C-10: @test-binding: cleanup_orphan_session_caches_removes_only_this_projects_files
+Reconcile clears `state.focus` when its target is no longer in `tasks.active`.
+- C-11: @test-binding: load_state_does_not_delete_legacy_on_pure_read
+`load_state` does NOT delete legacy files; migration deletion happens on the next successful `state_mutate`.
+- C-12: @judgment
+`state_mutate` is the sole path that mutates the state file.
+- C-13: @test-binding: first_diverging_artifact
+`task_discard` reads each seeded file and compares to its template; first divergence → `Error::TaskStillActive`. `--force` skips the scan.
+- C-14: @judgment
+Legacy accessors carry a doc comment "legacy migration accessor; remove after migration window."
+- C-15: @test-binding: add_then_drop_order_is_idempotent
+`[tasks].active` is sorted+deduped on every save.
+- C-16: @judgment
+No SessionStart hook integration.
+- C-17: @judgment
+Each worktree's state file is independent.
+- C-18: @judgment
+`task_new` and `task_resume` set `state.focus = Some(slug)` in the same `state_mutate` that updates `tasks.active`. Their summaries carry `overwrote_focus: Option<String>` populated when the prior focus differed from the new slug; `Display` renders a stderr-rendered warning suggesting `--worktree` for parallel work.
+- C-19: @test-binding: archive_rename_failure_recovery_via_reconcile
+`task_archive`, `task_discard`, and `task_commit` set `state.focus = None` iff `state.focus.as_deref() == Some(slug)`. `task_commit` does NOT remove the slug from `tasks.active` (the slug stays active until `ark archive`).
+- C-20: @judgment
+`task_archive` ordering is rename-first: (0) `clear_focus_for_slug`; (1) rename to archive path; (2) save Archived metadata; (3) deep-tier `spec_extract + spec_register`. State integrity recoverable via reconcile if any step after (0) fails.
+- C-21: @test-binding: task_new_first_task_does_not_warn
+`unload.rs` skip set in BOTH walk sites: `[cfg.resolve_worktrees_dir(&layout), layout.state_file(), layout.state_lock_file()]`. `walk_files_excluding` extended to skip `.state.toml.tmp.*` orphans.
+- C-22: @test-binding: task_archive_of_focused_clears_focus
+`reconcile_against_disk` runs in order: (1) enumerate `.ark/tasks/<slug>/task.toml` excluding `archive/`, push to `state.tasks.active` if absent; (2) drop `tasks.active` entries whose `task.toml` is missing or `phase == Archived`; (3) sort+dedup per C-15; (4) clear `state.focus` if its target is no longer active. Order matters: add precedes drop so a transient inconsistency never collapses an active slug.
+- C-23: @test-binding: resolve_focus_slug_precedence
+`--slug` is required only on `task new`, `task resume`, `task discard`. Other verbs read `state.focus`; absent → `Error::NoFocus { project_root, candidates: state.tasks.active.clone() }`.
+- C-24: @judgment
+Loading a `.state.toml` carrying legacy `[sessions.*]` blocks does not error; serde drops unknown fields by default and the next save writes the file without them.
 
 [**CHANGELOG**]
 

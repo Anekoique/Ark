@@ -44,7 +44,7 @@ For each, mark every seeded item PASS / FAIL / N/A with a one-line citation. "PA
 For every SPEC under `.ark/specs/project/`:
 
 - Walk every rule (whatever the project's prefix scheme) and check changed code/docs against it. Cite the violating file:line on FAIL.
-- Honor a rule's actuator tag (`⟨@kind: arg⟩`): for `tool` / `source-scan` / `test-binding`, run the check and read its result instead of re-judging — a tag resolving to no command is a FAIL, never a silent pass. Judge `judgment` and untagged rules yourself.
+- Honor a rule's actuator tag (`@kind` on its first line): for `tool` / `source-scan` / `test-binding`, run the check and read its result instead of re-judging — a tag resolving to no command is a FAIL, never a silent pass. Judge `judgment` rules yourself.
 - New documents (PRD, PLAN, REVIEW): conform to whatever document-layout SPEC the project ships.
 - New code: conforms to the project's style/commenting/error-handling SPECs.
 - Treat project-SPEC violations as CRITICAL or HIGH; project SPECs are the floor.

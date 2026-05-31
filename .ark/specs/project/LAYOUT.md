@@ -8,7 +8,7 @@ Defines **Layout A**, the document layout used by every project-level *conventio
 
 - **L-2: One rule prefix per file.** A SPEC picks a single uppercase letter (`C` for COMMENTS, `S` for STYLE, `E` for ERRORS, `T`, `M`, …) and uses it for every rule in `[**Rules**]`. Rules are numbered sequentially `<PREFIX>-1`, `<PREFIX>-2`, … No sub-prefixes (no `G-`/`NG-`/`C-` split inside one file).
 
-- **L-3: Each rule is a bullet of the form `- **<PREFIX>-<N>: <Title>.** <Body> <Tag>`.** The body is a single declarative sentence followed by optional rationale and a required citation. Multi-paragraph bodies are permitted; the rule's first sentence is the gate. The optional `<Tag>` is an actuator tag (L-9) and, when present, is the final element of the rule's **first line**, immediately before that line's terminal punctuation.
+- **L-3: Each rule is a two-line bullet.** Line 1 is `- <PREFIX>-<N>: @<kind>[: <arg>]` (the actuator tag, L-9). Line 2 is `**<Title>.** <Body>` — a single declarative sentence, optional rationale, required citation. Multi-paragraph bodies are permitted; the first sentence is the gate. No blank line between rules.
 
 - **L-4: Authoritative sources are cited once per SPEC, in `[**Purpose**]` and `[**See Also**]`.** Every convention SPEC opens with a `[**Purpose**]` paragraph that lists its source documents (Rust Book, RFC numbers, API Guidelines pages, crate docs) and closes with a `[**See Also**]` section linking them. Individual rules do not need per-rule citation parentheticals — the rule body states the rule and its rationale; the SPEC-level source list anchors the authority. Project-internal patterns inferred from the codebase are not acceptable as the sole basis for a rule.
 
@@ -20,7 +20,7 @@ Defines **Layout A**, the document layout used by every project-level *conventio
 
 - **L-8: A *reference document* is not a *template*.** A reference document (this file, an INDEX.md) describes a convention or format. A template contains placeholder sections intended to be copied and filled in for each instance (the feature-SPEC template under `.ark/templates/`). Reference documents may live anywhere under `specs/project/`; templates live under `.ark/templates/`.
 
-- **L-9: Each rule may declare an actuator tag stating how it is enforced.** The tag is `⟨@<kind>: <arg>⟩`, placed as the final element of the rule's first line before terminal punctuation (per L-3); `<arg>` is bounded by the closing `⟩`, so a backticked path token inside it never ends the tag. `<kind>` is one of: `tool` (a project lint/format command resolved by the verifier's auto-discovery — the schema names a command key, never a toolchain), `source-scan` (`<pattern> @ <glob>` — a forbidden token-grammar pattern checked against comment lines of files matching the glob, run natively by Ark on any language), `test-binding` (a concrete project test id that must exist and pass — never a `V-*` workflow label), or `judgment` (reviewer-judged, with an optional proxy pattern that flags review candidates without failing the build). A `tool`/`test-binding` whose key resolves to no command is a VERIFY FAIL, never a silent pass. A rule with no tag is reported as un-enforced (`Untagged`), never silently treated as enforced. Only `[**Rules**]` bullets carry tags; `[**Exceptions**]` carve-outs do not. The `<glob>` supports `**` (any depth), `*` (within one path segment), and literals — no `?` or brace expansion; the `<pattern>` token grammar supports literals, `\d`, `\d+`, `\d{N}`, and `(a|b)` alternation.
+- **L-9: Every rule declares an actuator tag stating how it is enforced.** The tag is the rule's first line: `- <PREFIX>-<N>: @<kind>[: <arg>]`. `<kind>` is one of: `tool` (a project lint/format/build command, e.g. `clippy`), `source-scan` (`<pattern> @ <glob>` — a forbidden pattern checked in files matching the glob), `test-binding` (a concrete test id that must exist and pass — never a `V-*` label), or `judgment` (reviewer-judged; the default when no mechanical enforcer fits). A `tool` / `source-scan` / `test-binding` whose arg resolves to nothing is a VERIFY FAIL, never a silent pass; `judgment` is an honest choice, not a defect. Only `[**Rules**]` bullets carry tags; `[**Exceptions**]` do not.
 
 [**Exceptions**]
 
@@ -40,9 +40,10 @@ Layout: see `specs/project/LAYOUT.md`.
 
 [**Rules**]
 
-- **X-1: First rule title.** First rule body, ending with a citation (RFC <number>, https://example/, API Guidelines, etc.).
-
-- **X-2: Second rule title.** Body with citation.
+- X-1: @judgment
+**First rule title.** First rule body, ending with a citation (RFC <number>, https://example/, API Guidelines, etc.).
+- X-2: @source-scan: <pattern> @ <glob>
+**Second rule title.** Body with citation.
 
 [**Exceptions**]
 

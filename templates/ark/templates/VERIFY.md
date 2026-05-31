@@ -13,7 +13,7 @@
 
 > Auto-seeded from `.ark/specs/project/INDEX.md` at `task verify` time, walked recursively. Renders two subsections: `Index integrity` (one PENDING per discovered `INDEX.md` — does it enumerate all on-disk children?) and `Leaf SPECs`.
 >
-> Honor a rule's actuator tag (`⟨@kind⟩`): run the check for `tool`/`source-scan`/`test-binding`; judge `judgment` and untagged rules yourself.
+> Honor a rule's actuator tag (`@kind` on its first line): run the check for `tool`/`source-scan`/`test-binding`; judge `judgment` rules yourself.
 
 {{PROJECT_SPEC_COMPLIANCE}}
 

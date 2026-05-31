@@ -27,4 +27,4 @@ Use `INDEX.md` when an area has multiple sub-specs that need their own hierarchy
 
 ## Optional: actuator tags
 
-A rule may end with an actuator tag saying how it is enforced: `⟨@tool: <cmd>⟩`, `⟨@source-scan: <pattern> @ <glob>⟩`, `⟨@test-binding: <test>⟩`, or `⟨@judgment⟩`. Optional and per-rule — untagged means judgment-by-default. Run `/ark:spec-audit` to check tag health and help add tags.
+Each rule's first line is its actuator tag — `- <P>-<N>: @<kind>[: <arg>]` — saying how it is enforced: `@tool: <cmd>`, `@source-scan: <pattern> @ <glob>`, `@test-binding: <test>`, or `@judgment`. The rule text is the next line. Run `/ark:spec-audit` to check tag health and help add tags.

@@ -246,30 +246,54 @@ templates/ark/templates/FEATURE_SUBTREE_INDEX.md   (new file)
 
 [**Constraints**]
 
-- C-1: `[**SPEC Path**]` body is a single non-empty line; one token (bare path or backticked path); leading/trailing whitespace trimmed. Multi-line or multi-token bodies → `InvalidFeaturePath { reason: "body must be a single token" }`.
-- C-2: Path is split on `/`; each segment matches `^[a-z0-9][a-z0-9_-]*$`.
-- C-2a: `Layout::specs_feature_dir(&[&str]) -> Result<PathBuf>` revalidates every segment against C-2 and returns `Error::InvalidFeaturePath` on a malformed segment; aligns with `Layout::resolve_safe` precedent (project SPEC `rust/ERRORS.md` E-1/E-10).
-- C-3: The last segment of the parsed path MUST equal `task.toml.slug` (new-feature case) **or** the path must point at an existing on-disk feature SPEC at `Layout::specs_feature_dir(&segments)?.join("SPEC.md")` (in-place-update case, where the task slug describes the change rather than the feature). Mismatch with no existing SPEC → `InvalidFeaturePath { reason: "last segment must equal task slug or name an existing feature SPEC" }`.
-- C-4: Absent block, empty body, or a segment failing C-2 → `FeaturePathMissing` / `InvalidFeaturePath` with a single quoted reason.
-- C-5: `task commit` reads `[**SPEC Path**]` from the latest `PRD.md` on every invocation; path changes across iterations are honored.
-- C-6: `parse_spec_path` rejects paths containing `.`, `..`, or empty segments after the split.
-- C-7: `spec_extract` writes to `Layout::specs_feature_dir(&segments)?.join("SPEC.md")` and ensures the directory exists; CHANGELOG-on-overwrite semantics preserved.
-- C-8: `spec_register` upserts rows from leaf to root: each intermediate `INDEX.md` is created from `FEATURE_SUBTREE_INDEX.md` template when missing.
-- C-8a: `task_commit`'s `RollbackGuard.features_indexes: Vec<FeaturesIndexSnapshot>` is populated by `snapshot_features_indexes(&intermediate_index_paths(&layout, &segments)?)` *before* any INDEX mutation; mid-walk failures restore the captured snapshots in reverse insertion order.
-- C-8b: `FEATURE_SUBTREE_INDEX.md` carries `<!-- ARK:FEATURES:START -->` / `<!-- ARK:FEATURES:END -->` markers byte-identical to the root `features/INDEX.md`'s managed-block delimiters; the existing `read_managed_block` / `update_managed_block` helpers apply unchanged.
-- C-9: Subtree INDEX rows point at the next path component: leaf rows render as `<segment>/SPEC.md`, branch rows as `<segment>/INDEX.md`; columns remain `Feature | Scope | Promoted`.
-- C-9a: `SpecRow.scope` and `SpecRow.promoted` for a leaf at `features/<a>/<b>/.../<z>/SPEC.md` are populated from the row in `features/<a>/<b>/.../<y>/INDEX.md` whose first cell normalizes to `z` or `z/SPEC.md`. The root `features/INDEX.md`'s rows describe their own children (single-segment leaves and immediate subtree branches), not any deeper leaf.
-- C-10: Single-segment paths produce the pre-existing on-disk layout bit-for-bit (one row in `features/INDEX.md`, one `features/<slug>/SPEC.md`); no intermediate INDEX created.
-- C-11: `related_specs::extract` recognizes (a) canonical `specs/features/<...>/<slug>/SPEC.md` substrings anywhere inside the section, and (b) bare backticked path tokens only when they are the bullet-leading element of a list line.
-- C-11a: Bullet-leading pattern is `^\s*[-*+]\s*` `<seg>(/<seg>)*` `` where each `<seg>` matches C-2; all three GFM bullet markers (`-`, `*`, `+`) are accepted; inline backticked tokens in prose are not matched.
-- C-12: `gather::parse_features_index` walks `features/` INDEX-strict: traversal follows rows declared in each `INDEX.md`'s managed block; subdirectories not rowed are not descended into.
-- C-12a: Walk is bounded by max recursion depth 8; symlinks are not followed.
-- C-12b: Drift surfaces as warnings, not silent dropping. Row pointing at missing child file → `GatherWarning::MissingChild`; on-disk leaf at `features/<...>/<seg>/SPEC.md` with no parent INDEX row → `GatherWarning::OrphanLeaf`; on-disk subtree with no parent INDEX row → `GatherWarning::OrphanSubtree`. INDEX-registered SPECs preserve their pre-change `path` field byte-identically.
-- C-13: `SpecRow.feature_path` is the canonical relative-segments form; `SpecRow.path` retains its existing project-root-relative `PathBuf` value. JSON output adds `feature_path` additively, preserving `path`.
-- C-14: No segment may be `.` / `..`, case-insensitive `index`, or case-insensitive `spec`; segments containing `.` are already rejected by C-2.
-- C-15: Error messages quote the offending value verbatim (e.g. `` invalid SPEC path `xemu//csr`: empty segment ``).
-- C-16: `ark agent spec import --feature <p>` accepts the same `/`-separated form as the deep-tier `[**SPEC Path**]` block; existing single-segment values continue to work.
-- C-16a: `spec_import` calls the same `upsert_index_rows_leaf_to_root` as `spec_register`; brownfield imports produce the same INDEX shape as deep-tier promotions at the same path.
+- C-1: @test-binding: multi_token_body_errors
+`[**SPEC Path**]` body is a single non-empty line; one token (bare path or backticked path); leading/trailing whitespace trimmed. Multi-line or multi-token bodies → `InvalidFeaturePath { reason: "body must be a single token" }`.
+- C-2: @test-binding: uppercase_segment_rejected
+Path is split on `/`; each segment matches `^[a-z0-9][a-z0-9_-]*$`.
+- C-2a: @test-binding: uppercase_segment_rejected
+`Layout::specs_feature_dir(&[&str]) -> Result<PathBuf>` revalidates every segment against C-2 and returns `Error::InvalidFeaturePath` on a malformed segment; aligns with `Layout::resolve_safe` precedent (project SPEC `rust/ERRORS.md` E-1/E-10).
+- C-3: @test-binding: rejects_slug_mismatch_when_no_existing_spec
+The last segment of the parsed path MUST equal `task.toml.slug` (new-feature case) **or** the path must point at an existing on-disk feature SPEC at `Layout::specs_feature_dir(&segments)?.join("SPEC.md")` (in-place-update case, where the task slug describes the change rather than the feature). Mismatch with no existing SPEC → `InvalidFeaturePath { reason: "last segment must equal task slug or name an existing feature SPEC" }`.
+- C-4: @test-binding: empty_or_placeholder_body_errors
+Absent block, empty body, or a segment failing C-2 → `FeaturePathMissing` / `InvalidFeaturePath` with a single quoted reason.
+- C-5: @judgment
+`task commit` reads `[**SPEC Path**]` from the latest `PRD.md` on every invocation; path changes across iterations are honored.
+- C-6: @test-binding: dot_and_dotdot_segments_rejected
+`parse_spec_path` rejects paths containing `.`, `..`, or empty segments after the split.
+- C-7: @test-binding: nested_register_writes_branch_discriminator_row
+`spec_extract` writes to `Layout::specs_feature_dir(&segments)?.join("SPEC.md")` and ensures the directory exists; CHANGELOG-on-overwrite semantics preserved.
+- C-8: @test-binding: nested_register_writes_branch_discriminator_row
+`spec_register` upserts rows from leaf to root: each intermediate `INDEX.md` is created from `FEATURE_SUBTREE_INDEX.md` template when missing.
+- C-8a: @test-binding: intermediate_index_paths_leaf_to_root
+`task_commit`'s `RollbackGuard.features_indexes: Vec<FeaturesIndexSnapshot>` is populated by `snapshot_features_indexes(&intermediate_index_paths(&layout, &segments)?)` *before* any INDEX mutation; mid-walk failures restore the captured snapshots in reverse insertion order.
+- C-8b: @judgment
+`FEATURE_SUBTREE_INDEX.md` carries `<!-- ARK:FEATURES:START -->` / `<!-- ARK:FEATURES:END -->` markers byte-identical to the root `features/INDEX.md`'s managed-block delimiters; the existing `read_managed_block` / `update_managed_block` helpers apply unchanged.
+- C-9: @test-binding: nested_register_writes_branch_discriminator_row
+Subtree INDEX rows point at the next path component: leaf rows render as `<segment>/SPEC.md`, branch rows as `<segment>/INDEX.md`; columns remain `Feature | Scope | Promoted`.
+- C-9a: @test-binding: gather_features_index_recurses_into_subtree
+`SpecRow.scope` and `SpecRow.promoted` for a leaf at `features/<a>/<b>/.../<z>/SPEC.md` are populated from the row in `features/<a>/<b>/.../<y>/INDEX.md` whose first cell normalizes to `z` or `z/SPEC.md`. The root `features/INDEX.md`'s rows describe their own children (single-segment leaves and immediate subtree branches), not any deeper leaf.
+- C-10: @test-binding: single_segment_register_preserves_flat_layout
+Single-segment paths produce the pre-existing on-disk layout bit-for-bit (one row in `features/INDEX.md`, one `features/<slug>/SPEC.md`); no intermediate INDEX created.
+- C-11: @test-binding: extracts_mixed_flat_and_nested
+`related_specs::extract` recognizes (a) canonical `specs/features/<...>/<slug>/SPEC.md` substrings anywhere inside the section, and (b) bare backticked path tokens only when they are the bullet-leading element of a list line.
+- C-11a: @test-binding: extracts_three_segment_nested_path
+Bullet-leading pattern is `^\s*[-*+]\s*` `<seg>(/<seg>)*` `` where each `<seg>` matches C-2; all three GFM bullet markers (`-`, `*`, `+`) are accepted; inline backticked tokens in prose are not matched.
+- C-12: @test-binding: gather_features_index_recurses_into_subtree
+`gather::parse_features_index` walks `features/` INDEX-strict: traversal follows rows declared in each `INDEX.md`'s managed block; subdirectories not rowed are not descended into.
+- C-12a: @judgment
+Walk is bounded by max recursion depth 8; symlinks are not followed.
+- C-12b: @test-binding: gather_emits_missing_child_warning_for_stale_row
+Drift surfaces as warnings, not silent dropping. Row pointing at missing child file → `GatherWarning::MissingChild`; on-disk leaf at `features/<...>/<seg>/SPEC.md` with no parent INDEX row → `GatherWarning::OrphanLeaf`; on-disk subtree with no parent INDEX row → `GatherWarning::OrphanSubtree`. INDEX-registered SPECs preserve their pre-change `path` field byte-identically.
+- C-13: @test-binding: gather_features_index_parses_managed_block
+`SpecRow.feature_path` is the canonical relative-segments form; `SpecRow.path` retains its existing project-root-relative `PathBuf` value. JSON output adds `feature_path` additively, preserving `path`.
+- C-14: @test-binding: reserved_segments_rejected
+No segment may be `.` / `..`, case-insensitive `index`, or case-insensitive `spec`; segments containing `.` are already rejected by C-2.
+- C-15: @test-binding: slug_mismatch_errors
+Error messages quote the offending value verbatim (e.g. `` invalid SPEC path `xemu//csr`: empty segment ``).
+- C-16: @test-binding: imports_writes_spec_and_index_row
+`ark agent spec import --feature <p>` accepts the same `/`-separated form as the deep-tier `[**SPEC Path**]` block; existing single-segment values continue to work.
+- C-16a: @test-binding: register_then_import_preserves_existing_row
+`spec_import` calls the same `upsert_index_rows_leaf_to_root` as `spec_register`; brownfield imports produce the same INDEX shape as deep-tier promotions at the same path.
 
 [**CHANGELOG**]
 

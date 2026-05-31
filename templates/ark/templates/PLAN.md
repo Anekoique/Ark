@@ -91,13 +91,18 @@ fn ...
 
 [**Constraints**]
 
-> Invariants the implementation must hold. **One declarative sentence each, ≤120 chars.** Cite the source of truth (a constant, a test, a path) when one exists. The *why* belongs in Trade-offs, not here.
+> Invariants the implementation must hold, each a two-line bullet. Line 1 is the actuator tag `- C-N: @<kind>[: <arg>]` — `tool`, `source-scan` (`<pattern> @ <glob>`), `test-binding` (a test id), or `judgment`; the arg names a real test or command, never a `V-*` label. Line 2 is one declarative sentence (≤120 chars). The *why* belongs in Trade-offs, not here.
 >
-> Good: `C-1: ark context emits exactly one stdout write per invocation.`
-> Bad:  `C-1: ark context emits exactly one stdout write per invocation: JSON via a single pre-rendered string + trailing newline, text via a single Display write + trailing newline. No interspersed debug prints.`  ← collapse to the first sentence; the elaboration is implementation.
+> Good:
+> - C-1: @test-binding: <your_test_fn_name>
+> ark context emits exactly one stdout write per invocation.
+>
+> Bad (elaboration is the *how*, belongs in Implementation): `ark context emits one stdout write: JSON via a pre-rendered string + newline, text via a single Display write. No interspersed debug prints.`
 
-- C-1:
-- C-2:
+- C-1: @judgment
+<constraint>
+- C-2: @judgment
+<constraint>
 
 ---
 

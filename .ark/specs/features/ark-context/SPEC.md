@@ -359,52 +359,98 @@ Library re-exports from `ark-core/src/lib.rs` add: `CheckoutInfo`, `CheckoutRoot
 
 [**Constraints**]
 
-- C-1: `ark context` is listed in `ark --help`; no `#[command(hide = true)]`.
-- C-2: `ark context --help` mentions neither "hidden" nor "not covered by semver".
-- C-3: JSON output's first field is `"schema": 1`.
-- C-4: All filesystem access in `commands/context/` routes through `io::PathExt` / `io::fs`.
-- C-5: All `.ark/`-relative path composition routes through `layout::Layout`.
-- C-6: `Context` field order is the JSON schema source of truth; renames/removes bump `SCHEMA_VERSION`, adds are free.
-- C-7: `ark context` emits exactly one stdout write per invocation.
-- C-8: `gather_context` caps dirty_files at 20 and reads at most 5 commits from `git log`.
-- C-9: Archive listing reads at most 5 most-recent subdirs, sorted by `archived_at` descending.
-- C-10: Text mode is not machine-parseable and carries no schema version.
-- C-11: `SessionStart` hook entry identity is `entry.hooks[*].command == ARK_CONTEXT_HOOK_COMMAND`.
-- C-12: `update_settings_hook` is idempotent — running `ark init` twice produces a byte-identical `settings.json`.
-- C-13: Empty state never errors; `ark context` returns valid empty vecs.
-- C-14: Non-Ark directory → `Error::NotLoaded`.
-- C-15: SessionStart hook timeout is 5000ms.
-- C-16: Settings-hook helpers touch only the Ark-owned entry; sibling user hooks and unrelated top-level keys are preserved.
-- C-17: `.claude/settings.json` is not hash-tracked; the Ark entry is re-applied on every `init` / `load` / `upgrade`.
-- C-18: `Snapshot::hook_bodies` is `#[serde(default)]`; older `.ark.db` files (pre-`hook_bodies`) deserialize successfully.
-- C-19: Artifact iteration files match `^(NN)_PLAN\.md$` and `^(NN)_REVIEW\.md$`, sorted ascending; "latest" = `max_by_key(iteration())`.
-- C-20: Related-specs parser unchanged from `detachable-feature-spec` C-11 / C-11a.
-- C-21: `Layout::discover_from(cwd)` walks ancestors for `.ark/` and is used by commands requiring an existing project.
-- C-22: `ark-core/src/io/git.rs` is the sole sanctioned `Command::new("git")` site; non-zero exit returns `Ok(GitOutput { exit_code, .. })`; spawn failure → `Error::GitSpawn`.
-- C-23: JSON output is `<rendered>\n` with 2-space indent; for `--scope session --format json`, `<rendered>` is the SessionStart envelope.
-- C-24: INDEX parsers: `specs/features/INDEX.md` via `read_managed_block("ARK:FEATURES")` (3 cols); `specs/project/INDEX.md` via first GFM table after `^##\s+Index\b`. Both skip header, separator, and `{...}`-wrapped placeholder rows.
-- C-25: `DIRTY_FILES_CAP: usize = 20`.
-- C-26: `std::process::Command::new` may be invoked only from `io/git.rs`; enforced by source-scan test `commands_no_bare_command_new`.
-- C-27: Snapshot forward compat: new fields carry `#[serde(default)]`; `SCHEMA_VERSION` is not bumped on additive serde changes.
-- C-28: Source-scan test `commands_no_bare_command_new` reads non-test files under `commands/` and asserts `Command::new` does not appear.
-- C-29: `ark upgrade` twice in a row produces a byte-identical `.claude/settings.json`.
-- C-30: `ProjectedContext.checkout` is populated on every projection (Session / Phase / Record); `ProjectedContext.subagents` is populated on Session and Phase(Design / Plan / Review / Verify) — empty Vec elsewhere; `ProjectedContext.specs.features_tree` is populated on Session and Phase(Design) only — `None` elsewhere; `ProjectedContext.record` is populated on Scope::Record and Phase(Commit).
-- C-31: `CheckoutInfo.root_kind = Worktree` iff `git rev-parse --show-toplevel` from `layout.root()` differs from the project root resolved by walking `git rev-parse --git-common-dir`'s parent. Detection failure (non-git, spawn error) defaults to `root_kind = Main`.
-- C-32: `CheckoutInfo.branch` is the same string as `GitState.branch`; no second `git` invocation.
-- C-33: `CheckoutInfo.focus_slug` reads `state.focus` via `load_state(&layout)`; `None` when no focus is bound or when `.state.toml` is absent.
-- C-34: `SpecNode::Branch.children` is sorted by `segment` ascending; `SpecNode::Leaf` siblings sort identically. Build order is deterministic across runs.
-- C-35: `SpecNode` is `Some` iff `gather_context` produced a non-empty `features` Vec **and** the projection selected it (per C-30); `None` otherwise.
-- C-36: `build_features_tree` recursion is bounded by `FEATURES_TREE_MAX_DEPTH = 8`, mirroring `gather`'s walker.
-- C-37: `enumerate_subagents` scans only platform agent directories whose paths exist under `layout.root()`; absent directories produce no `SubagentSet` row (not an empty `stems` row).
-- C-38: `SubagentSet.platform` is `Platform::cli_flag` verbatim — one of `"claude"`, `"codex"`, `"opencode"` — chosen because the `cli_flag` field is the existing normalized short tag (whereas `Platform::id` for Claude is `"claude-code"`, which downstream slash commands would otherwise have to special-case).
-- C-39: `SubagentSet.stems` lists every agent stem found, **not** filtered to Ark canonicals; user-installed agents appear alongside `ark-researcher` / `ark-reviewer` / `ark-verifier`. Stems are sorted ascending.
-- C-40: `enumerate_subagents` does not follow symlinks; entries whose `file_type` is symlink are skipped.
-- C-41: Stem derivation per platform: Claude / OpenCode = filename with `.md` stripped (flat `.claude/agents/<name>.md`, `.opencode/agents/<name>.md`); Codex = filename with `.toml` stripped (flat `.codex/agents/<name>.toml`). Files whose extension does not match the platform's expected extension are skipped silently. The Codex *slash-command* layout (`.codex/skills/<name>/SKILL.md`) is out of scope for this scan.
-- C-42: Commit-phase projection's `record` field is populated by reusing the same record-gather helper that powers `Scope::Record`. No duplication of journal-scan logic. The returned `RecordProjection` is always `Some(_)` when the scope is selected; `session_count == 0` means "no journal entries yet for this developer / branch", not "gather skipped" — slash commands branch on individual field values (`identity.is_none()` vs `session_count == 0`), not on the option.
-- C-43: SessionStart envelope cap behavior unchanged: drop `archive` first, then truncate `tasks.active` to 5; new additive fields are NOT dropped (they are small and load-bearing for the agent's first message).
-- C-44: `SubagentSet.platform` is derived by reading `Platform::cli_flag` directly — `enumerate_subagents` iterates `PLATFORMS` and emits each `cli_flag` as the platform tag. No hand-rolled mapping table; if `Platform::cli_flag` changes, `SubagentSet.platform` follows automatically.
-- C-45: The SessionStart envelope's byte cap is sourced from the in-code constant `ADDITIONAL_CONTEXT_CAP` in `commands/context/mod.rs` (currently 9,500 bytes — documented as "Claude Code's 10K-character cap with envelope headroom"). The cap is unchanged by this task; new fields fit comfortably for typical projects (≤10 features, ≤6 stems per platform) per V-F-3.
-- C-46: Text-mode `## SPECS` renders both project and feature rows in tree shape — indented branch lines for each directory / feature-path segment, leaves rendered as `<name> — <scope>` with one indent level per segment. There is no separate `## FEATURES TREE` text heading; the JSON `specs.features_tree` field remains the machine-readable nested view, while text mode collapses both surfaces into one `## SPECS` tree to avoid redundancy when features are flat single-segment leaves.
+- C-1: @judgment
+`ark context` is listed in `ark --help`; no `#[command(hide = true)]`.
+- C-2: @judgment
+`ark context --help` mentions neither "hidden" nor "not covered by semver".
+- C-3: @test-binding: context_session_json_wraps_in_session_start_envelope
+JSON output's first field is `"schema": 1`.
+- C-4: @source-scan: std::fs:: @ crates/ark-core/src/commands/context/**/*.rs
+All filesystem access in `commands/context/` routes through `io::PathExt` / `io::fs`.
+- C-5: @judgment
+All `.ark/`-relative path composition routes through `layout::Layout`.
+- C-6: @judgment
+`Context` field order is the JSON schema source of truth; renames/removes bump `SCHEMA_VERSION`, adds are free.
+- C-7: @judgment
+`ark context` emits exactly one stdout write per invocation.
+- C-8: @judgment
+`gather_context` caps dirty_files at 20 and reads at most 5 commits from `git log`.
+- C-9: @judgment
+Archive listing reads at most 5 most-recent subdirs, sorted by `archived_at` descending.
+- C-10: @judgment
+Text mode is not machine-parseable and carries no schema version.
+- C-11: @judgment
+`SessionStart` hook entry identity is `entry.hooks[*].command == ARK_CONTEXT_HOOK_COMMAND`.
+- C-12: @test-binding: update_settings_hook_is_idempotent_on_repeat
+`update_settings_hook` is idempotent — running `ark init` twice produces a byte-identical `settings.json`.
+- C-13: @test-binding: gather_on_empty_ark_returns_empty_state
+Empty state never errors; `ark context` returns valid empty vecs.
+- C-14: @test-binding: context_errors_on_non_ark_dir
+Non-Ark directory → `Error::NotLoaded`.
+- C-15: @judgment
+SessionStart hook timeout is 5000ms.
+- C-16: @test-binding: update_settings_hook_preserves_unrelated_pretooluse_entries
+Settings-hook helpers touch only the Ark-owned entry; sibling user hooks and unrelated top-level keys are preserved.
+- C-17: @judgment
+`.claude/settings.json` is not hash-tracked; the Ark entry is re-applied on every `init` / `load` / `upgrade`.
+- C-18: @judgment
+`Snapshot::hook_bodies` is `#[serde(default)]`; older `.ark.db` files (pre-`hook_bodies`) deserialize successfully.
+- C-19: @test-binding: artifact_kind_iteration_returns_some_for_plan_and_review
+Artifact iteration files match `^(NN)_PLAN\.md$` and `^(NN)_REVIEW\.md$`, sorted ascending; "latest" = `max_by_key(iteration())`.
+- C-20: @judgment
+Related-specs parser unchanged from `detachable-feature-spec` C-11 / C-11a.
+- C-21: @judgment
+`Layout::discover_from(cwd)` walks ancestors for `.ark/` and is used by commands requiring an existing project.
+- C-22: @source-scan: Command::new @ crates/ark-core/src/commands/**/*.rs
+`ark-core/src/io/git.rs` is the sole sanctioned `Command::new("git")` site; non-zero exit returns `Ok(GitOutput { exit_code, .. })`; spawn failure → `Error::GitSpawn`.
+- C-23: @judgment
+JSON output is `<rendered>\n` with 2-space indent; for `--scope session --format json`, `<rendered>` is the SessionStart envelope.
+- C-24: @test-binding: gather_features_index_parses_managed_block
+INDEX parsers: `specs/features/INDEX.md` via `read_managed_block("ARK:FEATURES")` (3 cols); `specs/project/INDEX.md` via first GFM table after `^##\s+Index\b`. Both skip header, separator, and `{...}`-wrapped placeholder rows.
+- C-25: @judgment
+`DIRTY_FILES_CAP: usize = 20`.
+- C-26: @test-binding: commands_no_bare_command_new
+`std::process::Command::new` may be invoked only from `io/git.rs`; enforced by source-scan test `commands_no_bare_command_new`.
+- C-27: @judgment
+Snapshot forward compat: new fields carry `#[serde(default)]`; `SCHEMA_VERSION` is not bumped on additive serde changes.
+- C-28: @test-binding: commands_no_bare_command_new
+Source-scan test `commands_no_bare_command_new` reads non-test files under `commands/` and asserts `Command::new` does not appear.
+- C-29: @judgment
+`ark upgrade` twice in a row produces a byte-identical `.claude/settings.json`.
+- C-30: @judgment
+`ProjectedContext.checkout` is populated on every projection (Session / Phase / Record); `ProjectedContext.subagents` is populated on Session and Phase(Design / Plan / Review / Verify) — empty Vec elsewhere; `ProjectedContext.specs.features_tree` is populated on Session and Phase(Design) only — `None` elsewhere; `ProjectedContext.record` is populated on Scope::Record and Phase(Commit).
+- C-31: @test-binding: returns_main_when_layout_is_main_checkout
+`CheckoutInfo.root_kind = Worktree` iff `git rev-parse --show-toplevel` from `layout.root()` differs from the project root resolved by walking `git rev-parse --git-common-dir`'s parent. Detection failure (non-git, spawn error) defaults to `root_kind = Main`.
+- C-32: @judgment
+`CheckoutInfo.branch` is the same string as `GitState.branch`; no second `git` invocation.
+- C-33: @test-binding: focus_slug_reads_state_toml_when_bound
+`CheckoutInfo.focus_slug` reads `state.focus` via `load_state(&layout)`; `None` when no focus is bound or when `.state.toml` is absent.
+- C-34: @test-binding: mixed_input_groups_by_subtree
+`SpecNode::Branch.children` is sorted by `segment` ascending; `SpecNode::Leaf` siblings sort identically. Build order is deterministic across runs.
+- C-35: @test-binding: empty_input_returns_none
+`SpecNode` is `Some` iff `gather_context` produced a non-empty `features` Vec **and** the projection selected it (per C-30); `None` otherwise.
+- C-36: @test-binding: rows_beyond_max_depth_are_dropped
+`build_features_tree` recursion is bounded by `FEATURES_TREE_MAX_DEPTH = 8`, mirroring `gather`'s walker.
+- C-37: @test-binding: skips_platform_dir_that_does_not_exist
+`enumerate_subagents` scans only platform agent directories whose paths exist under `layout.root()`; absent directories produce no `SubagentSet` row (not an empty `stems` row).
+- C-38: @test-binding: enumerates_claude_stems_with_user_agents
+`SubagentSet.platform` is `Platform::cli_flag` verbatim — one of `"claude"`, `"codex"`, `"opencode"` — chosen because the `cli_flag` field is the existing normalized short tag (whereas `Platform::id` for Claude is `"claude-code"`, which downstream slash commands would otherwise have to special-case).
+- C-39: @test-binding: enumerates_claude_stems_with_user_agents
+`SubagentSet.stems` lists every agent stem found, **not** filtered to Ark canonicals; user-installed agents appear alongside `ark-researcher` / `ark-reviewer` / `ark-verifier`. Stems are sorted ascending.
+- C-40: @test-binding: skips_symlinked_entries
+`enumerate_subagents` does not follow symlinks; entries whose `file_type` is symlink are skipped.
+- C-41: @test-binding: enumerates_codex_stems_from_toml_files
+Stem derivation per platform: Claude / OpenCode = filename with `.md` stripped (flat `.claude/agents/<name>.md`, `.opencode/agents/<name>.md`); Codex = filename with `.toml` stripped (flat `.codex/agents/<name>.toml`). Files whose extension does not match the platform's expected extension are skipped silently. The Codex *slash-command* layout (`.codex/skills/<name>/SKILL.md`) is out of scope for this scan.
+- C-42: @test-binding: commit_phase_yields_paths_only_no_bodies
+Commit-phase projection's `record` field is populated by reusing the same record-gather helper that powers `Scope::Record`. No duplication of journal-scan logic. The returned `RecordProjection` is always `Some(_)` when the scope is selected; `session_count == 0` means "no journal entries yet for this developer / branch", not "gather skipped" — slash commands branch on individual field values (`identity.is_none()` vs `session_count == 0`), not on the option.
+- C-43: @judgment
+SessionStart envelope cap behavior unchanged: drop `archive` first, then truncate `tasks.active` to 5; new additive fields are NOT dropped (they are small and load-bearing for the agent's first message).
+- C-44: @judgment
+`SubagentSet.platform` is derived by reading `Platform::cli_flag` directly — `enumerate_subagents` iterates `PLATFORMS` and emits each `cli_flag` as the platform tag. No hand-rolled mapping table; if `Platform::cli_flag` changes, `SubagentSet.platform` follows automatically.
+- C-45: @judgment
+The SessionStart envelope's byte cap is sourced from the in-code constant `ADDITIONAL_CONTEXT_CAP` in `commands/context/mod.rs` (currently 9,500 bytes — documented as "Claude Code's 10K-character cap with envelope headroom"). The cap is unchanged by this task; new fields fit comfortably for typical projects (≤10 features, ≤6 stems per platform) per V-F-3.
+- C-46: @test-binding: populated_sections_render_specs_as_tree
+Text-mode `## SPECS` renders both project and feature rows in tree shape — indented branch lines for each directory / feature-path segment, leaves rendered as `<name> — <scope>` with one indent level per segment. There is no separate `## FEATURES TREE` text heading; the JSON `specs.features_tree` field remains the machine-readable nested view, while text mode collapses both surfaces into one `## SPECS` tree to avoid redundancy when features are flat single-segment leaves.
 
 ---
 

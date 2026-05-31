@@ -4,35 +4,36 @@ Rules every agent and contributor follows when designing error types and propaga
 
 [**Rules**]
 
-- **E-1: Use `Result<T, E>` for recoverable errors; reserve panics for invariant violations.** Recoverable failure (file missing, parse error, validation failure, network down) returns an error; unrecoverable invariant violation (out-of-bounds index that the type system proved impossible, mutex poisoning the program cannot continue past) panics ⟨@judgment⟩.
-
-- **E-2: `ark-core` defines a single canonical `Error` enum with `thiserror`.** Library code in `ark-core` exposes one `Error` type (`crate::error::Error`) for every fallible operation. The enum is annotated `#[derive(Debug, thiserror::Error)]` ⟨@judgment⟩.
-
-- **E-3: `ark-cli` may use `anyhow::Result` at the binary boundary.** The `ark-cli` binary is allowed to consume `ark-core::Result<T>` and re-wrap it via `anyhow::Result<T>` for top-level `main()`-style propagation. Library functions inside `ark-cli` itself still return `crate::Result<T>` over `ark_core::Error`; only the binary's outermost layer reaches for `anyhow` ⟨@judgment⟩.
-
-- **E-4: `Error` implements `std::error::Error`, `Debug`, and `Display`.** `thiserror`'s `#[derive(Error)]` produces all three; hand-written impls must too. The `Display` impl returns a concise lowercase sentence with no trailing punctuation; the `Debug` impl is never empty ⟨@judgment⟩.
-
-- **E-5: Provide `pub type Result<T> = std::result::Result<T, Error>;`.** Each crate that defines an `Error` enum also exposes a same-module `Result<T>` alias. Functions return `Result<T>`, not `std::result::Result<T, Error>` ⟨@judgment⟩.
-
-- **E-6: Use `#[from]` for unambiguous foreign-error wrapping; use `#[source]` when the variant carries additional context fields.** Per `thiserror`'s rule: "The variant using `#[from]` must not contain any other fields beyond the source error." If a variant needs both a `source: io::Error` and a `path: PathBuf`, the source field is annotated `#[source]` (not `#[from]`); the `From` conversion is then either omitted or written by hand ⟨@judgment⟩.
-
-- **E-7: Use `?` for propagation; never `unwrap()` outside tests.** Every fallible call inside non-test code propagates with `?` or handles the error explicitly. `unwrap()` in production code is forbidden; clippy's `unwrap_used` lint should treat it as a warning at minimum ⟨@tool: clippy⟩.
-
-- **E-8: `expect("invariant reason")` is permitted only when the failure is genuinely impossible.** Hardcoded regex compilation, mutex `lock()` in single-threaded test contexts, and statically-known indices are the only legitimate sites. The `"reason"` argument states the invariant being relied on, not "this should not fail." ⟨@judgment⟩
-
-- **E-9: Error message phrasing: lowercase first word, no trailing punctuation, no `"error: "` prefix.** `#[error("io error at {path}: {source}")]` not `#[error("Error: I/O Error at {path}.")]`. The CLI front-end and any error-rendering layer is responsible for the user-facing presentation; the `Display` impl provides the raw sentence ⟨@judgment⟩.
-
-- **E-10: Validate at boundaries; return `Err(...)` rather than panic for recoverable misuse.** Public functions verify their preconditions (path safety, slug shape, tier validity) on entry and return an `Error` variant when violated. Panics are reserved for invariants the caller cannot violate even by misuse ⟨@judgment⟩.
-
-- **E-11: `unreachable!()` is reserved for branches the type system proves dead; `todo!()` and `unimplemented!()` are scaffolding and must not appear in committed non-test code.** A reachable `unreachable!()` is a logic bug, not an error to handle ⟨@source-scan: (todo|unimplemented)!() @ crates/**/*.rs⟩.
-
-- **E-12: Error variants carry context as fields, not as concatenated strings inside the `Display` template.** `Error::Io { path: PathBuf, source: io::Error }` — not `Error::Io(String)` formed by `format!("io at {}: {}", path, e)`. Programmatic access to context (e.g. for error-message rendering, retries, structured logging) requires the data to remain typed ⟨@judgment⟩.
-
-- **E-13: `Error` types are `Send + Sync + 'static`.** Required for compatibility with `anyhow::Error`, `Box<dyn Error + Send + Sync>`, async tasks, and standard error-handling middleware. `thiserror`'s default derive produces this when the variant fields are themselves `Send + Sync + 'static` ⟨@judgment⟩.
-
-- **E-14: Convert from foreign error types via `#[from]` or explicit `From` impls; never via `e.to_string()`.** Stringifying an error at conversion time discards the source chain, the type information, and any structured data the foreign error carried. The `?` operator with a `#[from]` impl preserves all three ⟨@judgment⟩.
-
-- **E-15: Wrapped foreign errors carry at least one context field identifying the resource or operation.** A variant that wraps `io::Error`, `serde_json::Error`, `git2::Error`, or any other foreign error includes a `path: PathBuf`, `command: String`, or analogous field that names the resource the operation was acting on. The `source` field is annotated `#[source]` (not `#[from]`, since `#[from]` forbids additional fields per E-6); a hand-written `From` impl may be added if `?`-conversion is desired. A bare `#[from]` wrapper with no context field produces user-visible messages like "No such file or directory" with zero indication of which file or operation failed ⟨@judgment⟩.
+- E-1: @judgment
+**Use `Result<T, E>` for recoverable errors; reserve panics for invariant violations.** Recoverable failure (file missing, parse error, validation failure, network down) returns an error; unrecoverable invariant violation (out-of-bounds index that the type system proved impossible, mutex poisoning the program cannot continue past) panics.
+- E-2: @judgment
+**`ark-core` defines a single canonical `Error` enum with `thiserror`.** Library code in `ark-core` exposes one `Error` type (`crate::error::Error`) for every fallible operation. The enum is annotated `#[derive(Debug, thiserror::Error)]`.
+- E-3: @judgment
+**`ark-cli` may use `anyhow::Result` at the binary boundary.** The `ark-cli` binary is allowed to consume `ark-core::Result<T>` and re-wrap it via `anyhow::Result<T>` for top-level `main()`-style propagation. Library functions inside `ark-cli` itself still return `crate::Result<T>` over `ark_core::Error`; only the binary's outermost layer reaches for `anyhow`.
+- E-4: @judgment
+**`Error` implements `std::error::Error`, `Debug`, and `Display`.** `thiserror`'s `#[derive(Error)]` produces all three; hand-written impls must too. The `Display` impl returns a concise lowercase sentence with no trailing punctuation; the `Debug` impl is never empty.
+- E-5: @judgment
+**Provide `pub type Result<T> = std::result::Result<T, Error>;`.** Each crate that defines an `Error` enum also exposes a same-module `Result<T>` alias. Functions return `Result<T>`, not `std::result::Result<T, Error>`.
+- E-6: @judgment
+**Use `#[from]` for unambiguous foreign-error wrapping; use `#[source]` when the variant carries additional context fields.** Per `thiserror`'s rule: "The variant using `#[from]` must not contain any other fields beyond the source error." If a variant needs both a `source: io::Error` and a `path: PathBuf`, the source field is annotated `#[source]` (not `#[from]`); the `From` conversion is then either omitted or written by hand.
+- E-7: @judgment
+**Use `?` for propagation; never `unwrap()` outside tests.** Every fallible call inside non-test code propagates with `?` or handles the error explicitly. `unwrap()` in production code is forbidden; clippy's `unwrap_used` lint should treat it as a warning at minimum.
+- E-8: @judgment
+**`expect("invariant reason")` is permitted only when the failure is genuinely impossible.** Hardcoded regex compilation, mutex `lock()` in single-threaded test contexts, and statically-known indices are the only legitimate sites. The `"reason"` argument states the invariant being relied on, not "this should not fail."
+- E-9: @judgment
+**Error message phrasing: lowercase first word, no trailing punctuation, no `"error: "` prefix.** `#[error("io error at {path}: {source}")]` not `#[error("Error: I/O Error at {path}.")]`. The CLI front-end and any error-rendering layer is responsible for the user-facing presentation; the `Display` impl provides the raw sentence.
+- E-10: @judgment
+**Validate at boundaries; return `Err(...)` rather than panic for recoverable misuse.** Public functions verify their preconditions (path safety, slug shape, tier validity) on entry and return an `Error` variant when violated. Panics are reserved for invariants the caller cannot violate even by misuse.
+- E-11: @judgment
+**`unreachable!()` is reserved for branches the type system proves dead; `todo!()` and `unimplemented!()` are scaffolding and must not appear in committed non-test code.** A reachable `unreachable!()` is a logic bug, not an error to handle.
+- E-12: @judgment
+**Error variants carry context as fields, not as concatenated strings inside the `Display` template.** `Error::Io { path: PathBuf, source: io::Error }` — not `Error::Io(String)` formed by `format!("io at {}: {}", path, e)`. Programmatic access to context (e.g. for error-message rendering, retries, structured logging) requires the data to remain typed.
+- E-13: @judgment
+**`Error` types are `Send + Sync + 'static`.** Required for compatibility with `anyhow::Error`, `Box<dyn Error + Send + Sync>`, async tasks, and standard error-handling middleware. `thiserror`'s default derive produces this when the variant fields are themselves `Send + Sync + 'static`.
+- E-14: @judgment
+**Convert from foreign error types via `#[from]` or explicit `From` impls; never via `e.to_string()`.** Stringifying an error at conversion time discards the source chain, the type information, and any structured data the foreign error carried. The `?` operator with a `#[from]` impl preserves all three.
+- E-15: @judgment
+**Wrapped foreign errors carry at least one context field identifying the resource or operation.** A variant that wraps `io::Error`, `serde_json::Error`, `git2::Error`, or any other foreign error includes a `path: PathBuf`, `command: String`, or analogous field that names the resource the operation was acting on. The `source` field is annotated `#[source]` (not `#[from]`, since `#[from]` forbids additional fields per E-6); a hand-written `From` impl may be added if `?`-conversion is desired. A bare `#[from]` wrapper with no context field produces user-visible messages like "No such file or directory" with zero indication of which file or operation failed.
 
 [**Exceptions**]
 

@@ -78,14 +78,22 @@ rust/ERRORS.md    rules E-1..E-N
 
 [**Constraints**]
 
-- C-1: Every rule cites an authoritative source (RFC, Style Guide, API Guidelines, Rust Book, std/crate docs).
-- C-2: COMMENTS.md migration preserves every prior rule 1:1 (≥23 entries under `[**Rules**]`, ≥5 under `[**Exceptions**]`); mapping table in commit body.
-- C-3: Each commit on `feat/project-spec` is independently `cargo check --all-targets` green.
-- C-4: STYLE.md preserves every rule from any prior draft that has an authoritative source; rule-source mapping in commit body.
-- C-5: ERRORS.md is consistent with Rust style: `thiserror` for libraries, `anyhow` for binaries, `?` for propagation, no `unwrap()` in production.
-- C-6: Source files contain no SPEC-rule-id annotations (`C-N` / `S-N` / `E-N` / `V-*-N`) outside citation comments and string literals.
-- C-7: No file in `crates/` exceeds 800 LOC after refactor; soft target: post-split files >400 LOC require a one-line explanation in commit 2's body.
-- C-8: No new template file under `.ark/templates/`; that tree is reserved for feature-SPEC artifacts. Reference documents under `specs/project/` are permitted (LAYOUT.md is one).
+- C-1: @judgment
+Every rule cites an authoritative source (RFC, Style Guide, API Guidelines, Rust Book, std/crate docs).
+- C-2: @judgment
+COMMENTS.md migration preserves every prior rule 1:1 (≥23 entries under `[**Rules**]`, ≥5 under `[**Exceptions**]`); mapping table in commit body.
+- C-3: @tool: cargo check --all-targets
+Each commit on `feat/project-spec` is independently `cargo check --all-targets` green.
+- C-4: @judgment
+STYLE.md preserves every rule from any prior draft that has an authoritative source; rule-source mapping in commit body.
+- C-5: @source-scan: unwrap( @ crates/ark-core/src/**/*.rs
+ERRORS.md is consistent with Rust style: `thiserror` for libraries, `anyhow` for binaries, `?` for propagation, no `unwrap()` in production.
+- C-6: @source-scan: V-(UT|IT|E|F)-\d @ crates/**/*.rs
+Source files contain no SPEC-rule-id annotations (`C-N` / `S-N` / `E-N` / `V-*-N`) outside citation comments and string literals.
+- C-7: @judgment
+No file in `crates/` exceeds 800 LOC after refactor; soft target: post-split files >400 LOC require a one-line explanation in commit 2's body.
+- C-8: @judgment
+No new template file under `.ark/templates/`; that tree is reserved for feature-SPEC artifacts. Reference documents under `specs/project/` are permitted (LAYOUT.md is one).
 
 [**CHANGELOG**]
 

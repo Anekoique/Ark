@@ -300,28 +300,50 @@ struct WorktreeCleanupCliArgs {
 
 [**Constraints**]
 
-- C-1: `.ark/config.toml` `[worktree]` section is parsed via `toml`; missing file → defaults; corrupt → `Error::WorktreeConfigCorrupt { path, source }` with source error chained.
-- C-2: Worktree-first protocol: validate → check parent collision → load config → resolve branch → check ref format → check base branch → check branch-in-use → check worktree path → `git worktree add` → scaffold task dir inside worktree → copy files → run `post_create`. Steps after `git worktree add` are inside a rollback boundary that runs `git worktree remove --force <wt>` and `git branch -D <branch>` on any failure.
-- C-3: `task.toml`'s three new fields are `Option<_>` with `#[serde(default)]`; pre-existing files deserialize unchanged.
-- C-4: `--branch-type` accepts `{feat, fix, refactor, chore, ci, docs}`; other values → `Error::InvalidBranchType`. The list lives as `BRANCH_TYPES: &[&str; 6]` in `task/new.rs`.
-- C-5: `--branch <full>` bypasses type validation but goes through `git check-ref-format --branch <name>`; non-zero → `Error::InvalidBranchName`.
-- C-6: Branch resolution: `--branch` if present, else `<--branch-type>/<slug>`, else `<cfg.branch_prefix>/<slug>`. Slug appended verbatim — no auto-transformation.
-- C-7: Both `unload.rs` walk callsites (`owned_dirs` snapshot capture loop AND `capture_orphan_hook_entries`) use `walk_files_excluding(root, &[layout.worktrees_dir()])`. Lexical match on absolute paths; no symlink canonicalization.
-- C-8: `worktree_path` lives under `<root>/<cfg.worktree_dir>/<branch>/`, joined via `Layout::worktree_dir(&branch)`. `cfg.worktree_dir` is project-relative; absolute paths → `Error::InvalidConfigField { field: "worktree_dir", reason: "must be project-relative" }`.
-- C-9: `worktree.toml` is created by `ark init` from `templates/ark/worktree.toml`; `ark upgrade` does NOT overwrite it. `ark unload`/`load` capture/restore it like other `.ark/` content.
-- C-10: All git invocations route through `io::git::run_git`. `Command::new` may NOT appear under `commands/agent/task/worktree/` (extends the existing source-scan test).
-- C-11: All filesystem access in `task/worktree/` and the `--worktree` path of `task/new.rs` routes through `io::PathExt`. All `.ark/`-relative paths route through `Layout`.
-- C-12: `task.toml.branch` stores the resolved branch verbatim; no parsing into `branch_type` + `slug` parts.
-- C-13: `task new --worktree` rejects when `cwd` resolves under any `*/.ark/worktrees/*/`. Detection: `Layout::discover_from(cwd)?.root()` matched against `*/.ark/worktrees/*/`.
-- C-14: `worktree list` prints `<row>\n` per row; zero rows → empty stdout, exit 0. No stderr noise.
-- C-15: After `git worktree remove`, cleanup walks parent dirs upward (not crossing `worktrees_dir()`) and removes empty ones.
-- C-16: `templates/ark/.gitignore` (managed-block, marker `ARK`) carries the `.ark/worktrees/` line; re-applied on `init` and `upgrade`.
-- C-17: Every command writes a single `Display` summary; no ad-hoc stdout writes in command bodies.
-- C-18: `task archive` MUST NOT remove the worktree dir, delete the branch, or modify `task.toml.worktree_path`.
-- C-19: `task new` without `--worktree` writes nothing under `<root>/<cfg.worktree_dir>/`.
-- C-20: `worktree cleanup` discovery parses `git worktree list --porcelain` and reads each candidate's `.ark/tasks/.current`. Worktrees with missing/unreadable `.current` or `task.toml` are silently skipped (non-Ark third-party worktrees may live under `worktrees_dir()`).
-- C-21: `task.toml.worktree_path` is project-relative with forward-slash separators; consumers join against `layout.root()` for absolute use. Keeps `.ark.db` snapshots portable across machine moves.
-- C-22: `task new --worktree` mirrors developer identity from the parent's `.ark/.developer` into the new worktree. On `MissingIdentity` and TTY, prompts via `identity_prompt` (max 3 attempts) then writes both. Failure rolls back.
+- C-1: @test-binding: load_or_default_errors_on_corrupt_toml
+`.ark/config.toml` `[worktree]` section is parsed via `toml`; missing file → defaults; corrupt → `Error::WorktreeConfigCorrupt { path, source }` with source error chained.
+- C-2: @test-binding: cleanup_happy_path_with_delete_branch
+Worktree-first protocol: validate → check parent collision → load config → resolve branch → check ref format → check base branch → check branch-in-use → check worktree path → `git worktree add` → scaffold task dir inside worktree → copy files → run `post_create`. Steps after `git worktree add` are inside a rollback boundary that runs `git worktree remove --force <wt>` and `git branch -D <branch>` on any failure.
+- C-3: @test-binding: missing_worktree_section_returns_defaults
+`task.toml`'s three new fields are `Option<_>` with `#[serde(default)]`; pre-existing files deserialize unchanged.
+- C-4: @test-binding: resolve_branch_rejects_unknown_branch_type
+`--branch-type` accepts `{feat, fix, refactor, chore, ci, docs}`; other values → `Error::InvalidBranchType`. The list lives as `BRANCH_TYPES: &[&str; 6]` in `task/new.rs`.
+- C-5: @judgment
+`--branch <full>` bypasses type validation but goes through `git check-ref-format --branch <name>`; non-zero → `Error::InvalidBranchName`.
+- C-6: @test-binding: resolve_branch_precedence
+Branch resolution: `--branch` if present, else `<--branch-type>/<slug>`, else `<cfg.branch_prefix>/<slug>`. Slug appended verbatim — no auto-transformation.
+- C-7: @test-binding: unload_excludes_worktree_contents
+Both `unload.rs` walk callsites (`owned_dirs` snapshot capture loop AND `capture_orphan_hook_entries`) use `walk_files_excluding(root, &[layout.worktrees_dir()])`. Lexical match on absolute paths; no symlink canonicalization.
+- C-8: @judgment
+`worktree_path` lives under `<root>/<cfg.worktree_dir>/<branch>/`, joined via `Layout::worktree_dir(&branch)`. `cfg.worktree_dir` is project-relative; absolute paths → `Error::InvalidConfigField { field: "worktree_dir", reason: "must be project-relative" }`.
+- C-9: @judgment
+`worktree.toml` is created by `ark init` from `templates/ark/worktree.toml`; `ark upgrade` does NOT overwrite it. `ark unload`/`load` capture/restore it like other `.ark/` content.
+- C-10: @source-scan: Command::new @ crates/ark-core/src/commands/agent/task/worktree/**/*.rs
+All git invocations route through `io::git::run_git`. `Command::new` may NOT appear under `commands/agent/task/worktree/` (extends the existing source-scan test).
+- C-11: @judgment
+All filesystem access in `task/worktree/` and the `--worktree` path of `task/new.rs` routes through `io::PathExt`. All `.ark/`-relative paths route through `Layout`.
+- C-12: @test-binding: cleanup_happy_path_with_delete_branch
+`task.toml.branch` stores the resolved branch verbatim; no parsing into `branch_type` + `slug` parts.
+- C-13: @judgment
+`task new --worktree` rejects when `cwd` resolves under any `*/.ark/worktrees/*/`. Detection: `Layout::discover_from(cwd)?.root()` matched against `*/.ark/worktrees/*/`.
+- C-14: @test-binding: worktree_list_is_empty_when_no_worktrees_exist
+`worktree list` prints `<row>\n` per row; zero rows → empty stdout, exit 0. No stderr noise.
+- C-15: @test-binding: cleanup_happy_path_with_delete_branch
+After `git worktree remove`, cleanup walks parent dirs upward (not crossing `worktrees_dir()`) and removes empty ones.
+- C-16: @judgment
+`templates/ark/.gitignore` (managed-block, marker `ARK`) carries the `.ark/worktrees/` line; re-applied on `init` and `upgrade`.
+- C-17: @judgment
+Every command writes a single `Display` summary; no ad-hoc stdout writes in command bodies.
+- C-18: @test-binding: archive_leaves_worktree_intact
+`task archive` MUST NOT remove the worktree dir, delete the branch, or modify `task.toml.worktree_path`.
+- C-19: @test-binding: task_new_without_worktree_writes_nothing_under_worktrees_dir
+`task new` without `--worktree` writes nothing under `<root>/<cfg.worktree_dir>/`.
+- C-20: @test-binding: worktree_list_reports_active_tasks
+`worktree cleanup` discovery parses `git worktree list --porcelain` and reads each candidate's `.ark/tasks/.current`. Worktrees with missing/unreadable `.current` or `task.toml` are silently skipped (non-Ark third-party worktrees may live under `worktrees_dir()`).
+- C-21: @judgment
+`task.toml.worktree_path` is project-relative with forward-slash separators; consumers join against `layout.root()` for absolute use. Keeps `.ark.db` snapshots portable across machine moves.
+- C-22: @judgment
+`task new --worktree` mirrors developer identity from the parent's `.ark/.developer` into the new worktree. On `MissingIdentity` and TTY, prompts via `identity_prompt` (max 3 attempts) then writes both. Failure rolls back.
 
 [**CHANGELOG**]
 

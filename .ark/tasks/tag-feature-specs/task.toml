@@ -1,0 +1,10 @@
+id = "tag-feature-specs"
+title = "tag feature SPECs with actuators"
+tier = "standard"
+phase = "committed"
+iteration = 0
+created_at = "2026-05-31T04:48:40.216153Z"
+updated_at = "2026-05-31T09:10:55.511495Z"
+committed_at = "2026-05-31T09:10:55.511495Z"
+start_head = "53b6c79018839eda0a3b5f384223b1b9872b0ba0"
+journal_path = ".ark/workspace/Anekoique/journal-1.md"

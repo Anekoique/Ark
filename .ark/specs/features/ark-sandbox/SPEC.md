@@ -252,31 +252,57 @@ enum SandboxCommand {
 
 [**Constraints**]
 
-- C-1: All `docker` invocations route through `io::docker`; `Command::new` may NOT appear under `commands/sandbox/` (extends the `commands_no_bare_command_new` SOURCES list).
-- C-2: `io::docker::exec_interactive` uses `Command::status()` with inherited stdio; `run_docker` uses `.output()` and captures.
-- C-3: `DockerEngine::is_available` checks `docker info`; every verb calls it after engine selection and before other work.
-- C-4: Sandbox modules never write under `.ark/`; all sandbox state is engine-side (container/volume/label), discovered live via `docker ps`.
-- C-5: `--slug` absent resolves to `state.focus` via `resolve_focus_slug`, raising `Error::NoFocus { project_root, candidates }` when unset, per task-concurrency-control SPEC C-23.
-- C-6: The worktree and its git dirs are resolved read-only; sandbox neither creates nor removes worktrees.
-- C-6a: Worktree resolution is local-first — when invoked from inside the worktree (the slug's local `task.toml` carries a `worktree_path`), the current root is the worktree; only otherwise is `git worktree list` walked from the parent checkout.
-- C-7: The git common dir is derived via `git rev-parse --path-format=absolute --git-common-dir`, never `root.join(".git")`.
-- C-8: When `mount_git`, `create` mounts the common dir read-write and rewrites `/workspace/.git`'s `gitdir:` line to the guest path.
-- C-9: Host→guest path translation lives inside `DockerEngine`; Windows host paths are translated to the engine POSIX view for every `-v` mount.
-- C-10: A named volume `<container>-cfg` mounts the agent config dir; `rm` preserves it unless `--keep-volume` is absent, and a volume-in-use error warns rather than fails.
-- C-11: `[sandbox]` parses via an outer `RawConfig` with no `deny_unknown_fields` and an inner `SandboxSection` carrying it; missing → defaults, corrupt → `Error::SandboxConfigCorrupt`.
-- C-12: `cfg.engine` defaults to `"docker"`; any other value → `Error::UnknownSandboxEngine`.
-- C-13: `create` does `docker pull` of `cfg.image`; it never builds. `sandbox/Dockerfile` is the CI build source, not embedded via `include_dir!`.
-- C-14: `cfg.image` defaults to `ghcr.io/anekoique/ark-sandbox:<CARGO_PKG_VERSION>`; `ImagePullFailed` names the expected tag.
-- C-15: A released crate version must ship its matching published image tag (CI publish invariant).
-- C-16: The container has open outbound network in v1; no `--network` confinement or egress proxy is applied.
-- C-17: Containers carry labels `ark.sandbox.slug` and `ark.sandbox.branch`; `list` filters on the slug label.
-- C-18: `enter --agent` maps `claude → --dangerously-skip-permissions` and `codex → --yolo`; opencode → `Error::AgentYoloUnsupported`.
-- C-19: Container/volume names are `ark-sandbox-<sanitized-branch>-<hash8>`, `hash8` being the first 8 hex of SHA-256 of the exact branch.
-- C-20: Every verb writes a single `Display` summary; no ad-hoc stdout writes in command bodies.
-- C-21: `remove` is idempotent: an already-absent container reports `container_removed: false` without error.
-- C-22: On a rootful Unix daemon `create` passes `--user <uid>:<gid>`; on rootless Docker (container-root already maps to the host user) and non-Unix hosts the flag is omitted.
-- C-23: `ark unload` / `load` / `upgrade` / snapshot ignore sandbox state; no `.ark/`-disk footprint means nothing to capture.
-- C-24: The published image runs as a user tolerating an arbitrary `--user` uid/gid with a writable config dir.
-- C-25: `--agent` selects the first installed platform in `PLATFORMS` order, overridable by `--platform <id>`; none installed → `Error::NoAgentPlatform`.
+- C-1: @source-scan: Command::new @ crates/ark-core/src/commands/sandbox/**/*.rs
+All `docker` invocations route through `io::docker`; `Command::new` may NOT appear under `commands/sandbox/` (extends the `commands_no_bare_command_new` SOURCES list).
+- C-2: @test-binding: is_available_is_well_typed
+`io::docker::exec_interactive` uses `Command::status()` with inherited stdio; `run_docker` uses `.output()` and captures.
+- C-3: @judgment
+`DockerEngine::is_available` checks `docker info`; every verb calls it after engine selection and before other work.
+- C-4: @test-binding: collision_resistant
+Sandbox modules never write under `.ark/`; all sandbox state is engine-side (container/volume/label), discovered live via `docker ps`.
+- C-5: @test-binding: parse_ps_row_reads_slug_label
+`--slug` absent resolves to `state.focus` via `resolve_focus_slug`, raising `Error::NoFocus { project_root, candidates }` when unset, per task-concurrency-control SPEC C-23.
+- C-6: @test-binding: unknown_inner_key_rejected
+The worktree and its git dirs are resolved read-only; sandbox neither creates nor removes worktrees.
+- C-6a: @test-binding: validate_rejects_empty_image
+Worktree resolution is local-first — when invoked from inside the worktree (the slug's local `task.toml` carries a `worktree_path`), the current root is the worktree; only otherwise is `git worktree list` walked from the parent checkout.
+- C-7: @test-binding: select_unknown_engine_errors
+The git common dir is derived via `git rev-parse --path-format=absolute --git-common-dir`, never `root.join(".git")`.
+- C-8: @test-binding: yolo_argv_per_platform
+When `mount_git`, `create` mounts the common dir read-write and rewrites `/workspace/.git`'s `gitdir:` line to the guest path.
+- C-9: @test-binding: select_first_in_order_and_override
+Host→guest path translation lives inside `DockerEngine`; Windows host paths are translated to the engine POSIX view for every `-v` mount.
+- C-10: @test-binding: run_args_user_flag
+A named volume `<container>-cfg` mounts the agent config dir; `rm` preserves it unless `--keep-volume` is absent, and a volume-in-use error warns rather than fails.
+- C-11: @test-binding: unknown_inner_key_rejected
+`[sandbox]` parses via an outer `RawConfig` with no `deny_unknown_fields` and an inner `SandboxSection` carrying it; missing → defaults, corrupt → `Error::SandboxConfigCorrupt`.
+- C-12: @test-binding: derive_resolves_common_dir
+`cfg.engine` defaults to `"docker"`; any other value → `Error::UnknownSandboxEngine`.
+- C-13: @test-binding: windows_path_translation
+`create` does `docker pull` of `cfg.image`; it never builds. `sandbox/Dockerfile` is the CI build source, not embedded via `include_dir!`.
+- C-14: @test-binding: run_args_share_host_config_swaps_volume_for_rw_binds
+`cfg.image` defaults to `ghcr.io/anekoique/ark-sandbox:<CARGO_PKG_VERSION>`; `ImagePullFailed` names the expected tag.
+- C-15: @test-binding: parse_ps_row_reads_slug_label
+A released crate version must ship its matching published image tag (CI publish invariant).
+- C-16: @judgment
+The container has open outbound network in v1; no `--network` confinement or egress proxy is applied.
+- C-17: @judgment
+Containers carry labels `ark.sandbox.slug` and `ark.sandbox.branch`; `list` filters on the slug label.
+- C-18: @judgment
+`enter --agent` maps `claude → --dangerously-skip-permissions` and `codex → --yolo`; opencode → `Error::AgentYoloUnsupported`.
+- C-19: @test-binding: proxy_loopback_rewrite
+Container/volume names are `ark-sandbox-<sanitized-branch>-<hash8>`, `hash8` being the first 8 hex of SHA-256 of the exact branch.
+- C-20: @judgment
+Every verb writes a single `Display` summary; no ad-hoc stdout writes in command bodies.
+- C-21: @test-binding: remove_is_idempotent
+`remove` is idempotent: an already-absent container reports `container_removed: false` without error.
+- C-22: @test-binding: run_args_user_flag
+On a rootful Unix daemon `create` passes `--user <uid>:<gid>`; on rootless Docker (container-root already maps to the host user) and non-Unix hosts the flag is omitted.
+- C-23: @judgment
+`ark unload` / `load` / `upgrade` / snapshot ignore sandbox state; no `.ark/`-disk footprint means nothing to capture.
+- C-24: @judgment
+The published image runs as a user tolerating an arbitrary `--user` uid/gid with a writable config dir.
+- C-25: @test-binding: select_first_in_order_and_override
+`--agent` selects the first installed platform in `PLATFORMS` order, overridable by `--platform <id>`; none installed → `Error::NoAgentPlatform`.
 
 ---

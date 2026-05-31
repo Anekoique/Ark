@@ -1,0 +1,283 @@
+ark-agent-namespace	C-1	test-binding	top_level_help_does_not_mention_agent
+ark-agent-namespace	C-2	test-binding	agent_help_includes_stability_banner
+ark-agent-namespace	C-3	judgment
+ark-agent-namespace	C-4	judgment
+ark-agent-namespace	C-5	judgment
+ark-agent-namespace	C-6	test-binding	load_errors_on_corrupt_toml
+ark-agent-namespace	C-7	test-binding	registers_fresh_row
+ark-agent-namespace	C-8	test-binding	rename_to_moves_file
+ark-agent-namespace	C-9	test-binding	illegal_phase_under_target_tier_errors
+ark-agent-namespace	C-10	judgment
+ark-agent-namespace	C-11	test-binding	extracts_with_inline_code_suffix
+ark-agent-namespace	C-12	test-binding	rejects_pipe_in_feature
+ark-agent-namespace	C-13	test-binding	errors_on_corrupt_managed_block
+ark-agent-namespace	C-14	judgment
+ark-agent-namespace	C-15	judgment
+ark-research	C-1	test-binding	tier_research_round_trips_as_lowercase
+ark-research	C-2	test-binding	phase_research_round_trips_as_lowercase
+ark-research	C-3	test-binding	can_transition_research
+ark-research	C-4	test-binding	task_new_with_tier_research_starts_in_phase_research
+ark-research	C-5	test-binding	task_new_research_with_worktree_succeeds
+ark-research	C-6	test-binding	research_tier_skips_verify_gate
+ark-research	C-7	test-binding	research_tier_commit_stages_corpus_and_clears_focus
+ark-research	C-8	test-binding	check_phase_for_commit_accepts_only_legal_inputs
+ark-research	C-9	test-binding	artifact_for_research_tier_returns_none
+ark-research	C-10	judgment
+ark-research	C-11	test-binding	research_slash_command_claude_and_opencode_bodies_match
+ark-research	C-12	test-binding	researcher_prompt_carries_paths_summaries_contract
+ark-research	C-13	judgment
+ark-research	C-14	judgment
+ark-research	C-15	judgment
+ark-research	C-16	tool	clippy
+ark-research	C-17	test-binding	research_tier_commit_does_not_promote_spec
+ark-research	C-18	test-binding	task_promote_rejects_research_source
+ark-upgrade	C-1	test-binding	load_or_default_empty_when_absent
+ark-upgrade	C-2	test-binding	load_or_default_round_trips_full_section
+ark-upgrade	C-3	test-binding	ejected_path_untouched_by_force
+ark-upgrade	C-4	test-binding	validate_rejects_merged_managed_block_file
+ark-upgrade	C-5	test-binding	validate_rejects_overlap_and_unsafe
+ark-upgrade	C-6	test-binding	validate_rejects_overlap_and_unsafe
+ark-upgrade	C-7	test-binding	record_read_round_trip_and_absent
+ark-upgrade	C-8	test-binding	merged_without_base_falls_back_to_conflict_skip
+ark-upgrade	C-9	test-binding	overlapping_edits_conflict_with_git_markers
+ark-upgrade	C-10	test-binding	non_utf8_round_trips
+ark-upgrade	C-11	test-binding	nested_path_mirrors_under_base_dir
+ark-upgrade	C-12	test-binding	upgrade_source_has_no_bare_std_fs_or_dot_ark_literals
+ark-upgrade	C-13	test-binding	upgrade_source_has_no_bare_std_fs_or_dot_ark_literals
+ark-upgrade	C-14	test-binding	apply_failure_rolls_back_files_and_manifest
+ark-upgrade	C-15	test-binding	restore_without_backup_errors
+ark-upgrade	C-16	test-binding	plan_actions_sorts_output_by_bucket_then_path
+ark-upgrade	C-17	test-binding	summary_display_prints_fixed_order_even_when_zero
+ark-upgrade	C-18	judgment
+ark-upgrade	C-19	test-binding	merged_no_base_skip_stays_on_fallback
+ark-upgrade	C-20	test-binding	apply_failure_rolls_back_files_and_manifest
+ark-upgrade	C-21	test-binding	restore_after_success_returns_pre_upgrade_tree
+ark-upgrade	C-22	test-binding	corrupt_upgrade_section_is_upgrade_error
+ark-upgrade	C-23	test-binding	new_action_variants_sort_into_their_buckets
+ark-upgrade	C-24	test-binding	dry_run_reports_and_mutates_nothing
+ark-upgrade	C-25	judgment
+ark-upgrade	C-26	test-binding	upgrade_appends_missing_top_level_sections_to_config_toml
+codex-support	C-1	source-scan	.codex/ @ crates/ark-core/src/commands/**/*.rs
+codex-support	C-2	judgment
+codex-support	C-3	source-scan	std::fs:: @ crates/ark-core/src/commands/**/*.rs
+codex-support	C-4	test-binding	update_hook_file_rejects_invalid_array_key
+codex-support	C-5	test-binding	platform_by_id_resolves_known_platforms
+codex-support	C-6	test-binding	platform_by_id_resolves_known_platforms
+codex-support	C-7	test-binding	load_after_replay_re_applies_canonical_entries
+codex-support	C-8	test-binding	deprecated_alias_delegates_to_update_hook_file
+codex-support	C-9	test-binding	unload_captures_orphan_ark_hook_entries_in_unregistered_files
+codex-support	C-10	test-binding	ark_codex_hook_entry_carries_canonical_command_in_seconds
+codex-support	C-11	judgment
+codex-support	C-12	judgment
+codex-support	C-13	test-binding	every_claude_command_has_a_codex_skill_sibling
+codex-support	C-14	judgment
+codex-support	C-15	judgment
+opencode-support	C-1	source-scan	.opencode/ @ crates/ark-core/src/commands/**/*.rs
+opencode-support	C-2	test-binding	opencode_templates_ships_no_package_json
+opencode-support	C-3	test-binding	opencode_capture_hook_returns_none
+opencode-support	C-4	test-binding	opencode_platform_shape
+opencode-support	C-5	test-binding	opencode_apply_managed_state_writes_block_and_plugin
+opencode-support	C-6	test-binding	opencode_command_bodies_have_opencode_frontmatter_and_arguments_token
+opencode-support	C-7	tool	cargo build
+opencode-support	C-8	judgment
+opencode-support	C-9	source-scan	.opencode/ @ crates/ark-core/src/commands/init.rs
+opencode-support	C-10	test-binding	every_claude_command_has_an_opencode_command_sibling
+opencode-support	C-11	test-binding	opencode_platform_shape
+opencode-support	C-12	judgment
+opencode-support	C-13	judgment
+opencode-support	C-14	judgment
+opencode-support	C-15	judgment
+project-spec	C-1	judgment
+project-spec	C-2	judgment
+project-spec	C-3	tool	cargo check --all-targets
+project-spec	C-4	judgment
+project-spec	C-5	source-scan	unwrap( @ crates/ark-core/src/**/*.rs
+project-spec	C-6	source-scan	V-(UT|IT|E|F)-\d @ crates/**/*.rs
+project-spec	C-7	judgment
+project-spec	C-8	judgment
+subagent-support	C-1	test-binding	agents_templates_and_dest_dir_are_paired
+subagent-support	C-2	test-binding	each_platform_ships_three_agents
+subagent-support	C-3	test-binding	owned_dirs_derives_from_registry
+subagent-support	C-4	source-scan	.claude/agents/ @ crates/ark-core/src/commands/**/*.rs
+subagent-support	C-5	test-binding	unload_load_round_trips_agent_files_for_every_platform
+subagent-support	C-6	test-binding	agent_prompts_carry_recursion_guard
+subagent-support	C-7	test-binding	agent_prompts_carry_write_scope_walls
+subagent-support	C-8	judgment
+subagent-support	C-9	judgment
+subagent-support	C-10	judgment
+subagent-support	C-11	test-binding	verifier_prompt_carries_no_self_fix_rule
+subagent-support	C-12	test-binding	reviewer_prompt_carries_iteration_rejection_rule
+subagent-support	C-13	test-binding	reviewer_prompt_carries_spec_contradiction_rule
+subagent-support	C-14	test-binding	researcher_prompt_carries_paths_summaries_contract
+subagent-support	C-15	test-binding	agent_prompts_carry_recursion_guard
+subagent-support	C-16	judgment
+subagent-support	C-17	judgment
+subagent-support	C-18	judgment
+subagent-support	C-19	test-binding	codex_support_spec_changelog_present
+subagent-support	C-20	test-binding	opencode_support_spec_changelog_present
+subagent-support	C-21	test-binding	each_platform_ships_three_agents
+subagent-support	C-22	test-binding	agent_bodies_are_byte_identical_modulo_platform_idioms
+subagent-support	C-23	test-binding	claude_platform_lists_agents_dir_in_extra_dirs
+subagent-support	C-24	test-binding	unload_load_round_trips_agent_files_for_every_platform
+subagent-support	C-25	test-binding	codex_agent_frontmatter_shape
+subagent-support	C-26	test-binding	load_restores_canonical_agent_body_overwriting_snapshot_edits
+subagent-support	C-27	judgment
+subagent-support	C-28	judgment
+task-concurrency-control	C-1	test-binding	state_mutate_round_trips_atomically
+task-concurrency-control	C-2	test-binding	state_mutate_returns_lock_contended_after_backoff
+task-concurrency-control	C-3	test-binding	state_mutate_round_trips_atomically
+task-concurrency-control	C-4	test-binding	state_mutate_unlinks_orphan_tmp_files
+task-concurrency-control	C-5	test-binding	cleanup_orphan_session_caches_removes_only_this_projects_files
+task-concurrency-control	C-6	judgment
+task-concurrency-control	C-7	judgment
+task-concurrency-control	C-8	judgment
+task-concurrency-control	C-9	test-binding	drops_active_slug_with_missing_dir
+task-concurrency-control	C-10	test-binding	cleanup_orphan_session_caches_removes_only_this_projects_files
+task-concurrency-control	C-11	test-binding	load_state_does_not_delete_legacy_on_pure_read
+task-concurrency-control	C-12	judgment
+task-concurrency-control	C-13	test-binding	first_diverging_artifact
+task-concurrency-control	C-14	judgment
+task-concurrency-control	C-15	test-binding	add_then_drop_order_is_idempotent
+task-concurrency-control	C-16	judgment
+task-concurrency-control	C-17	judgment
+task-concurrency-control	C-18	judgment
+task-concurrency-control	C-19	test-binding	archive_rename_failure_recovery_via_reconcile
+task-concurrency-control	C-20	judgment
+task-concurrency-control	C-21	test-binding	task_new_first_task_does_not_warn
+task-concurrency-control	C-22	test-binding	task_archive_of_focused_clears_focus
+task-concurrency-control	C-23	test-binding	resolve_focus_slug_precedence
+task-concurrency-control	C-24	judgment
+workspace	C-1	test-binding	record_task_stamps_auto_fields_and_updates_indices
+workspace	C-2	test-binding	commit_yields_snapshot_with_working_rollback
+workspace	C-3	test-binding	record_task_stamps_auto_fields_and_updates_indices
+workspace	C-4	judgment
+workspace	C-5	judgment
+workspace	C-6	judgment
+workspace	C-7	judgment
+workspace	C-8	test-binding	upgrade_appends_missing_top_level_sections_to_config_toml
+workspace	C-9	test-binding	record_task_stamps_auto_fields_and_updates_indices
+workspace	C-10	test-binding	no_commit_flips_phase_without_committing
+workspace	C-11	test-binding	commit_phase_yields_paths_only_no_bodies
+workspace	C-12	test-binding	identity_prompt_retries_on_blank
+workspace	C-13	judgment
+workspace	C-14	test-binding	load_or_default_returns_defaults_when_section_missing
+workspace	C-15	test-binding	rollback_restores_indices_in_reverse
+workspace	C-16	judgment
+workspace	C-17	judgment
+workspace	C-18	judgment
+workspace	C-19	test-binding	rollback_detects_drift_and_preserves_concurrent_data
+workspace	C-20	test-binding	ensure_clean_index_errors_on_dirty_index
+workspace	C-21	judgment
+worktree	C-1	test-binding	load_or_default_errors_on_corrupt_toml
+worktree	C-2	test-binding	cleanup_happy_path_with_delete_branch
+worktree	C-3	test-binding	missing_worktree_section_returns_defaults
+worktree	C-4	test-binding	resolve_branch_rejects_unknown_branch_type
+worktree	C-5	judgment
+worktree	C-6	test-binding	resolve_branch_precedence
+worktree	C-7	test-binding	unload_excludes_worktree_contents
+worktree	C-8	judgment
+worktree	C-9	judgment
+worktree	C-10	source-scan	Command::new @ crates/ark-core/src/commands/agent/task/worktree/**/*.rs
+worktree	C-11	judgment
+worktree	C-12	test-binding	cleanup_happy_path_with_delete_branch
+worktree	C-13	judgment
+worktree	C-14	test-binding	worktree_list_is_empty_when_no_worktrees_exist
+worktree	C-15	test-binding	cleanup_happy_path_with_delete_branch
+worktree	C-16	judgment
+worktree	C-17	judgment
+worktree	C-18	test-binding	archive_leaves_worktree_intact
+worktree	C-19	test-binding	task_new_without_worktree_writes_nothing_under_worktrees_dir
+worktree	C-20	test-binding	worktree_list_reports_active_tasks
+worktree	C-21	judgment
+worktree	C-22	judgment
+detachable-feature-spec	C-1	test-binding	multi_token_body_errors
+detachable-feature-spec	C-2	test-binding	uppercase_segment_rejected
+detachable-feature-spec	C-3	test-binding	rejects_slug_mismatch_when_no_existing_spec
+detachable-feature-spec	C-4	test-binding	empty_or_placeholder_body_errors
+detachable-feature-spec	C-5	judgment	
+detachable-feature-spec	C-6	test-binding	dot_and_dotdot_segments_rejected
+detachable-feature-spec	C-7	test-binding	nested_register_writes_branch_discriminator_row
+detachable-feature-spec	C-8	test-binding	nested_register_writes_branch_discriminator_row
+detachable-feature-spec	C-9	test-binding	nested_register_writes_branch_discriminator_row
+detachable-feature-spec	C-10	test-binding	single_segment_register_preserves_flat_layout
+detachable-feature-spec	C-11	test-binding	extracts_mixed_flat_and_nested
+detachable-feature-spec	C-12	test-binding	gather_features_index_recurses_into_subtree
+detachable-feature-spec	C-13	test-binding	gather_features_index_parses_managed_block
+detachable-feature-spec	C-14	test-binding	reserved_segments_rejected
+detachable-feature-spec	C-15	test-binding	slug_mismatch_errors
+detachable-feature-spec	C-16	test-binding	imports_writes_spec_and_index_row
+ark-sandbox	C-1	source-scan	Command::new @ crates/ark-core/src/commands/sandbox/**/*.rs
+ark-sandbox	C-2	test-binding	is_available_is_well_typed
+ark-sandbox	C-3	judgment
+ark-sandbox	C-4	test-binding	collision_resistant
+ark-sandbox	C-5	test-binding	parse_ps_row_reads_slug_label
+ark-sandbox	C-6	test-binding	unknown_inner_key_rejected
+ark-sandbox	C-6a	test-binding	validate_rejects_empty_image
+ark-sandbox	C-7	test-binding	select_unknown_engine_errors
+ark-sandbox	C-8	test-binding	yolo_argv_per_platform
+ark-sandbox	C-9	test-binding	select_first_in_order_and_override
+ark-sandbox	C-10	test-binding	run_args_user_flag
+ark-sandbox	C-11	test-binding	unknown_inner_key_rejected
+ark-sandbox	C-12	test-binding	derive_resolves_common_dir
+ark-sandbox	C-13	test-binding	windows_path_translation
+ark-sandbox	C-14	test-binding	run_args_share_host_config_swaps_volume_for_rw_binds
+ark-sandbox	C-15	test-binding	parse_ps_row_reads_slug_label
+ark-sandbox	C-16	judgment
+ark-sandbox	C-17	judgment
+ark-sandbox	C-18	judgment
+ark-sandbox	C-19	test-binding	proxy_loopback_rewrite
+ark-context	C-1	judgment
+ark-context	C-2	judgment
+ark-context	C-3	test-binding	context_session_json_wraps_in_session_start_envelope
+ark-context	C-4	source-scan	std::fs:: @ crates/ark-core/src/commands/context/**/*.rs
+ark-context	C-5	judgment
+ark-context	C-6	judgment
+ark-context	C-11	judgment
+ark-context	C-12	test-binding	update_settings_hook_is_idempotent_on_repeat
+ark-context	C-13	test-binding	gather_on_empty_ark_returns_empty_state
+ark-context	C-14	test-binding	context_errors_on_non_ark_dir
+ark-context	C-15	judgment
+ark-context	C-16	test-binding	update_settings_hook_preserves_unrelated_pretooluse_entries
+ark-context	C-17	judgment
+ark-context	C-18	judgment
+ark-context	C-19	test-binding	artifact_kind_iteration_returns_some_for_plan_and_review
+ark-context	C-20	judgment
+ark-context	C-21	judgment
+ark-context	C-22	source-scan	Command::new @ crates/ark-core/src/commands/**/*.rs
+ark-context	C-24	test-binding	gather_features_index_parses_managed_block
+ark-context	C-25	judgment
+ark-context	C-26	test-binding	commands_no_bare_command_new
+ark-context	C-27	judgment
+ark-context	C-28	test-binding	commands_no_bare_command_new
+ark-context	C-29	judgment
+ark-context	C-30	judgment
+ark-context	C-31	test-binding	returns_main_when_layout_is_main_checkout
+ark-context	C-32	judgment
+ark-context	C-33	test-binding	focus_slug_reads_state_toml_when_bound
+ark-context	C-34	test-binding	mixed_input_groups_by_subtree
+ark-context	C-35	test-binding	empty_input_returns_none
+ark-context	C-36	test-binding	rows_beyond_max_depth_are_dropped
+ark-context	C-37	test-binding	skips_platform_dir_that_does_not_exist
+ark-context	C-38	test-binding	enumerates_claude_stems_with_user_agents
+ark-context	C-39	test-binding	enumerates_claude_stems_with_user_agents
+ark-context	C-40	test-binding	skips_symlinked_entries
+ark-context	C-41	test-binding	enumerates_codex_stems_from_toml_files
+ark-context	C-42	test-binding	commit_phase_yields_paths_only_no_bodies
+ark-context	C-43	judgment
+ark-context	C-44	judgment
+ark-context	C-45	judgment
+ark-context	C-46	test-binding	populated_sections_render_specs_as_tree
+ark-sandbox	C-20	judgment
+ark-sandbox	C-21	test-binding	remove_is_idempotent
+ark-sandbox	C-22	test-binding	run_args_user_flag
+ark-sandbox	C-23	judgment
+ark-sandbox	C-24	judgment
+ark-sandbox	C-25	test-binding	select_first_in_order_and_override
+detachable-feature-spec	C-2a	test-binding	uppercase_segment_rejected
+detachable-feature-spec	C-8a	test-binding	intermediate_index_paths_leaf_to_root
+detachable-feature-spec	C-8b	judgment
+detachable-feature-spec	C-9a	test-binding	gather_features_index_recurses_into_subtree
+detachable-feature-spec	C-11a	test-binding	extracts_three_segment_nested_path
+detachable-feature-spec	C-12a	judgment
+detachable-feature-spec	C-12b	test-binding	gather_emits_missing_child_warning_for_stale_row
+detachable-feature-spec	C-16a	test-binding	register_then_import_preserves_existing_row
