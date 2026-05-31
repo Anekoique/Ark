@@ -766,3 +766,29 @@ Actuator tags move to a compact two-line form (`- C-N: @kind[: arg]` / prose); e
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 29: add `-a` stage-all option to ark-commit
+
+**Date**: 2026-05-31
+**Slug**: commit-stage-all
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `3380f47`
+**Closing Commit**: <PENDING:commit-stage-all>
+
+### Summary
+
+`/ark:commit -a` now runs `git add -A` before the closure commit, folding the user's manual staging into one flag.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| commit | `--all`/`-a` stages all changes before the gate; conflicts with `--no-commit` |
+| docs | `-a` documented in ark-commit across claude/codex/opencode |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

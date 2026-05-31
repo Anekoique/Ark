@@ -61,6 +61,10 @@ pub struct TaskCommitOptions {
     /// and the phase still flips to `Committed`. The user takes
     /// responsibility for any follow-up commit + journal record.
     pub no_commit: bool,
+    /// Stage every tracked + untracked change (`git add -A`) before the
+    /// staged-work gate. Folds the user's manual `git add` into the closure.
+    /// Mutually exclusive with `no_commit` (nothing to stage for).
+    pub all: bool,
 }
 
 /// Summary returned by [`task_commit`] on success.
@@ -132,6 +136,9 @@ pub fn task_commit(opts: TaskCommitOptions) -> Result<TaskCommitSummary> {
     let task_cwd = task_cwd_for(&prev_toml, &layout);
 
     if !opts.no_commit {
+        if opts.all {
+            stage_all(&task_cwd)?;
+        }
         require_staged_work(&task_cwd, &opts.slug)?;
     }
     if opts.no_commit {
@@ -344,6 +351,23 @@ fn task_cwd_for(toml: &TaskToml, layout: &Layout) -> PathBuf {
         joined
     } else {
         layout.root().to_path_buf()
+    }
+}
+
+/// Stages every tracked + untracked change in `cwd` via `git add -A`.
+///
+/// Backs the `--all` flag: folds the user's manual `git add` into the
+/// closure. The subsequent `require_staged_work` gate still applies, so a
+/// genuinely empty working tree continues to surface `NothingStaged`.
+fn stage_all(cwd: &Path) -> Result<()> {
+    let out = run_git(&["add", "-A"], cwd)?;
+    if out.is_success() {
+        Ok(())
+    } else {
+        Err(Error::GitCommitFailed {
+            path: cwd.to_path_buf(),
+            stderr: out.stderr.trim().to_string(),
+        })
     }
 }
 
@@ -1174,6 +1198,7 @@ mod e2e {
             slug: "qd".into(),
             message: Some("feat(qd): user work".into()),
             no_commit: false,
+            all: false,
         })
         .unwrap();
         assert_eq!(summary.tier, Tier::Quick);
@@ -1215,6 +1240,7 @@ mod e2e {
             slug: "qd".into(),
             message: Some("feat(qd): foo".into()),
             no_commit: false,
+            all: false,
         })
         .unwrap();
 
@@ -1224,6 +1250,106 @@ mod e2e {
             "user's unstaged file must survive untouched: {}",
             status.stdout
         );
+    }
+
+    /// `--all` stages unstaged work before the gate: a quick task with an
+    /// unstaged work file commits cleanly and the file lands in HEAD without a
+    /// manual `git add`.
+    #[test]
+    fn all_flag_stages_unstaged_work() {
+        let tmp = init_repo_with_ark();
+        // Drive to Execute and scaffold a task without staging any work.
+        task_new(TaskNewOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "qd".into(),
+            title: "qd task".into(),
+            tier: Tier::Quick,
+            worktree: None,
+        })
+        .unwrap();
+        run_git(&["add", "."], tmp.path()).unwrap();
+        run_git(
+            &["commit", "-m", "chore(qd): scaffold", "--quiet"],
+            tmp.path(),
+        )
+        .unwrap();
+        task_execute(TaskPhaseOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "qd".into(),
+        })
+        .unwrap();
+
+        // Unstaged user work — no `git add` here.
+        tmp.path().join("src").ensure_dir().unwrap();
+        tmp.path()
+            .join("src/foo.rs")
+            .write_bytes(b"pub fn foo() {}\n")
+            .unwrap();
+
+        let summary = task_commit(TaskCommitOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "qd".into(),
+            message: Some("feat(qd): user work".into()),
+            no_commit: false,
+            all: true,
+        })
+        .unwrap();
+        assert!(summary.head_sha.is_some());
+
+        let head_files = run_git(&["show", "--name-only", "--format=", "HEAD"], tmp.path())
+            .unwrap()
+            .stdout;
+        assert!(head_files.contains("src/foo.rs"), "all=true must stage it");
+        assert!(head_files.contains(".ark/tasks/qd/task.toml"));
+
+        let dirty = ark_managed_dirty(tmp.path());
+        assert!(
+            dirty.is_empty(),
+            "nothing Ark-managed dirty post-commit: {dirty:?}"
+        );
+    }
+
+    /// `--all` on a genuinely empty working tree still surfaces `NothingStaged`
+    /// (the gate runs after `git add -A`, which stages nothing).
+    #[test]
+    fn all_flag_on_clean_tree_still_errors_nothing_staged() {
+        let tmp = init_repo_with_ark();
+        task_new(TaskNewOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "qd".into(),
+            title: "qd".into(),
+            tier: Tier::Quick,
+            worktree: None,
+        })
+        .unwrap();
+        run_git(&["add", "."], tmp.path()).unwrap();
+        run_git(
+            &["commit", "-m", "chore(qd): scaffold", "--quiet"],
+            tmp.path(),
+        )
+        .unwrap();
+        task_execute(TaskPhaseOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "qd".into(),
+        })
+        .unwrap();
+        // task_execute rewrote task.toml (Design -> Execute); commit it so the
+        // working tree is genuinely clean before the stage-all gate.
+        run_git(&["add", "."], tmp.path()).unwrap();
+        run_git(
+            &["commit", "-m", "chore(qd): execute", "--quiet"],
+            tmp.path(),
+        )
+        .unwrap();
+        let err = task_commit(TaskCommitOptions {
+            project_root: tmp.path().to_path_buf(),
+            slug: "qd".into(),
+            message: Some("feat: x".into()),
+            no_commit: false,
+            all: true,
+        })
+        .unwrap_err();
+        assert!(matches!(err, Error::NothingStaged { .. }));
     }
 
     /// `task_commit` rejects when nothing is staged.
@@ -1248,6 +1374,7 @@ mod e2e {
             slug: "qd".into(),
             message: Some("feat: x".into()),
             no_commit: false,
+            all: false,
         })
         .unwrap_err();
         assert!(matches!(err, Error::NothingStaged { .. }));
@@ -1264,6 +1391,7 @@ mod e2e {
             slug: "demo".into(),
             message: None,
             no_commit: false,
+            all: false,
         })
         .unwrap_err();
         assert!(matches!(err, Error::CommitMessageRequired { .. }));
@@ -1292,6 +1420,7 @@ mod e2e {
             slug: "qd".into(),
             message: None,
             no_commit: true,
+            all: false,
         })
         .unwrap();
         assert!(summary.head_sha.is_none());
@@ -1354,6 +1483,7 @@ mod e2e {
             slug: "demo".into(),
             message: Some("feat: x".into()),
             no_commit: false,
+            all: false,
         })
         .unwrap_err();
         assert!(matches!(err, Error::GitCommitFailed { .. }));
@@ -1399,6 +1529,7 @@ mod e2e {
             slug: "std".into(),
             message: Some("m".into()),
             no_commit: false,
+            all: false,
         })
         .unwrap_err();
         assert!(matches!(err, Error::IllegalPhaseTransition { .. }));
@@ -1444,6 +1575,7 @@ mod e2e {
             slug: "std".into(),
             message: Some("feat(std): work".into()),
             no_commit: false,
+            all: false,
         })
         .unwrap();
         assert!(summary.head_sha.is_some());
@@ -1519,6 +1651,7 @@ mod e2e {
             slug: "deep".into(),
             message: Some("feat(deep): land it".into()),
             no_commit: false,
+            all: false,
         })
         .unwrap();
         assert!(summary.deep_spec_promoted);
@@ -1606,6 +1739,7 @@ mod e2e {
             slug: "rs".into(),
             message: Some("research(rs): corpus".into()),
             no_commit: false,
+            all: false,
         })
         .unwrap();
         assert_eq!(summary.tier, Tier::Research);
@@ -1650,6 +1784,7 @@ mod e2e {
             slug: "rs".into(),
             message: Some("research(rs): commit without VERIFY".into()),
             no_commit: false,
+            all: false,
         })
         .unwrap();
     }
@@ -1668,6 +1803,7 @@ mod e2e {
             slug: "rs".into(),
             message: Some("research(rs): empty corpus".into()),
             no_commit: false,
+            all: false,
         })
         .unwrap();
         assert!(summary.head_sha.is_some());
@@ -1685,6 +1821,7 @@ mod e2e {
             slug: "rs".into(),
             message: Some("research(rs): no spec".into()),
             no_commit: false,
+            all: false,
         })
         .unwrap();
 

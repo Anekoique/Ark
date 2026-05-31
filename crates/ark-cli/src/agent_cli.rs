@@ -220,6 +220,15 @@ struct TaskCommitCliArgs {
     /// phase still flips to Committed.
     #[arg(long = "no-commit", default_value_t = false)]
     no_commit: bool,
+    /// Stage every tracked + untracked change (`git add -A`) before committing.
+    /// Mutually exclusive with `--no-commit`.
+    #[arg(
+        short = 'a',
+        long = "all",
+        default_value_t = false,
+        conflicts_with = "no_commit"
+    )]
+    all: bool,
 }
 
 #[derive(clap::Args)]
@@ -461,6 +470,7 @@ impl TaskCommand {
                     slug,
                     message: a.message,
                     no_commit: a.no_commit,
+                    all: a.all,
                 })?);
             }
             Self::Archive(a) => {
