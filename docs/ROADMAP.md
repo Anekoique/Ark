@@ -1,50 +1,46 @@
 # Roadmap
 
-## What we may need ?
+Sync with [#2](https://github.com/Anekoique/Ark/issues/2)
 
-[Some ideas]
+[**Execution Environment and Sandbox**]
 
-- Quick install and uninstall (ark load & ark unload)
-- AI workflow with `DESIGN(BrainStorm) -> PLAN(REVIEW) -> EXECUTE -> REVIEW`
-  (/ark:design -> /ark:plan -> /ark:execute -> /ark:review) (draft -> plan -> spec)
-  draft proposed task
-    -> split and organize subtasks
-    -> PLAN task and dispatch SUBPLAN to subtask
-    -> call codex/create subagent claude to review
-    -> pass with limited loop and execute
-    -> call codex/create subagent claude to review
-    -> FINAL REVIEW with higher request
-    (previous mainly about function, currently include code quality / organization / abstract design)
-    -> final commit and record spec/log/mm to archive
-- Memory and log System (day drive or task drive?) (/ark:mem /ark:log)
-  managed by ark mems / ark logs
-- Consider stello (Agent Cognitive Topology Engine) or streamlined
-- Multi-agent Orchestrate.
-- Workspace management (member drive or task drive?)
-- Multi platform support
-- System level / project level management?
-- A General purpose to harness and control the coding-agents and improve coding works.
+- [x] Add sandbox for isolation execution environment. #17
+...
 
-[Workflow enhancement]
+[**Lifecycle and Orchestration**]
 
-- Currently REVIEW will ask for self-review or spawn a sub-agent for review. We should add configurable options for invoking codex review, human review, or creating sub-agent reviews.
-  Human intervention during circulation.
-- Provide user-defined workflows like building blocks, instead of predefined ones.
-  Add Workspace support. See trellis.
-- Better memory(spec and tasks) management, learn idea stello.
-- Add a spec extraction mechanism through docs/codes to support older projects.
-- Add Hook support which useful for codebase-overview before any tasks.
-- **Strengthen VERIFY**. Today VERIFY checks plan-fidelity, correctness, and SPEC drift, but doesn't scrutinize function length, cross-file redundancy, or abstraction strength. The `codex-support` task surfaced this: VERIFY approved with minor follow-ups, but a separate cleanup pass found ~5 sites of structural redundancy that should have been findings. Enumerate code-quality dimensions in the verifier prompt; consider an "approved-after-refactor" verdict that gates archive on a cleanup pass.
-  ...
+- [ ] Provide user-defined workflow. Add [workflow] to config.toml.
+- [x] Add workspace/worktree support. See [trellis](https://github.com/mindfold-ai/Trellis/tree/main/.trellis/workspace). #8 #9 #14
+- [x] Add a spec extraction mechanism through docs/codes to support older projects. [spec-extract](https://github.com/Anekoique/Ark/commit/7d0ae822e1f512d0ff284d7e5dc3bc69b55cf324)
+- [x] Add sub-agent support. #15
+- [x] Add SPEC constrains audit. [spec-actuators](https://github.com/Anekoique/Ark/commit/cc4de78b49ebb64ef3fbb6f441d40a5dd55b2e96)
+...
 
-[Cli enhancement]
+[**Context and Memory Management**]
 
-- Cli extensions for memory management (ark mem) , task management (ark task) which provide cli tools for Agent invoke directoly without understanding natural language.
-- Convenience management to coding-agent settings (cross-platform) with simple cli. Consider a ark skill add apply skill to all platforms or manage skill through ./ark/skills. See cc-switch.
-  ...
+- [ ] Better memory(spec and tasks) organization, learn idea [stello](https://github.com/stello-agent/stello/tree/main).
+- [ ] Context management, workflow resulted in long contexts currently.
+- [ ] Better design/discription of ark-skills, ark-agents, ark-workflow...
+...
 
-[Platform support]
+[**Tool Interface**]
 
-- Add agent and more commands to .claude
-- Add support for codex, opencode...
-  ...
+- [ ] Cli extensions for memory management (`ark mem`)...
+- [x] Cli tools for Agent invoke directoly without understanding natural language. #3 #5
+- [ ] Convenience management to coding-agent settings (cross-platform) with simple cli. Consider a `ark skill add` apply skill to all platforms or manage skill through `./ark/skills`. See [cc-switch](https://github.com/farion1231/cc-switch).
+- [ ] Design better description and usage docs for both user and agents.
+- [ ] Perf cli tool.
+...
+
+[**Platform and Software Engineer**]
+
+- [x] Add support for codex, opencode...  #6 #7
+- [ ] Embedded projects and workflow management.
+- [ ] Add a new layer (like initiative) to lead project development.
+...
+
+[**Veriﬁcation and Evaluation**]
+
+- [ ] Port important benchmarks.
+- [ ] Add [system-intelligence-benchmark](https://github.com/sys-intelligence/system-intelligence-benchmark).
+...

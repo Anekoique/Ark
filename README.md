@@ -6,7 +6,7 @@ Use the simple CLI `ark` to define your AI workflow and manage coding agents in 
 
 **See the [deck](https://anekoique.github.io/Ark/ark-deck.html)** for design details.
 
-> **Status**: Ark is experimental and some features are unstable.
+> **Status**: Ark is experimental and some features are unstable. See the [Future Plan](docs/ROADMAP.md).
 
 ## Why Ark ?
 
@@ -85,7 +85,7 @@ See `.ark/workflow.md` for the full workflow.
 
 ## Tiers
 
-Pick the smallest tier that fits.
+Pick the tier that fits the different tasks.
 
 | Tier         | For                                            |
 | ------------ | ---------------------------------------------- |
