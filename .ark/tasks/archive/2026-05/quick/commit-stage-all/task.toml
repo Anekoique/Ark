@@ -1,10 +1,10 @@
 id = "commit-stage-all"
 title = "add -a stage-all option to ark-commit"
 tier = "quick"
-phase = "committed"
-iteration = 0
+phase = "archived"
 created_at = "2026-05-31T13:23:27.198318Z"
-updated_at = "2026-05-31T13:29:13.080012Z"
+updated_at = "2026-05-31T18:55:50.729368Z"
+archived_at = "2026-05-31T18:55:50.729368Z"
 committed_at = "2026-05-31T13:29:13.080012Z"
 start_head = "3380f47cfcf6ce3e6158222442062b98b5609f4d"
 journal_path = ".ark/workspace/Anekoique/journal-1.md"

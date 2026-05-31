@@ -1,10 +1,10 @@
 id = "claude-agent-sdk"
 title = "learn claude agent sdk"
 tier = "research"
-phase = "committed"
-iteration = 0
+phase = "archived"
 created_at = "2026-05-24T17:32:07.067464Z"
-updated_at = "2026-05-25T10:09:53.268691Z"
+updated_at = "2026-05-31T18:55:50.691395Z"
+archived_at = "2026-05-31T18:55:50.691395Z"
 committed_at = "2026-05-25T10:09:53.268691Z"
 start_head = "2597596598cb62321e8bff01063909ac622a3294"
 journal_path = ".ark/workspace/Anekoique/journal-1.md"

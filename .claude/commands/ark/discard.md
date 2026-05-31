@@ -20,7 +20,7 @@ Parse `$ARGUMENTS`. If a slug is present, use it; otherwise default to this sess
 
 ### Step 2: Decide on `--force` `[AI]`
 
-By default, `discard` refuses when any seeded artifact (`PRD.md`, `NN_PLAN.md`, `NN_REVIEW.md`, `VERIFY.md`) diverges from its template — the "PRD has user content" guard.
+By default, `discard` refuses when any seeded artifact (`PRD.md`, `PLAN.md`, `REVIEW.md`, `VERIFY.md`) diverges from its template — the "PRD has user content" guard.
 
 **If you (the agent) are about to run `/ark:discard` on the user's behalf without their explicit go-ahead, never pass `--force`.** Surface the error and let the user decide.
 

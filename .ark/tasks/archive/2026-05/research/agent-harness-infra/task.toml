@@ -1,10 +1,10 @@
 id = "agent-harness-infra"
 title = "research on agent harness and agent infra"
 tier = "research"
-phase = "committed"
-iteration = 0
+phase = "archived"
 created_at = "2026-05-20T13:27:07.205703Z"
-updated_at = "2026-05-20T16:21:27.734070Z"
+updated_at = "2026-05-31T18:55:50.576049Z"
+archived_at = "2026-05-31T18:55:50.576049Z"
 committed_at = "2026-05-20T16:21:27.734070Z"
 start_head = "7b5d10766c7fe937cb81aa29670fba26e3d40937"
 journal_path = ".ark/workspace/Anekoique/journal-1.md"

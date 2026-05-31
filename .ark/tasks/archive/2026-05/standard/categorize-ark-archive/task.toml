@@ -1,10 +1,10 @@
 id = "categorize-ark-archive"
 title = "categorize archived tasks by tier"
 tier = "standard"
-phase = "committed"
-iteration = 0
+phase = "archived"
 created_at = "2026-05-31T13:35:14.710328Z"
-updated_at = "2026-05-31T17:47:48.646424Z"
+updated_at = "2026-05-31T18:55:50.654645Z"
+archived_at = "2026-05-31T18:55:50.654645Z"
 committed_at = "2026-05-31T17:47:48.646424Z"
 start_head = "d6a3f1fdb33ff99fb28adfcf0a7fc9a70bc8a690"
 journal_path = ".ark/workspace/Anekoique/journal-1.md"

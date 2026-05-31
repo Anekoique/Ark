@@ -28,7 +28,7 @@ cat .ark/specs/project/<name>/SPEC.md   # one per row
 ```bash
 /ark:quick "<title>"               # trivial, reversible — PRD only
 /ark:design "<title>"              # standard — PRD + PLAN + VERIFY
-/ark:design --deep "<title>"       # deep — adds REVIEW loop + promoted SPEC
+/ark:design --deep "<title>"       # deep — adds REVIEW + promoted SPEC
 /ark:research "<topic>"            # research — corpus IS the deliverable; follow-up optional
 ```
 
@@ -40,7 +40,7 @@ Pick the smallest tier that fits.
 
 - **Quick** — reversible in one commit, no new abstractions. Artifact: `PRD.md`.
 - **Standard** — feature work with testable scope, no API/architecture break. Artifacts: `PRD.md`, `PLAN.md`, `VERIFY.md`.
-- **Deep** — architectural, cross-cutting, or new subsystem. Artifacts: `PRD.md`, `NN_PLAN.md` ⇄ `NN_REVIEW.md` (looped), `VERIFY.md`, promoted `SPEC.md`.
+- **Deep** — architectural, cross-cutting, or new subsystem. Artifacts: `PRD.md`, `PLAN.md`, `REVIEW.md`, `VERIFY.md`, promoted `SPEC.md`.
 - **Research** — knowledge-gathering; corpus IS the deliverable; follow-up implementation optional. Artifacts: `PRD.md`, `research/`.
 
 Promote mid-flight when scope grows: `ark agent task promote --to <tier>`. Prior artifacts are preserved. **Research tier does not participate in promotion** — cross-over between research and tiered implementation is by a fresh `task new` whose PRD cites the research slug in prose.
@@ -58,8 +58,8 @@ When in doubt, pick lower. Promotion is cheap; demotion is awkward.
 ├── tasks/<slug>/             # active task
 │   ├── task.toml             # phase, tier, dates
 │   ├── PRD.md
-│   ├── PLAN.md / NN_PLAN.md
-│   ├── NN_REVIEW.md          # deep only
+│   ├── PLAN.md
+│   ├── REVIEW.md             # deep only
 │   └── VERIFY.md             # standard + deep
 ├── tasks/archive/YYYY-MM/<tier>/    # closed tasks, bucketed by tier (see INDEX.md)
 └── specs/
@@ -74,7 +74,7 @@ When in doubt, pick lower. Promotion is cheap; demotion is awkward.
 Each phase: pull context, run the CLI, write the artifact, advance.
 
 ```
-DESIGN  → PLAN  → [REVIEW ⇄ PLAN]  → EXECUTE  → VERIFY  → COMMIT  → (later) ARCHIVE
+DESIGN  → PLAN  → REVIEW  → EXECUTE  → VERIFY  → COMMIT  → (later) ARCHIVE
             quick skips PLAN/REVIEW/VERIFY; standard skips REVIEW
 RESEARCH → COMMIT → (later) ARCHIVE          research tier (no PLAN/REVIEW/EXECUTE/VERIFY)
 ```
@@ -102,11 +102,10 @@ ark context --scope phase --for plan --format json
 ark agent task plan
 ```
 
-Fill the seeded plan file (`PLAN.md` standard, `00_PLAN.md` deep):
+Fill the seeded `PLAN.md` (standard and deep):
 
 - **Summary** — one paragraph.
-- **Log** — `None in 00_PLAN`; on later iterations, list Added / Changed / Removed / Unresolved + Response Matrix.
-- **Spec** — Goals (`G-N`), Non-goals, Architecture, Data Structure, API Surface, Constraints (`C-N`). **Self-contained every iteration.** Promoted verbatim to `specs/features/<slug>/SPEC.md` on deep commit.
+- **Spec** — Goals (`G-N`), Non-goals, Architecture, Data Structure, API Surface, Constraints (`C-N`). **Self-contained.** Promoted verbatim to `specs/features/<slug>/SPEC.md` on deep commit.
 - **Runtime** — main / failure flow + state transitions.
 - **Implementation** — phases.
 - **Trade-offs** — options with adv. / disadv.
@@ -119,7 +118,7 @@ ark agent task execute   # standard → EXECUTE
 ark agent task review    # deep → REVIEW
 ```
 
-### REVIEW — deep only, looped
+### REVIEW — deep only, single pass
 
 ```bash
 ark context --scope phase --for review --format json
@@ -127,26 +126,15 @@ ark context --scope phase --for review --format json
 
 **STOP. Ask the user which reviewer to use: `ark-reviewer` subagent, a different model, or self-review.** Do not pick on the user's behalf.
 
-The chosen reviewer fills `NN_REVIEW.md`:
+The chosen reviewer fills `REVIEW.md`:
 
 - Verdict: Approved / Approved with Revisions / Rejected.
 - Findings (`R-NNN`): Severity, Section, Problem, Why it matters, Recommendation.
 - Trade-off Advice (`TR-N`).
 
-Reject as HIGH if the latest PLAN's `## Spec` references prior iterations instead of restating in full.
+Reject as HIGH if the PLAN's `## Spec` is not self-contained (leans on external docs or diff-style phrasing).
 
-If verdict is *Rejected* or *Approved with Revisions*:
-
-```bash
-cp .ark/tasks/<slug>/NN_PLAN.md   .ark/tasks/<slug>/$(printf '%02d' $((NN+1)))_PLAN.md
-cp .ark/tasks/<slug>/NN_REVIEW.md .ark/tasks/<slug>/$(printf '%02d' $((NN+1)))_REVIEW.md
-# edit task.toml: bump iteration, set phase = "plan"
-ark agent task review    # transitions back after the new PLAN is filled
-```
-
-Fill the new plan's `## Log` Response Matrix — every prior CRITICAL/HIGH finding listed with Accepted / Rejected / Deferred + reasoning. Repeat until verdict is Approved with zero open CRITICAL.
-
-`task.toml.max_iterations` (typically 3–5). If exhausted, halt and ask the user.
+There is no review loop. Fold every CRITICAL/HIGH finding into `PLAN.md` by editing it in place — keep the `## Spec` self-contained — then advance:
 
 ```bash
 ark agent task execute   # → EXECUTE
@@ -292,7 +280,7 @@ ark agent task new --slug <slug> --title "<t>" --tier <t> --worktree
 cd .ark/worktrees/<branch>/        # required before any subsequent ark command
 ```
 
-**Deep tier MUST use `--worktree`.** PLAN ⇄ REVIEW iteration generates many revisions; isolate them in a dedicated branch.
+**Deep tier MUST use `--worktree`.** Architectural work spans many files; isolate it on a dedicated branch.
 
 Configure under `[worktree]` in `.ark/config.toml`: `worktree_dir`, `branch_prefix`, files to copy, `post_create` hooks. Preserved across `ark upgrade`.
 
@@ -368,7 +356,6 @@ ark agent task worktree list | cleanup [--delete-branch]
 `task new`, `task resume`, `task discard` require `--slug`. Other verbs resolve the slug from `.ark/.state.toml`'s `[focus]` field — `task new` and `task resume` write it; `task archive` and `task discard` clear it when their slug matches. With no focus bound, the CLI errors `NoFocus` and asks you to `task resume` first.
 
 **Hand-edited operations (no CLI):**
-- Deep-tier iteration: copy `NN_PLAN.md` / `NN_REVIEW.md` to `(NN+1)_*`, bump `task.toml.iteration`, reset `phase = "plan"`.
 - Reopen archived task: move dir back to `.ark/tasks/<slug>/`, set `phase = "verify"`, clear `archived_at`.
 
 ---

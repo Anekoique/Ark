@@ -524,7 +524,7 @@ Introduce a fourth workflow tier whose deliverable is a curated reference corpus
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `7b5d107`
-**Closing Commit**: <PENDING:agent-harness-infra>
+**Closing Commit**: 0a431b8
 
 ### Summary
 
@@ -543,8 +543,7 @@ Introduce a fourth workflow tier whose deliverable is a curated reference corpus
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
-
+| `0a431b8` | research: agent harness and agent infra |
 
 ## Session 21: improve `ark context`
 
@@ -553,7 +552,7 @@ Introduce a fourth workflow tier whose deliverable is a curated reference corpus
 **Branch**: `feat/improve-ark-context`
 **Base Branch**: `main`
 **Start Head**: `0a431b8`
-**Closing Commit**: <PENDING:improve-ark-context>
+**Closing Commit**: 2597596
 
 ### Summary
 
@@ -572,8 +571,7 @@ Grow `ark context` projection additively: `checkout`, `subagents`, `features_tre
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
-
+| `2597596` | feat(cli): improve `ark context` |
 
 ## Session 22: research on claude agent sdk
 
@@ -582,7 +580,7 @@ Grow `ark context` projection additively: `checkout`, `subagents`, `features_tre
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `2597596`
-**Closing Commit**: <PENDING:claude-agent-sdk>
+**Closing Commit**: ea610e4
 
 ### Summary
 
@@ -599,8 +597,7 @@ Reference corpus on the Claude Agent SDK (15 files) to ground a stage-1 ArkOS po
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
-
+| `ea610e4` | research: claude agent sdk |
 
 ## Session 23: sync ark-book with main
 
@@ -609,7 +606,7 @@ Reference corpus on the Claude Agent SDK (15 files) to ground a stage-1 ArkOS po
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `ea610e4`
-**Closing Commit**: <PENDING:sync-ark-book>
+**Closing Commit**: 43ea1d0
 
 ### Summary
 
@@ -627,8 +624,7 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
-
+| `43ea1d0` | docs(book): sync ark-book |
 
 ## Session 24: improve ark upgrade
 
@@ -637,7 +633,7 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 **Branch**: `feat/improve-ark-upgrade`
 **Base Branch**: `main`
 **Start Head**: `43ea1d0`
-**Closing Commit**: <PENDING:improve-ark-upgrade>
+**Closing Commit**: 8465e8a
 
 ### Summary
 
@@ -655,7 +651,7 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `8465e8a` | feat(cli): improve `ark upgrade` |
 
 ## Session 25: `ark sandbox` confines a task's worktree in a Docker container
 
@@ -664,7 +660,7 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 **Branch**: `feat/ark-sandbox`
 **Base Branch**: `main`
 **Start Head**: `8465e8a`
-**Closing Commit**: <PENDING:ark-sandbox>
+**Closing Commit**: a2e1ba4
 
 ### Summary
 
@@ -683,7 +679,7 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `a2e1ba4` | feat(sandbox): add ark sandbox |
 
 ## Session 26: `ark upgrade` appends missing config.toml sections
 
@@ -692,7 +688,7 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `72ea153`
-**Closing Commit**: <PENDING:fix-config-toml-upgrade>
+**Closing Commit**: 9cbf298
 
 ### Summary
 
@@ -710,7 +706,9 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `9cbf298` | fix(cli): upgrade config.toml correctly |
+| `72ea153` | docs: add ark-deck |
+| `a2e1ba4` | feat(sandbox): add ark sandbox |
 
 ## Session 27: add spec actuators
 
@@ -719,7 +717,7 @@ Resynced the mdBook user guide with `main` after ~10 features landed since its 2
 **Branch**: `feat/spec-actuators`
 **Base Branch**: `main`
 **Start Head**: `e702f30`
-**Closing Commit**: <PENDING:spec-actuators>
+**Closing Commit**: 53b6c79
 
 ### Summary
 
@@ -738,7 +736,7 @@ SPEC constraints can declare an inline actuator tag (tool/source-scan/test-bindi
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `53b6c79` | feat(spec): add spec actuators |
 
 ## Session 28: tag feature SPECs with actuators
 
@@ -747,7 +745,7 @@ SPEC constraints can declare an inline actuator tag (tool/source-scan/test-bindi
 **Branch**: `feat/spec-actuators`
 **Base Branch**: `main`
 **Start Head**: `53b6c79`
-**Closing Commit**: <PENDING:tag-feature-specs>
+**Closing Commit**: cc4de78
 
 ### Summary
 
@@ -765,7 +763,7 @@ Actuator tags move to a compact two-line form (`- C-N: @kind[: arg]` / prose); e
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `cc4de78` | feat(spec): tag feature SPECs with actuators |
 
 ## Session 29: add `-a` stage-all option to ark-commit
 
@@ -774,7 +772,7 @@ Actuator tags move to a compact two-line form (`- C-N: @kind[: arg]` / prose); e
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `3380f47`
-**Closing Commit**: <PENDING:commit-stage-all>
+**Closing Commit**: d6a3f1f
 
 ### Summary
 
@@ -791,7 +789,7 @@ Actuator tags move to a compact two-line form (`- C-N: @kind[: arg]` / prose); e
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `d6a3f1f` | feat(cmd): add `-a` stage-all option to ark-commit |
 
 ## Session 30: categorize archived tasks by tier
 
@@ -800,7 +798,7 @@ Actuator tags move to a compact two-line form (`- C-N: @kind[: arg]` / prose); e
 **Branch**: `main`
 **Base Branch**: `main`
 **Start Head**: `d6a3f1f`
-**Closing Commit**: <PENDING:categorize-ark-archive>
+**Closing Commit**: ab9cfd3
 
 ### Summary
 
@@ -818,7 +816,7 @@ Archive is now bucketed `tasks/archive/<YYYY-MM>/<tier>/<slug>/` and `ark archiv
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `ab9cfd3` | feat(cmd): categorize ark-archive |
 
 ## Session 31: simplify deep tier — drop the PLAN/REVIEW loop
 
@@ -827,7 +825,7 @@ Archive is now bucketed `tasks/archive/<YYYY-MM>/<tier>/<slug>/` and `ark archiv
 **Branch**: `feat/simplify-deep-tier`
 **Base Branch**: `main`
 **Start Head**: `ab9cfd3`
-**Closing Commit**: <PENDING:simplify-deep-tier>
+**Closing Commit**: f021ec3
 
 ### Summary
 
@@ -845,4 +843,5 @@ Deep tier is now linear PLAN → REVIEW → EXECUTE; the reviewer's findings are
 
 | Hash | Message |
 |------|---------|
-| _(none)_ |   |
+| `f021ec3` | feat(workflow): simplify deep-tier ark-workflow |
+

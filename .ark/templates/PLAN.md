@@ -1,12 +1,8 @@
-# `<feature-name>` PLAN `<NN>`
+# `<feature-name>` PLAN
 
-> Status: Draft | Revised | Approved for Implementation
+> Status: Draft | Approved for Implementation
 > Feature: `<feature-name>`
-> Iteration: `<NN>`
 > Owner: Executor
-> Depends on:
-> - Previous Plan: `<(NN-1)_PLAN.md | none>`
-> - Review: `<NN_REVIEW.md | none>`
 
 ---
 
@@ -14,31 +10,7 @@
 
 <one paragraph: what this PLAN proposes>
 
-## Log `None in 00_PLAN`
-
-[**Added**]
-
-- <new content / new design / new validation>
-
-[**Changed**]
-
-- <what changed; why>
-
-[**Removed**]
-
-- <what was removed; why>
-
-[**Unresolved**]
-
-- <what remains open; why>
-
-[**Response Matrix**]
-
-| Source | ID | Decision | Resolution |
-|--------|----|----------|------------|
-| Review | R-001 | Accepted / Rejected / Deferred | <what changed; if rejected, the reason> |
-
-> Every prior CRITICAL / HIGH finding from `(NN-1)_REVIEW.md` must appear here. Rejections require explicit reasoning.
+> Deep tier: REVIEW findings are folded into this PLAN in place before EXECUTE — there is no iteration history to track here.
 
 ---
 

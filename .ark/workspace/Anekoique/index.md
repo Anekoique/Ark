@@ -26,19 +26,18 @@
 | 17  | 2026-05-18 | support detachable feature SPEC                                    | `detachable-feature-spec`  | `feat/detachable-feature-spec` | 395ba8d                           | `journal-1.md` |
 | 18  | 2026-05-18 | drop installed_at from manifest                                    | `drop-installed-at`        | `main`                         | fc1078f                           | `journal-1.md` |
 | 19  | 2026-05-20 | add `ark research`                                                 | `ark-research`             | `feat/ark-research`            | 60e3221                           | `journal-1.md` |
-| 20  | 2026-05-21 | research on agent harness and agent infra                          | `agent-harness-infra`      | `main`                         | <PENDING:agent-harness-infra>     | `journal-1.md` |
-| 21  | 2026-05-24 | improve `ark context`                                              | `improve-ark-context`      | `feat/improve-ark-context`     | <PENDING:improve-ark-context>     | `journal-1.md` |
-| 22  | 2026-05-25 | research on claude agent sdk                                       | `claude-agent-sdk`         | `main`                         | <PENDING:claude-agent-sdk>        | `journal-1.md` |
-| 23  | 2026-05-26 | sync ark-book with main                                            | `sync-ark-book`            | `main`                         | <PENDING:sync-ark-book>           | `journal-1.md` |
-| 24  | 2026-05-27 | improve ark upgrade                                                | `improve-ark-upgrade`      | `feat/improve-ark-upgrade`     | <PENDING:improve-ark-upgrade>     | `journal-1.md` |
-| 25  | 2026-05-30 | `ark sandbox` confines a task's worktree in a Docker container     | `ark-sandbox`              | `feat/ark-sandbox`             | <PENDING:ark-sandbox>             | `journal-1.md` |
-| 26  | 2026-05-30 | `ark upgrade` appends missing config.toml sections                 | `fix-config-toml-upgrade`  | `main`                         | <PENDING:fix-config-toml-upgrade> | `journal-1.md` |
-| 27  | 2026-05-31 | add spec actuators                                                 | `spec-actuators`           | `feat/spec-actuators`          | <PENDING:spec-actuators>          | `journal-1.md` |
-| 28  | 2026-05-31 | tag feature SPECs with actuators                                   | `tag-feature-specs`        | `feat/spec-actuators`          | <PENDING:tag-feature-specs>       | `journal-1.md` |
-| 29 | 2026-05-31 | add `-a` stage-all option to ark-commit | `commit-stage-all` | `main` | <PENDING:commit-stage-all> | `journal-1.md` |
-| 30 | 2026-06-01 | categorize archived tasks by tier | `categorize-ark-archive` | `main` | <PENDING:categorize-ark-archive> | `journal-1.md` |
-| 31 | 2026-06-01 | simplify deep tier — drop the PLAN/REVIEW loop | `simplify-deep-tier` | `feat/simplify-deep-tier` | <PENDING:simplify-deep-tier> | `journal-1.md` |
-
+| 20  | 2026-05-21 | research on agent harness and agent infra                          | `agent-harness-infra`      | `main`                         | 0a431b8     | `journal-1.md` |
+| 21  | 2026-05-24 | improve `ark context`                                              | `improve-ark-context`      | `feat/improve-ark-context`     | 2597596     | `journal-1.md` |
+| 22  | 2026-05-25 | research on claude agent sdk                                       | `claude-agent-sdk`         | `main`                         | ea610e4        | `journal-1.md` |
+| 23  | 2026-05-26 | sync ark-book with main                                            | `sync-ark-book`            | `main`                         | 43ea1d0           | `journal-1.md` |
+| 24  | 2026-05-27 | improve ark upgrade                                                | `improve-ark-upgrade`      | `feat/improve-ark-upgrade`     | 8465e8a     | `journal-1.md` |
+| 25  | 2026-05-30 | `ark sandbox` confines a task's worktree in a Docker container     | `ark-sandbox`              | `feat/ark-sandbox`             | a2e1ba4             | `journal-1.md` |
+| 26  | 2026-05-30 | `ark upgrade` appends missing config.toml sections                 | `fix-config-toml-upgrade`  | `main`                         | 9cbf298 | `journal-1.md` |
+| 27  | 2026-05-31 | add spec actuators                                                 | `spec-actuators`           | `feat/spec-actuators`          | 53b6c79          | `journal-1.md` |
+| 28  | 2026-05-31 | tag feature SPECs with actuators                                   | `tag-feature-specs`        | `feat/spec-actuators`          | cc4de78       | `journal-1.md` |
+| 29 | 2026-05-31 | add `-a` stage-all option to ark-commit | `commit-stage-all` | `main` | d6a3f1f | `journal-1.md` |
+| 30 | 2026-06-01 | categorize archived tasks by tier | `categorize-ark-archive` | `main` | ab9cfd3 | `journal-1.md` |
+| 31 | 2026-06-01 | simplify deep tier — drop the PLAN/REVIEW loop | `simplify-deep-tier` | `feat/simplify-deep-tier` | f021ec3 | `journal-1.md` |
 <!-- ARK:SESSIONS:END -->
 
 ---

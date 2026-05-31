@@ -1,10 +1,9 @@
-# `<feature-name>` REVIEW `<NN>`
+# `<feature-name>` REVIEW
 
 > Status: Open | Closed
 > Feature: `<feature-name>`
-> Iteration: `<NN>`
 > Owner: Reviewer
-> Target Plan: `<NN_PLAN.md>`
+> Target Plan: `PLAN.md`
 > Scope: Plan correctness · Spec alignment · Design soundness · Validation adequacy · Trade-off advice
 
 ---
@@ -29,7 +28,7 @@
 - **Section:** `<which [**...**] block in PLAN>`
 - **Problem:** <what is wrong / missing / unclear>
 - **Why it matters:** <impact on correctness, constraints, maintenance>
-- **Recommendation:** <concrete change expected in next PLAN>
+- **Recommendation:** <concrete change to fold into PLAN.md before EXECUTE>
 
 ### R-002 `<short title>`
 

@@ -1,11 +1,10 @@
 id = "spec-actuators"
 title = "add SPEC actuators"
 tier = "deep"
-phase = "committed"
-iteration = 1
-max_iterations = 3
+phase = "archived"
 created_at = "2026-05-30T07:52:46.500727Z"
-updated_at = "2026-05-31T04:31:20.761727Z"
+updated_at = "2026-05-31T18:55:50.919857Z"
+archived_at = "2026-05-31T18:55:50.919857Z"
 committed_at = "2026-05-31T04:31:20.761727Z"
 branch = "feat/spec-actuators"
 worktree_path = ".ark/worktrees/feat/spec-actuators"

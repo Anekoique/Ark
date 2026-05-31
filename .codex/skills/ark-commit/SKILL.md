@@ -24,7 +24,7 @@ Close an Ark task by committing the user's staged work plus the Ark-managed clos
 ark context --scope phase --for commit --format json
 ```
 
-Body-free projection (per `ark-context` SPEC). Returns paths to the latest VERIFY.md and the latest `NN_PLAN.md` plus git state. Read VERIFY.md from the returned path before composing the message.
+Body-free projection (per `ark-context` SPEC). Returns paths to the latest VERIFY.md and `PLAN.md` plus git state. Read VERIFY.md from the returned path before composing the message.
 
 ### Step 2: Resolve the slug `[AI]`
 
