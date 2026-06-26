@@ -872,3 +872,29 @@ Curated a 6-file reference corpus distilling stello's session/topology/memory de
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 33: SPEC/PLAN architecture guidance asks for design
+
+**Date**: 2026-06-26
+**Slug**: polish-spec-arch-desc
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `44a7e4e`
+**Closing Commit**: <PENDING:polish-spec-arch-desc>
+
+### Summary
+
+Architecture-section template now asks for a labeled component diagram showing data/control flow, not a flat file list.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| templates | SPEC.md + PLAN.md `[**Architecture**]` guidance + worked ASCII diagram example |
+| spec-extract | one-line guidance aligned across claude/codex/opencode |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

@@ -61,10 +61,10 @@
     ".ark/.gitignore": "f9daf1bb6cd65c968bb094965058314c78e0c61ac86a90dcfd2204ae55ec071a",
     ".ark/specs/INDEX.md": "04926b580be21fc0ca5553254e2fff40136ac3fda507052edf41b9c96ff906f3",
     ".ark/specs/features/INDEX.md": "ccbc3f6d8f248af2d56335f86bebf39a36709fee35481d4349d763330436faa2",
-    ".ark/templates/PLAN.md": "4560a3b514262d8cb19829141775730763da4740b17998459dd08320673d724a",
+    ".ark/templates/PLAN.md": "f8738f05febb2f99ee3fabca6b10d1bdb1502a21ecf7bb9b350d767f49d29324",
     ".ark/templates/PRD.md": "f95b14d683aed0992949b51de159067640dbf195d777beddc250e07cb8e18d8f",
     ".ark/templates/REVIEW.md": "b7a6f717d009cb4967a2cb42418ebfeb314f0d02740f64b31ff023be6b9a7988",
-    ".ark/templates/SPEC.md": "18ba3e94d58beb17e0e8bb25869d62747559562ddf23f76df603a5c5dc42f96a",
+    ".ark/templates/SPEC.md": "1501574b341fb97fb6c3cd0691800793a4e76c673a154020be803b64c8cfa24c",
     ".ark/templates/VERIFY.md": "2ccd9bd1504ed96d268d23d083723cfd8fadc9990ff92f6886de39bf28c3814f",
     ".ark/workflow.md": "d196952fbf8a82c5f6fb3ffc76e65640e8eadb408cb09744386b54839db76767",
     ".claude/agents/ark-researcher.md": "eb03fd90d3bb126b5e0a62fb1b1c701d7b8fdd1b19570c030d6deb62b0427b44",
@@ -78,7 +78,7 @@
     ".claude/commands/ark/research.md": "31d4a57c2500575a5355ac62ba2ce5857e5e9473c427dde0f2153546bebd9ac8",
     ".claude/commands/ark/resume.md": "47bcdd70e475948cc3b2539012857e98f8a4dcabda762e272e415562e430be77",
     ".claude/commands/ark/spec-audit.md": "ddb43a4eb9eff3c0f754aaa4c1e7acadb3b673637532d83b72020d58ea10a47c",
-    ".claude/commands/ark/spec-extract.md": "248f3ccdb24ee46daf92bf9a1b09ee720f4c87d143514a851e42770631e1f244",
+    ".claude/commands/ark/spec-extract.md": "e4ffb758993a271d7adbaff21a28b6a387c4a2e567c03d151d610235b45fe0ed",
     ".codex/agents/ark-researcher.toml": "382eba24b967244ae930ded42f003352028426eb3b1cbdbbad29f04a5acf5edf",
     ".codex/agents/ark-reviewer.toml": "fef17ef48e9aef0206472270cacabaccc063b1edbdae39a2177c67d804119d95",
     ".codex/agents/ark-verifier.toml": "54584e6492aff5fc5fa3476259a441be515fe995e6e4f8fbffaa235ead6be9ab",
@@ -90,7 +90,7 @@
     ".codex/skills/ark-research/SKILL.md": "f0d18219546aad0d5aca4d439b73b3ba2ae346b474dff7b5f2947be5ed978036",
     ".codex/skills/ark-resume/SKILL.md": "42d1e5ed6a359124824e3c0c2d91439bbae4a89bd2581e09de2b291d20915372",
     ".codex/skills/ark-spec-audit/SKILL.md": "34a9f358f0e4fb66477aca370069c9de39b98c47e33b5d68a81b02b0d15b75e7",
-    ".codex/skills/ark-spec-extract/SKILL.md": "c4a26a9fd37a97b06c539f35b90f662e824e15eb509f6f0c219a28533b720772",
+    ".codex/skills/ark-spec-extract/SKILL.md": "9bd5116010e214f7ed7c67d5d886da567c4ecc5d38ae9fa54ab39d50dde0331d",
     ".opencode/agents/ark-researcher.md": "6cbc0ae7ff71c4d8e1785286d3e1abb861edd304235b083d2b7fcdf4b3cac77b",
     ".opencode/agents/ark-reviewer.md": "5bd5561b90e1358e0300a5973a935d901ca4838f5c416c253586dea03a3f326f",
     ".opencode/agents/ark-verifier.md": "1cd966b0388d3ca96fdbbacbc3d8a3fe77641e76ded7d0d2d2e773f80a420ef3",
@@ -102,6 +102,6 @@
     ".opencode/commands/ark/research.md": "09f0af059d4427e80302b3729f70e17b94bc93f2bb38de1ca96a24276f475bfa",
     ".opencode/commands/ark/resume.md": "fae07529c27e06a7608e91b924ea9431954dac314246f0f4f636e674a6452540",
     ".opencode/commands/ark/spec-audit.md": "399bbb2e3cefe8096024668a4c3697a0222a540c47b68b335773f231477d9574",
-    ".opencode/commands/ark/spec-extract.md": "eaf940a50da23901ae3d22f2404b99348fbd8dd4e2e78b9d5a9269ba02c17795"
+    ".opencode/commands/ark/spec-extract.md": "747fb557df1bc7c2c0728d6b1a5d9b29f3c67345c7bf615ecb4b662053deb5d0"
   }
 }

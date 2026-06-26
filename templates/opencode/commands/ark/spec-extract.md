@@ -44,7 +44,7 @@ Read every confirmed source in full. Then author the SPEC body in the feature-SP
 
 - `[**Goals**]` — verb-led, ≤80 chars, the *what* (capability-oriented). Soft cap 5.
 - `[**Non-goals**]` — only when a reader would assume it's in scope. Soft cap 3.
-- `[**Architecture**]` — module / file layout with a one-line note per file. Tree or diagram, no prose narration.
+- `[**Architecture**]` — show the design: components, what each owns, and the data/control flow between them (component diagram, layered stack, or call graph in fenced ASCII). A bare file→responsibility tree is the weakest form — pair it with the relationships.
 - `[**Data Structure**]` — public types, fields + types + a one-line comment when meaning is non-obvious.
 - `[**API Surface**]` — public function signatures + one-line semantics. No bodies.
 - `[**Constraints**]` — one declarative sentence each, ≤120 chars. Cite the source of truth (constant / test / file path) when one exists.
