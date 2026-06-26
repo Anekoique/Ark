@@ -845,3 +845,30 @@ Deep tier is now linear PLAN → REVIEW → EXECUTE; the reviewer's findings are
 |------|---------|
 | `f021ec3` | feat(workflow): simplify deep-tier ark-workflow |
 
+
+## Session 32: survey stello design for AI-native memory
+
+**Date**: 2026-06-26
+**Slug**: stello-session-memory-design
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `cd9f9c8`
+**Closing Commit**: <PENDING:stello-session-memory-design>
+
+### Summary
+
+Curated a 6-file reference corpus distilling stello's session/topology/memory design into adopt-adapt-reject calls for Ark.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| corpus | 5 deep-dives: topology, per-session context, shared memory + SDK, kitkit-cli, storage |
+| synthesis | capstone maps stello onto Ark tasks/specs/journal/auto-memory with concrete calls |
+| finding | Ark's MEMORY.md already implements stello's intended-but-abandoned index/lazy-load model |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

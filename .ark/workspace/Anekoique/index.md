@@ -38,6 +38,8 @@
 | 29 | 2026-05-31 | add `-a` stage-all option to ark-commit | `commit-stage-all` | `main` | d6a3f1f | `journal-1.md` |
 | 30 | 2026-06-01 | categorize archived tasks by tier | `categorize-ark-archive` | `main` | ab9cfd3 | `journal-1.md` |
 | 31 | 2026-06-01 | simplify deep tier — drop the PLAN/REVIEW loop | `simplify-deep-tier` | `feat/simplify-deep-tier` | f021ec3 | `journal-1.md` |
+| 32 | 2026-06-26 | survey stello design for AI-native memory | `stello-session-memory-design` | `main` | <PENDING:stello-session-memory-design> | `journal-1.md` |
+
 <!-- ARK:SESSIONS:END -->
 
 ---
