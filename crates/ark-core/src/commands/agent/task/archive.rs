@@ -189,16 +189,23 @@ fn patch_workspace_slot(
 
 /// Resolves the closing commit SHA via slug-anchored pickaxe.
 ///
-/// Returns `(full_sha, short_sha)`. Runs `git log -S '**Slug**: <slug>'
+/// Returns `(full_sha, short_sha)`. Runs `git log -S '**Slug**: <slug>\n'
 /// --format=%H -- <journal>` (no `-n` cap) and classifies the match count:
 /// 0 → `SlotResolveNoMatch`, >1 → `SlotResolveAmbiguous`, exactly 1 →
 /// `git rev-parse --short=7` for the link-friendly form.
+///
+/// The needle includes the trailing newline that `render_task_auto_fields`
+/// always writes after the slug. Without it, `-S` does a bare substring match
+/// and a slug that is a prefix of another (`cross-vessel-channel` vs
+/// `cross-vessel-channel-impl`, both living in the same journal) matches both
+/// closing commits, spuriously tripping `SlotResolveAmbiguous`. The newline
+/// pins the match to the full `**Slug**:` line.
 fn resolve_closing_sha(
     project_root: &Path,
     journal_path: &Path,
     slug: &str,
 ) -> Result<(String, String)> {
-    let pickaxe = format!("-S**Slug**: {slug}");
+    let pickaxe = format!("-S**Slug**: {slug}\n");
     let journal_str = journal_path.to_string_lossy();
     let out = run_git(
         &["log", &pickaxe, "--format=%H", "--", &journal_str],
@@ -266,7 +273,10 @@ fn collect_commits_in_range(project_root: &Path, start: &str, end: &str) -> Vec<
 /// entry was a manual record (no Git Commits section) or the agent
 /// stripped the heading.
 fn replace_git_commits_table(text: &str, slug: &str, commits: &[(String, String)]) -> String {
-    let slug_anchor = format!("**Slug**: {slug}");
+    // Anchor on the trailing newline so a slug that is a prefix of another
+    // (`feat` vs `feat-impl`) cannot land on the wrong entry's `**Slug**:`
+    // line. See `resolve_closing_sha` for the same hazard.
+    let slug_anchor = format!("**Slug**: {slug}\n");
     let Some(slug_pos) = text.find(&slug_anchor) else {
         return text.to_string();
     };
@@ -577,6 +587,33 @@ mod slot_patch_tests {
         assert!(full.chars().all(|c| c.is_ascii_hexdigit()));
         assert_eq!(short.len(), 7);
         assert!(full.starts_with(&short));
+    }
+
+    /// Regression: two journal entries whose slugs are in a prefix relation
+    /// (`feat` ⊂ `feat-impl`), each introduced by its own commit in the same
+    /// journal. A bare-substring `-S` pickaxe for the shorter slug matched
+    /// both commits and tripped `SlotResolveAmbiguous`. The newline-anchored
+    /// needle must pin each lookup to its own closing commit.
+    #[test]
+    fn resolve_closing_sha_disambiguates_prefix_slugs() {
+        let (tmp, rel) = repo_with_pending_journal("feat");
+        let layout = Layout::new(tmp.path());
+        let abs = layout.root().join(&rel);
+
+        // Second commit: append the longer-slug entry into the same journal.
+        let mut body = std::fs::read_to_string(&abs).unwrap();
+        body.push_str(
+            "\n## Session 2: t\n\n**Slug**: feat-impl\n**Closing Commit**: <PENDING:feat-impl>\n",
+        );
+        abs.write_bytes(body.as_bytes()).unwrap();
+        run_git(&["add", "."], tmp.path()).unwrap();
+        run_git(&["commit", "-m", "feat(t): impl", "--quiet"], tmp.path()).unwrap();
+
+        // Each slug resolves to exactly one — and distinct — closing commit.
+        let journal = layout.root().join(&rel);
+        let (short_full, _) = resolve_closing_sha(layout.root(), &journal, "feat").unwrap();
+        let (impl_full, _) = resolve_closing_sha(layout.root(), &journal, "feat-impl").unwrap();
+        assert_ne!(short_full, impl_full);
     }
 
     #[test]
