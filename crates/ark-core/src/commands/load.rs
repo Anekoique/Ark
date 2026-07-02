@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn load_after_replay_re_applies_canonical_entries() {
         use crate::{
-            io::ARK_CONTEXT_HOOK_COMMAND,
+            io::{ARK_CONTEXT_HOOK_COMMAND, CODEX_CONTEXT_HOOK_COMMAND},
             state::{Snapshot, SnapshotHookBody},
         };
 
@@ -393,6 +393,11 @@ mod tests {
             hooks["hooks"]["SessionStart"][0]["hooks"][0]["timeout"],
             serde_json::json!(30),
             "canonical re-apply must normalize stale timeout to current value",
+        );
+        assert_eq!(
+            hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            serde_json::json!(CODEX_CONTEXT_HOOK_COMMAND),
+            "canonical re-apply must migrate Codex to the silent command",
         );
     }
 

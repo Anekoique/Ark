@@ -898,3 +898,29 @@ Architecture-section template now asks for a labeled component diagram showing d
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 34: hide Codex session-start output
+
+**Date**: 2026-07-02
+**Slug**: hide-codex-session-output
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `e169a8f`
+**Closing Commit**: <PENDING:hide-codex-session-output>
+
+### Summary
+
+Codex SessionStart hooks stop printing Ark context payloads into the visible session transcript.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| codex hook | redirect `ark context` stdout to `/dev/null` in `.codex/hooks.json` |
+| migration | replace prior visible Codex hook commands without adding duplicates |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

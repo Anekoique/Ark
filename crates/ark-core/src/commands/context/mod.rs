@@ -241,9 +241,9 @@ fn scan_developer_dir(
 /// because the hook contract requires that field to be a string.
 /// `suppressOutput: true` keeps the raw stdout out of transcript mode on
 /// hosts that honor it; `systemMessage` carries a single user-visible line
-/// summarizing what was loaded. Both fields are documented siblings of
-/// `hookSpecificOutput` in Claude Code's hook contract and are accepted by
-/// Codex CLI's matching shape.
+/// summarizing what was loaded. Codex parses the same fields but does not
+/// currently implement output suppression, so Ark's Codex hook redirects
+/// stdout at the command layer.
 fn wrap_session_start_envelope(payload: &str, system_message: &str) -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "hookSpecificOutput": {

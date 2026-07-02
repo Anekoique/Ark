@@ -40,6 +40,7 @@
 | 31 | 2026-06-01 | simplify deep tier — drop the PLAN/REVIEW loop | `simplify-deep-tier` | `feat/simplify-deep-tier` | f021ec3 | `journal-1.md` |
 | 32 | 2026-06-26 | survey stello design for AI-native memory | `stello-session-memory-design` | `main` | <PENDING:stello-session-memory-design> | `journal-1.md` |
 | 33 | 2026-06-26 | SPEC/PLAN architecture guidance asks for design | `polish-spec-arch-desc` | `main` | <PENDING:polish-spec-arch-desc> | `journal-1.md` |
+| 34 | 2026-07-02 | hide Codex session-start output | `hide-codex-session-output` | `main` | <PENDING:hide-codex-session-output> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 

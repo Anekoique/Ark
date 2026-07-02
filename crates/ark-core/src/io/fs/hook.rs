@@ -14,6 +14,10 @@ use crate::{
 /// via [`remove_hook_file`].
 pub const ARK_CONTEXT_HOOK_COMMAND: &str = "ark context --scope session --format json";
 
+/// Codex currently parses `suppressOutput` from hook stdout but does not hide
+/// that stdout in the UI, so Ark's Codex hook must be silent.
+pub const CODEX_CONTEXT_HOOK_COMMAND: &str = "ark context --scope session --format json >/dev/null";
+
 /// Describes a JSON-array hook region in a config file.
 ///
 /// Carried by `Platform::hook_file` so platform-iteration plumbing can drive
@@ -60,14 +64,16 @@ pub fn ark_session_start_hook_entry() -> serde_json::Value {
 /// Schema follows Codex's hooks contract (parallel to Claude's). Note:
 /// `timeout` is in **seconds**, not milliseconds — Codex's hook schema
 /// (`developers.openai.com/codex/hooks`) defaults to 600 seconds when
-/// omitted. 30 seconds gives `ark context` more than enough budget.
+/// omitted. 30 seconds gives `ark context` more than enough budget. The
+/// command redirects stdout because Codex does not yet implement
+/// `suppressOutput` for hook stdout.
 pub fn ark_codex_hook_entry() -> serde_json::Value {
     serde_json::json!({
         "matcher": "",
         "hooks": [
             {
                 "type": "command",
-                "command": ARK_CONTEXT_HOOK_COMMAND,
+                "command": CODEX_CONTEXT_HOOK_COMMAND,
                 "timeout": 30,
             }
         ],
@@ -98,10 +104,39 @@ pub fn update_hook_file(
     hooks_array_key: &str,
     identity_key: &str,
 ) -> Result<bool> {
+    let identity = identity_value_of(&entry, identity_key).ok_or_else(|| {
+        Error::io(
+            std::path::PathBuf::from("<hook-file>"),
+            std::io::Error::other(format!(
+                "hook entry missing inner `hooks[*].{identity_key}` (or top-level \
+                 `{identity_key}`)"
+            )),
+        )
+    })?;
+    update_hook_file_with_identity(path, entry, &identity, hooks_array_key, identity_key)
+}
+
+/// Inserts or replaces an entry using an explicit stable identity value.
+///
+/// This is used when a platform's executable command changes while the
+/// Ark-owned hook identity must still migrate older installed entries.
+pub fn update_hook_file_with_identity(
+    path: impl AsRef<Path>,
+    entry: serde_json::Value,
+    identity_value: &str,
+    hooks_array_key: &str,
+    identity_key: &str,
+) -> Result<bool> {
     validate_hooks_array_key(hooks_array_key)?;
     let path = path.as_ref();
     let mut root = read_settings_or_empty(path)?;
-    upsert_hook_entry(&mut root, entry, hooks_array_key, identity_key)?;
+    upsert_hook_entry(
+        &mut root,
+        entry,
+        identity_value,
+        hooks_array_key,
+        identity_key,
+    )?;
     let serialized = render_settings_json(&root);
     let on_disk = path.read_optional()?;
     if on_disk.as_deref() == Some(serialized.as_bytes()) {
@@ -228,10 +263,19 @@ pub(crate) fn entry_carries_command(
             step.as_object()
                 .and_then(|m| m.get(identity_key))
                 .and_then(|v| v.as_str())
-                == Some(identity_value)
+                .is_some_and(|actual| command_matches_identity(actual, identity_value))
         });
     }
-    obj.get(identity_key).and_then(|v| v.as_str()) == Some(identity_value)
+    obj.get(identity_key)
+        .and_then(|v| v.as_str())
+        .is_some_and(|actual| command_matches_identity(actual, identity_value))
+}
+
+fn command_matches_identity(actual: &str, identity_value: &str) -> bool {
+    actual == identity_value
+        || actual
+            .strip_prefix(identity_value)
+            .is_some_and(|suffix| suffix.starts_with(char::is_whitespace))
 }
 
 fn read_settings_or_empty(path: &Path) -> Result<serde_json::Value> {
@@ -257,19 +301,10 @@ fn read_settings_json(path: &Path) -> Result<Option<serde_json::Value>> {
 fn upsert_hook_entry(
     root: &mut serde_json::Value,
     entry: serde_json::Value,
+    identity: &str,
     hooks_array_key: &str,
     identity_key: &str,
 ) -> Result<()> {
-    let identity = identity_value_of(&entry, identity_key).ok_or_else(|| {
-        Error::io(
-            std::path::PathBuf::from("<hook-file>"),
-            std::io::Error::other(format!(
-                "hook entry missing inner `hooks[*].{identity_key}` (or top-level \
-                 `{identity_key}`)"
-            )),
-        )
-    })?;
-
     // Ensure root is an object.
     if !root.is_object() {
         *root = serde_json::json!({});
@@ -297,7 +332,7 @@ fn upsert_hook_entry(
     // Replace existing entry with the same identity, else append.
     if let Some(existing) = array
         .iter_mut()
-        .find(|e| entry_carries_command(e, &identity, identity_key))
+        .find(|e| entry_carries_command(e, identity, identity_key))
     {
         *existing = entry;
     } else {

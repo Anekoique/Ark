@@ -20,8 +20,8 @@ use crate::{
     error::Result,
     io::{
         ARK_CONTEXT_HOOK_COMMAND, HookFileSpec, PathExt, ark_codex_hook_entry,
-        ark_session_start_hook_entry, read_hook_file, remove_hook_file, update_hook_file,
-        update_managed_block,
+        ark_session_start_hook_entry, read_hook_file, remove_hook_file,
+        update_hook_file_with_identity, update_managed_block,
     },
     layout::{
         AGENTS_MD, CLAUDE_AGENTS_DIR, CLAUDE_COMMANDS_ARK_DIR, CLAUDE_DIR, CLAUDE_MD,
@@ -222,9 +222,10 @@ impl HookFileSpec {
 
     /// Inserts or replaces the canonical Ark entry in this hook file.
     pub fn apply_canonical(&self, layout: &Layout) -> Result<bool> {
-        update_hook_file(
+        update_hook_file_with_identity(
             layout.resolve(self.path),
             self.canonical_entry(),
+            self.identity_value,
             self.hooks_array_key,
             self.identity_key,
         )
@@ -267,9 +268,10 @@ impl SnapshotHookBody {
             .next()
             .filter(|s| !s.is_empty())
             .unwrap_or("SessionStart");
-        update_hook_file(
+        update_hook_file_with_identity(
             layout.resolve_safe(&self.path)?,
             self.entry.clone(),
+            &self.identity_value,
             array_key,
             &self.identity_key,
         )
@@ -383,6 +385,7 @@ pub const OPENCODE_PLATFORM: Platform = Platform {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::CODEX_CONTEXT_HOOK_COMMAND;
 
     /// Verifies that the registry has three entries in canonical order.
     #[test]
@@ -544,7 +547,7 @@ mod tests {
         let entry = ark_codex_hook_entry();
         assert_eq!(
             entry["hooks"][0]["command"],
-            Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()),
+            Value::String(CODEX_CONTEXT_HOOK_COMMAND.to_string()),
         );
         assert_eq!(entry["hooks"][0]["timeout"], serde_json::json!(30));
     }
@@ -576,7 +579,7 @@ mod tests {
                 .unwrap();
         assert_eq!(
             hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"],
-            Value::String(ARK_CONTEXT_HOOK_COMMAND.to_string()),
+            Value::String(CODEX_CONTEXT_HOOK_COMMAND.to_string()),
         );
 
         // extra_files written verbatim.
@@ -675,6 +678,48 @@ mod tests {
         )
         .unwrap();
         assert!(CODEX_PLATFORM.remove_hook(&layout).unwrap());
+    }
+
+    /// Verifies Codex canonical apply migrates the previous stdout-emitting
+    /// command to the current silent command without adding a second hook.
+    #[test]
+    fn codex_apply_managed_state_replaces_legacy_visible_hook() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        let hooks_path = layout.codex_hooks_file();
+        std::fs::create_dir_all(hooks_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &hooks_path,
+            serde_json::to_string_pretty(&serde_json::json!({
+                "hooks": {
+                    "SessionStart": [{
+                        "matcher": "",
+                        "hooks": [{
+                            "type": "command",
+                            "command": ARK_CONTEXT_HOOK_COMMAND,
+                            "timeout": 30,
+                        }]
+                    }]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let mut manifest = Manifest::new();
+        CODEX_PLATFORM
+            .apply_managed_state(&layout, &mut manifest)
+            .unwrap();
+
+        let hooks: Value =
+            serde_json::from_str(&std::fs::read_to_string(layout.codex_hooks_file()).unwrap())
+                .unwrap();
+        let entries = hooks["hooks"]["SessionStart"].as_array().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0]["hooks"][0]["command"],
+            Value::String(CODEX_CONTEXT_HOOK_COMMAND.to_string()),
+        );
     }
 
     /// Enforces the source-scan invariant for `platforms.rs`.

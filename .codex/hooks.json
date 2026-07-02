@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "ark context --scope session --format json",
+            "command": "ark context --scope session --format json >/dev/null",
             "timeout": 30,
             "type": "command"
           }
