@@ -177,6 +177,9 @@ pub const SESSIONS_MARKER: &str = "ARK:SESSIONS";
 pub const MANAGED_BLOCK_BODY: &str = "\
 Ark is installed in this project. Use `/ark:quick` or `/ark:design` to start tasks.
 
+Activating an ark-workflow requires an explicit user invocation of a skill or slash command; it \
+                                      cannot be automatically triggered by the agent.
+
 See `.ark/workflow.md` for the full workflow.
 
 @.ark/specs/INDEX.md";
