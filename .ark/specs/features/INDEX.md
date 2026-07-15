@@ -27,6 +27,7 @@ The table below is managed by `ark agent spec register` — new rows appear when
 | `ark-sandbox` | add ark sandbox | 2026-05-30 from task `ark-sandbox` |
 | `spec-actuators` | add SPEC actuators | 2026-05-31 from task `spec-actuators` |
 | `simplify-deep-tier` | simplify deep tier: drop PLAN/REVIEW loop | 2026-05-31 from task `simplify-deep-tier` |
+| `codeagent-cli-support` | add CodeAgent CLI platform support | 2026-07-15 from task `codeagent-cli-support` |
 
 <!-- ARK:FEATURES:END -->
 

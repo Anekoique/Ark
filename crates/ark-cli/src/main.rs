@@ -207,6 +207,9 @@ struct InitArgs {
     /// Install OpenCode integration (default: prompt on TTY).
     #[arg(long)]
     opencode: bool,
+    /// Install CodeAgent CLI integration (default: prompt on TTY).
+    #[arg(long)]
+    codeagent: bool,
     /// Skip Claude Code integration.
     #[arg(long = "no-claude")]
     no_claude: bool,
@@ -216,6 +219,9 @@ struct InitArgs {
     /// Skip OpenCode integration.
     #[arg(long = "no-opencode")]
     no_opencode: bool,
+    /// Skip CodeAgent CLI integration.
+    #[arg(long = "no-codeagent")]
+    no_codeagent: bool,
 
     /// Set the developer name for workspace journals.
     ///
@@ -261,6 +267,10 @@ impl InitArgs {
                     "opencode" => PlatformFlag {
                         on: self.opencode,
                         off: self.no_opencode,
+                    },
+                    "codeagent" => PlatformFlag {
+                        on: self.codeagent,
+                        off: self.no_codeagent,
                     },
                     _ => PlatformFlag::default(),
                 };
@@ -354,9 +364,18 @@ fn resolve_platforms_pure(
     if is_tty {
         return interactive();
     }
+    let flag_list: Vec<String> = PLATFORMS
+        .iter()
+        .map(|p| format!("--{}", p.cli_flag))
+        .collect();
+    let no_flag_list: Vec<String> = PLATFORMS
+        .iter()
+        .map(|p| format!("--no-{}", p.cli_flag))
+        .collect();
     anyhow::bail!(
-        "init requires at least one of --claude, --codex, or --opencode when stdin is not a TTY \
-         (use --no-claude / --no-codex / --no-opencode to opt out per platform)"
+        "init requires at least one of {} when stdin is not a TTY (use {} to opt out per platform)",
+        flag_list.join(", "),
+        no_flag_list.join(" / "),
     );
 }
 
@@ -911,18 +930,28 @@ mod tests {
     fn cli_resolve_platforms_no_x_excludes() {
         assert_eq!(
             ids(&resolve(&["init", "--no-claude"], true).unwrap()),
-            ["codex", "opencode"]
+            ["codex", "opencode", "codeagent-cli"]
         );
         assert_eq!(
             ids(&resolve(&["init", "--no-codex"], true).unwrap()),
-            ["claude-code", "opencode"]
+            ["claude-code", "opencode", "codeagent-cli"]
         );
         assert_eq!(
             ids(&resolve(&["init", "--no-opencode"], true).unwrap()),
-            ["claude-code", "codex"]
+            ["claude-code", "codex", "codeagent-cli"]
+        );
+        assert_eq!(
+            ids(&resolve(&["init", "--no-codeagent"], true).unwrap()),
+            ["claude-code", "codex", "opencode"]
         );
         let neither = resolve(
-            &["init", "--no-claude", "--no-codex", "--no-opencode"],
+            &[
+                "init",
+                "--no-claude",
+                "--no-codex",
+                "--no-opencode",
+                "--no-codeagent",
+            ],
             true,
         )
         .unwrap();
@@ -950,7 +979,7 @@ mod tests {
         );
     }
 
-    /// Verifies that non-TTY without flags names all three flag pairs.
+    /// Verifies that non-TTY without flags names all four flag pairs.
     #[test]
     fn cli_resolve_platforms_no_flags_non_tty_errors() {
         let err = resolve(&["init"], false).unwrap_err();
@@ -958,6 +987,7 @@ mod tests {
         assert!(msg.contains("--claude"), "{msg}");
         assert!(msg.contains("--codex"), "{msg}");
         assert!(msg.contains("--opencode"), "{msg}");
+        assert!(msg.contains("--codeagent"), "{msg}");
     }
 
     /// Verifies that `--<flag> --no-<flag>` excludes that platform.
@@ -1002,7 +1032,10 @@ mod tests {
         })
         .unwrap();
         assert_eq!(calls, 1, "interactive closure must be called exactly once");
-        assert_eq!(ids(&resolved), ["claude-code", "codex", "opencode"]);
+        assert_eq!(
+            ids(&resolved),
+            ["claude-code", "codex", "opencode", "codeagent-cli"]
+        );
     }
 
     /// Manifest-derived defaults skip the prompt when no flags are passed.

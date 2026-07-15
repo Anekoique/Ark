@@ -19,9 +19,9 @@ mod walk;
 
 pub(crate) use hook::entry_carries_command;
 pub use hook::{
-    ARK_CONTEXT_HOOK_COMMAND, CODEX_CONTEXT_HOOK_COMMAND, HookFileSpec, ark_codex_hook_entry,
-    ark_session_start_hook_entry, read_hook_file, remove_hook_file, update_hook_file,
-    update_hook_file_with_identity,
+    ARK_CONTEXT_HOOK_COMMAND, CODEAGENT_CONTEXT_HOOK_COMMAND, CODEX_CONTEXT_HOOK_COMMAND,
+    HookFileSpec, ark_codeagent_hook_entry, ark_codex_hook_entry, ark_session_start_hook_entry,
+    read_hook_file, remove_hook_file, update_hook_file, update_hook_file_with_identity,
 };
 #[allow(deprecated)]
 pub use hook::{read_settings_hook, remove_settings_hook, update_settings_hook};

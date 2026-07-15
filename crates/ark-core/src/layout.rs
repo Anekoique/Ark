@@ -164,6 +164,22 @@ pub const OPENCODE_AGENTS_DIR: &str = ".opencode/agents";
 /// Bun-loaded OpenCode context plugin path.
 pub const OPENCODE_PLUGIN_FILE: &str = ".opencode/plugins/ark-context.ts";
 
+/// Root directory for CodeAgent CLI integration (relative to project root).
+pub const CODEAGENT_DIR: &str = ".cac";
+
+/// CodeAgent CLI slash-command extraction directory.
+pub const CODEAGENT_COMMANDS_DIR: &str = ".cac/commands";
+
+/// `<project>/.cac/agents/` — where CodeAgent CLI subagent markdown files are
+/// extracted.
+///
+/// Lives under [`CODEAGENT_DIR`] so it inherits the platform's `removal_root`;
+/// no separate `extra_dirs` entry is needed.
+pub const CODEAGENT_AGENTS_DIR: &str = ".cac/agents";
+
+/// CodeAgent CLI project-scoped settings file (hooks + permissions).
+pub const CODEAGENT_SETTINGS_FILE: &str = ".cac/settings.json";
+
 /// Marker used for the feature-spec roster in `specs/features/INDEX.md`.
 pub const FEATURES_MARKER: &str = "ARK:FEATURES";
 
@@ -496,6 +512,26 @@ impl Layout {
     /// Returns the OpenCode context plugin path.
     pub fn opencode_plugin_file(&self) -> PathBuf {
         self.root.join(OPENCODE_PLUGIN_FILE)
+    }
+
+    /// Returns the root directory for CodeAgent CLI integration.
+    pub fn codeagent_dir(&self) -> PathBuf {
+        self.root.join(CODEAGENT_DIR)
+    }
+
+    /// Returns the CodeAgent CLI command extraction directory.
+    pub fn codeagent_commands_dir(&self) -> PathBuf {
+        self.root.join(CODEAGENT_COMMANDS_DIR)
+    }
+
+    /// Returns the directory containing Ark's CodeAgent CLI subagent files.
+    pub fn codeagent_agents_dir(&self) -> PathBuf {
+        self.root.join(CODEAGENT_AGENTS_DIR)
+    }
+
+    /// Returns the CodeAgent CLI project-scoped settings path.
+    pub fn codeagent_settings(&self) -> PathBuf {
+        self.root.join(CODEAGENT_SETTINGS_FILE)
     }
 
     /// Returns the directory containing Ark task templates.

@@ -227,4 +227,6 @@ Filenames `ark-researcher`, `ark-reviewer`, `ark-verifier` (with the platform-ap
 - C-28: @judgment
 After dispatching any Ark subagent, main session checks `git status`. If files were written outside the agent's documented Write-ALLOWED paths, main session reverts the out-of-scope writes via `git restore` before incorporating the agent's findings.
 
----
+[**CHANGELOG**]
+
+- 2026-07-15 `codeagent-cli-support`: fourth platform `codeagent-cli` ships `ark-researcher`, `ark-reviewer`, `ark-verifier` under `.cac/agents/` via `CODEAGENT_PLATFORM.agents_templates` + `agents_dest_dir`. CodeAgent CLI agent file format uses YAML frontmatter (`name`, `description`, `permissionMode: bypassPermissions`, `tools` YAML list) + markdown body. C-21, C-22 extended to cover `codeagent`.

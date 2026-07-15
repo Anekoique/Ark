@@ -1,5 +1,5 @@
-//! Hook-file helpers — Ark hook entry surgery for `settings.json` and Codex
-//! `hooks.json`.
+//! Hook-file helpers — Ark hook entry surgery for `settings.json`, Codex
+//! `hooks.json`, and CodeAgent CLI `settings.json`.
 
 use std::path::Path;
 
@@ -17,6 +17,11 @@ pub const ARK_CONTEXT_HOOK_COMMAND: &str = "ark context --scope session --format
 /// Codex currently parses `suppressOutput` from hook stdout but does not hide
 /// that stdout in the UI, so Ark's Codex hook must be silent.
 pub const CODEX_CONTEXT_HOOK_COMMAND: &str = "ark context --scope session --format json >/dev/null";
+
+/// CodeAgent CLI does not hide hook stdout from the UI, so Ark's CodeAgent
+/// hook must be silent (same rationale as Codex).
+pub const CODEAGENT_CONTEXT_HOOK_COMMAND: &str =
+    "ark context --scope session --format json >/dev/null";
 
 /// Describes a JSON-array hook region in a config file.
 ///
@@ -74,6 +79,26 @@ pub fn ark_codex_hook_entry() -> serde_json::Value {
             {
                 "type": "command",
                 "command": CODEX_CONTEXT_HOOK_COMMAND,
+                "timeout": 30,
+            }
+        ],
+    })
+}
+
+/// Builds the canonical Ark CodeAgent CLI `SessionStart` hook entry.
+///
+/// Schema follows CodeAgent CLI's hooks contract (identical to Claude's
+/// `{matcher, hooks: [...]}` shape). `timeout` is in **seconds** (same as
+/// Codex, unlike Claude's milliseconds). 30 seconds gives `ark context`
+/// sufficient budget. The command redirects stdout because CodeAgent CLI
+/// does not hide hook stdout from the UI.
+pub fn ark_codeagent_hook_entry() -> serde_json::Value {
+    serde_json::json!({
+        "matcher": "",
+        "hooks": [
+            {
+                "type": "command",
+                "command": CODEAGENT_CONTEXT_HOOK_COMMAND,
                 "timeout": 30,
             }
         ],

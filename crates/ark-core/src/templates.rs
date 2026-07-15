@@ -27,6 +27,13 @@
 //! - [`crate::templates::OPENCODE_AGENT_TEMPLATES`] — extracted under
 //!   `.opencode/agents/` via `Platform.agents_templates`. OpenCode's main tree
 //!   is rooted at `commands/`, so agents need a separate static.
+//! - [`crate::templates::CODEAGENT_TEMPLATES`] — extracted into the host
+//!   project's `.cac/commands/` directory. The `SessionStart` hook lives in
+//!   `.cac/settings.json` (owned by [`crate::io::update_hook_file`], driven by
+//!   `CODEAGENT_PLATFORM.hook_file`).
+//! - [`crate::templates::CODEAGENT_AGENT_TEMPLATES`] — extracted under
+//!   `.cac/agents/` via `Platform.agents_templates`. CodeAgent CLI's main tree
+//!   is rooted at `commands/`, so agents need a separate static.
 
 use include_dir::{Dir, include_dir};
 
@@ -40,6 +47,9 @@ pub static CODEX_TEMPLATES: Dir<'_> =
 /// Embedded OpenCode command template tree.
 pub static OPENCODE_TEMPLATES: Dir<'_> =
     include_dir!("$CARGO_MANIFEST_DIR/../../templates/opencode/commands");
+/// Embedded CodeAgent CLI command template tree.
+pub static CODEAGENT_TEMPLATES: Dir<'_> =
+    include_dir!("$CARGO_MANIFEST_DIR/../../templates/codeagent/commands");
 
 /// Embedded Claude Code agent template tree (extracts under `.claude/agents/`).
 ///
@@ -70,6 +80,15 @@ pub static CODEX_AGENT_TEMPLATES: Dir<'_> =
 /// static.
 pub static OPENCODE_AGENT_TEMPLATES: Dir<'_> =
     include_dir!("$CARGO_MANIFEST_DIR/../../templates/opencode/agents");
+
+/// Embedded CodeAgent CLI agent template tree (extracts under `.cac/agents/`).
+///
+/// CodeAgent CLI's main template tree [`CODEAGENT_TEMPLATES`] is rooted at
+/// `templates/codeagent/commands/`, so the agents subtree must be a separate
+/// static. Mirrors the same `Platform.agents_templates` indirection used by
+/// OpenCode.
+pub static CODEAGENT_AGENT_TEMPLATES: Dir<'_> =
+    include_dir!("$CARGO_MANIFEST_DIR/../../templates/codeagent/agents");
 
 /// Whole-file body for `.codex/config.toml`.
 ///
@@ -268,6 +287,83 @@ mod tests {
         assert!(count >= 3, "expected at least 3 OpenCode commands");
     }
 
+    /// Verifies that every Claude slash command has a CodeAgent CLI sibling.
+    ///
+    /// Existence-only: content parity is policed at code review.
+    #[test]
+    fn every_claude_command_has_a_codeagent_command_sibling() {
+        let claude_commands = CLAUDE_TEMPLATES
+            .get_dir("commands/ark")
+            .expect("templates/claude/commands/ark exists");
+        for file in claude_commands.files() {
+            let name = file
+                .path()
+                .file_stem()
+                .expect("claude command has a stem")
+                .to_str()
+                .expect("ascii name");
+            let codeagent_path = format!("ark/{name}.md");
+            assert!(
+                CODEAGENT_TEMPLATES.get_file(&codeagent_path).is_some(),
+                "missing CodeAgent CLI command sibling for claude command `{name}`: expected \
+                 templates/codeagent/commands/{codeagent_path}",
+            );
+        }
+    }
+
+    /// Verifies CodeAgent CLI command frontmatter shape.
+    ///
+    /// CodeAgent CLI uses `description`-only YAML frontmatter (same as
+    /// OpenCode), no `argument-hint:`.
+    #[test]
+    fn codeagent_command_bodies_have_codeagent_frontmatter() {
+        let codeagent_commands = CODEAGENT_TEMPLATES
+            .get_dir("ark")
+            .expect("templates/codeagent/commands/ark exists");
+        let mut count = 0;
+        for file in codeagent_commands.files() {
+            count += 1;
+            let name = file
+                .path()
+                .file_stem()
+                .expect("codeagent command has a stem")
+                .to_str()
+                .expect("ascii name");
+            let body = std::str::from_utf8(file.contents()).expect("utf8 command body");
+
+            // (a) frontmatter starts with `description:`.
+            assert!(
+                body.starts_with("---\n"),
+                "command `{name}` must open with `---` frontmatter delimiter"
+            );
+            let after_open = &body[4..];
+            let next_line = after_open.lines().next().unwrap_or("");
+            assert!(
+                next_line.starts_with("description:"),
+                "command `{name}` first frontmatter line must start with `description:`, got: \
+                 {next_line:?}",
+            );
+
+            // (b) no `argument-hint:` line in the frontmatter block.
+            let frontmatter_end = after_open.find("\n---\n").expect("closing ---");
+            let frontmatter = &after_open[..frontmatter_end];
+            assert!(
+                !frontmatter
+                    .lines()
+                    .any(|l| l.trim_start().starts_with("argument-hint:")),
+                "command `{name}` frontmatter must not contain Claude's `argument-hint:` line",
+            );
+
+            // (c) body contains the backtick-quoted heading verbatim.
+            let needle = format!("# `/ark:{name} $ARGUMENTS`");
+            assert!(
+                body.contains(&needle),
+                "command `{name}` body must contain the literal heading {needle:?}",
+            );
+        }
+        assert!(count >= 3, "expected at least 3 CodeAgent CLI commands");
+    }
+
     /// Verifies that [`OPENCODE_TEMPLATES`] excludes plugins.
     ///
     /// The plugin file ships separately via `extra_files` and
@@ -345,7 +441,8 @@ mod tests {
     /// Verifies that each platform ships exactly the three Ark subagents.
     ///
     /// Claude's agents live under [`CLAUDE_TEMPLATES`]'s `agents/` subtree;
-    /// Codex's and OpenCode's live under their dedicated agent template trees.
+    /// Codex's, OpenCode's, and CodeAgent CLI's live under their dedicated
+    /// agent template trees.
     #[test]
     fn each_platform_ships_three_agents() {
         let claude_agents = CLAUDE_TEMPLATES
@@ -383,6 +480,17 @@ mod tests {
                 "OpenCode must ship `{name}.md`, got {opencode_stems:?}",
             );
         }
+
+        let codeagent_stems: std::collections::BTreeSet<_> = CODEAGENT_AGENT_TEMPLATES
+            .files()
+            .filter_map(|f| f.path().file_stem()?.to_str())
+            .collect();
+        for name in ARK_AGENTS {
+            assert!(
+                codeagent_stems.contains(name),
+                "CodeAgent CLI must ship `{name}.md`, got {codeagent_stems:?}",
+            );
+        }
     }
 
     /// Returns the bytes of an Ark agent body for the given platform and stem.
@@ -403,6 +511,11 @@ mod tests {
                 .expect("opencode agent file")
                 .contents()
                 .to_vec(),
+            "codeagent" => CODEAGENT_AGENT_TEMPLATES
+                .get_file(format!("{stem}.md"))
+                .expect("codeagent agent file")
+                .contents()
+                .to_vec(),
             _ => unreachable!("unknown platform `{platform}`"),
         }
     }
@@ -411,7 +524,7 @@ mod tests {
     #[test]
     fn agent_prompts_carry_recursion_guard() {
         for stem in ARK_AGENTS {
-            for platform in &["claude", "codex", "opencode"] {
+            for platform in &["claude", "codex", "opencode", "codeagent"] {
                 let body = agent_body(platform, stem);
                 let body_str = std::str::from_utf8(&body).expect("utf8 agent body");
                 assert!(
@@ -426,7 +539,7 @@ mod tests {
     #[test]
     fn agent_prompts_carry_write_scope_walls() {
         for stem in ARK_AGENTS {
-            for platform in &["claude", "codex", "opencode"] {
+            for platform in &["claude", "codex", "opencode", "codeagent"] {
                 let body = agent_body(platform, stem);
                 let body_str = std::str::from_utf8(&body).expect("utf8 agent body");
                 assert!(
@@ -547,6 +660,39 @@ mod tests {
         }
     }
 
+    /// Verifies the CodeAgent CLI agents' frontmatter shape.
+    ///
+    /// CodeAgent CLI agents use YAML frontmatter with `name`, `description`,
+    /// `permissionMode: bypassPermissions`, and a `tools` YAML list.
+    #[test]
+    fn codeagent_agent_frontmatter_shape() {
+        for stem in ARK_AGENTS {
+            let body = agent_body("codeagent", stem);
+            let body_str = std::str::from_utf8(&body).expect("utf8");
+            let prefix = format!("---\nname: {stem}\n");
+            assert!(
+                body_str.starts_with(&prefix),
+                "CodeAgent CLI agent `{stem}` must open `{prefix}`"
+            );
+            let frontmatter_end = body_str
+                .find("\n---\n")
+                .expect("CodeAgent CLI agent has closing frontmatter delimiter");
+            let frontmatter = &body_str[..frontmatter_end];
+            assert!(
+                frontmatter.contains("description:"),
+                "CodeAgent CLI agent `{stem}` frontmatter must contain `description:`"
+            );
+            assert!(
+                frontmatter.contains("permissionMode: bypassPermissions"),
+                "CodeAgent CLI agent `{stem}` must declare `permissionMode: bypassPermissions`"
+            );
+            assert!(
+                frontmatter.contains("tools:"),
+                "CodeAgent CLI agent `{stem}` frontmatter must contain `tools:`"
+            );
+        }
+    }
+
     /// Strips per-platform frontmatter from an agent body and normalizes the
     /// commit-command token so the residual is the platform-neutral prompt.
     ///
@@ -583,7 +729,7 @@ mod tests {
 
     /// Verifies that prompt bodies are byte-identical across platforms after
     /// stripping per-platform frontmatter and normalizing the platform-native
-    /// commit-command form (Codex's bare `ark-commit` vs Claude/OpenCode's
+    /// commit-command form (Codex's bare `ark-commit` vs Claude/OpenCode/CodeAgent CLI's
     /// `/ark:commit`).
     #[test]
     fn agent_bodies_are_byte_identical_modulo_platform_idioms() {
@@ -591,6 +737,7 @@ mod tests {
             let claude = strip_frontmatter_and_normalize("claude", stem);
             let codex = strip_frontmatter_and_normalize("codex", stem);
             let opencode = strip_frontmatter_and_normalize("opencode", stem);
+            let codeagent = strip_frontmatter_and_normalize("codeagent", stem);
             assert_eq!(
                 claude, codex,
                 "agent `{stem}`: Claude and Codex bodies must be byte-identical after frontmatter \
@@ -601,13 +748,18 @@ mod tests {
                 "agent `{stem}`: Claude and OpenCode bodies must be byte-identical after \
                  frontmatter + Dispatch-line strip"
             );
+            assert_eq!(
+                claude, codeagent,
+                "agent `{stem}`: Claude and CodeAgent CLI bodies must be byte-identical after \
+                 frontmatter + Dispatch-line strip"
+            );
         }
     }
 
     /// Verifies that the researcher prompt names the literal contract phrase.
     #[test]
     fn researcher_prompt_carries_paths_summaries_contract() {
-        for platform in &["claude", "codex", "opencode"] {
+        for platform in &["claude", "codex", "opencode", "codeagent"] {
             let body = agent_body(platform, "ark-researcher");
             let body_str = std::str::from_utf8(&body).expect("utf8");
             assert!(
@@ -621,7 +773,7 @@ mod tests {
     /// Verifies that the reviewer prompt names the self-containment rule with HIGH severity.
     #[test]
     fn reviewer_prompt_carries_self_containment_rule() {
-        for platform in &["claude", "codex", "opencode"] {
+        for platform in &["claude", "codex", "opencode", "codeagent"] {
             let body = agent_body(platform, "ark-reviewer");
             let body_str = std::str::from_utf8(&body).expect("utf8");
             assert!(
@@ -638,7 +790,7 @@ mod tests {
     /// Verifies that the reviewer prompt names the SPEC-contradiction rule with CRITICAL severity.
     #[test]
     fn reviewer_prompt_carries_spec_contradiction_rule() {
-        for platform in &["claude", "codex", "opencode"] {
+        for platform in &["claude", "codex", "opencode", "codeagent"] {
             let body = agent_body(platform, "ark-reviewer");
             let body_str = std::str::from_utf8(&body).expect("utf8");
             assert!(
@@ -655,7 +807,7 @@ mod tests {
     /// Verifies that the verifier prompt explicitly forbids self-fix.
     #[test]
     fn verifier_prompt_carries_no_self_fix_rule() {
-        for platform in &["claude", "codex", "opencode"] {
+        for platform in &["claude", "codex", "opencode", "codeagent"] {
             let body = agent_body(platform, "ark-verifier");
             let body_str = std::str::from_utf8(&body).expect("utf8");
             let phrases = ["does not self-fix", "no self-fix", "do NOT self-fix"];

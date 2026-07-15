@@ -57,9 +57,14 @@ pub use commands::{
 pub use error::{Error, Result};
 pub use io::{PathExt, WriteMode, hash_bytes};
 pub use layout::Layout;
-pub use platforms::{CLAUDE_PLATFORM, CODEX_PLATFORM, OPENCODE_PLATFORM, PLATFORMS, Platform};
+pub use platforms::{
+    CLAUDE_PLATFORM, CODEAGENT_PLATFORM, CODEX_PLATFORM, OPENCODE_PLATFORM, PLATFORMS, Platform,
+};
 pub use state::{
     Manifest, StateFile, Tasks, clear_focus_for_slug, load_state, reconcile_against_disk,
     state_mutate,
 };
-pub use templates::{CLAUDE_AGENT_TEMPLATES, CODEX_AGENT_TEMPLATES, OPENCODE_AGENT_TEMPLATES};
+pub use templates::{
+    CLAUDE_AGENT_TEMPLATES, CODEAGENT_AGENT_TEMPLATES, CODEX_AGENT_TEMPLATES,
+    OPENCODE_AGENT_TEMPLATES,
+};

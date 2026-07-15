@@ -19,20 +19,22 @@ use serde_json::Value;
 use crate::{
     error::Result,
     io::{
-        ARK_CONTEXT_HOOK_COMMAND, HookFileSpec, PathExt, ark_codex_hook_entry,
-        ark_session_start_hook_entry, read_hook_file, remove_hook_file,
-        update_hook_file_with_identity, update_managed_block,
+        ARK_CONTEXT_HOOK_COMMAND, CODEAGENT_CONTEXT_HOOK_COMMAND, HookFileSpec, PathExt,
+        ark_codeagent_hook_entry, ark_codex_hook_entry, ark_session_start_hook_entry,
+        read_hook_file, remove_hook_file, update_hook_file_with_identity, update_managed_block,
     },
     layout::{
         AGENTS_MD, CLAUDE_AGENTS_DIR, CLAUDE_COMMANDS_ARK_DIR, CLAUDE_DIR, CLAUDE_MD,
-        CLAUDE_SETTINGS_FILE, CODEX_AGENTS_DIR, CODEX_CONFIG_FILE, CODEX_DIR, CODEX_HOOKS_FILE,
+        CLAUDE_SETTINGS_FILE, CODEAGENT_AGENTS_DIR, CODEAGENT_COMMANDS_DIR, CODEAGENT_DIR,
+        CODEAGENT_SETTINGS_FILE, CODEX_AGENTS_DIR, CODEX_CONFIG_FILE, CODEX_DIR, CODEX_HOOKS_FILE,
         CODEX_SKILLS_DIR, Layout, MANAGED_BLOCK_BODY, OPENCODE_AGENTS_DIR, OPENCODE_COMMANDS_DIR,
         OPENCODE_DIR, OPENCODE_PLUGIN_FILE,
     },
     state::{Manifest, Snapshot, SnapshotHookBody},
     templates::{
-        CLAUDE_AGENT_TEMPLATES, CLAUDE_TEMPLATES, CODEX_AGENT_TEMPLATES, CODEX_CONFIG_TOML,
-        CODEX_TEMPLATES, OPENCODE_AGENT_TEMPLATES, OPENCODE_ARK_CONTEXT_TS, OPENCODE_TEMPLATES,
+        CLAUDE_AGENT_TEMPLATES, CLAUDE_TEMPLATES, CODEAGENT_AGENT_TEMPLATES, CODEAGENT_TEMPLATES,
+        CODEX_AGENT_TEMPLATES, CODEX_CONFIG_TOML, CODEX_TEMPLATES, OPENCODE_AGENT_TEMPLATES,
+        OPENCODE_ARK_CONTEXT_TS, OPENCODE_TEMPLATES,
     },
 };
 
@@ -282,7 +284,12 @@ impl SnapshotHookBody {
 ///
 /// Used by `init` / `upgrade` / `unload` / `load` / `remove` to drive
 /// per-platform plumbing.
-pub const PLATFORMS: &[&Platform] = &[&CLAUDE_PLATFORM, &CODEX_PLATFORM, &OPENCODE_PLATFORM];
+pub const PLATFORMS: &[&Platform] = &[
+    &CLAUDE_PLATFORM,
+    &CODEX_PLATFORM,
+    &OPENCODE_PLATFORM,
+    &CODEAGENT_PLATFORM,
+];
 
 /// Iterates platforms whose templates appear in `manifest.files` — i.e.
 /// the project has opted into them.
@@ -382,18 +389,51 @@ pub const OPENCODE_PLATFORM: Platform = Platform {
     extra_dirs: &[],
 };
 
+/// CodeAgent CLI integration.
+///
+/// Templates extract under `.cac/`; the managed block shares `AGENTS.md` with
+/// Codex/OpenCode (manifest dedupes on `(file, marker)`). The `SessionStart`
+/// hook lives in `.cac/settings.json` and uses **seconds** for `timeout`
+/// (CodeAgent CLI schema matches Codex, not Claude's milliseconds).
+/// The command redirects stdout because CodeAgent CLI does not hide hook
+/// stdout from the UI.
+pub const CODEAGENT_PLATFORM: Platform = Platform {
+    id: "codeagent-cli",
+    templates: &CODEAGENT_TEMPLATES,
+    dest_dir: CODEAGENT_COMMANDS_DIR,
+    removal_root: CODEAGENT_DIR,
+    cli_flag: "codeagent",
+    managed_block_target: Some(AGENTS_MD),
+    hook_file: Some(HookFileSpec {
+        path: CODEAGENT_SETTINGS_FILE,
+        hooks_array_key: "SessionStart",
+        identity_key: "command",
+        identity_value: CODEAGENT_CONTEXT_HOOK_COMMAND,
+        entry_builder: ark_codeagent_hook_entry,
+    }),
+    extra_files: &[],
+    // CodeAgent CLI's main `templates` tree is rooted at
+    // `templates/codeagent/commands/`, so the agents subtree needs a dedicated
+    // static.
+    agents_templates: Some(&CODEAGENT_AGENT_TEMPLATES),
+    agents_dest_dir: Some(CODEAGENT_AGENTS_DIR),
+    // `.cac/agents/` lives under `removal_root = .cac`, so no extra entry.
+    extra_dirs: &[],
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::io::CODEX_CONTEXT_HOOK_COMMAND;
 
-    /// Verifies that the registry has three entries in canonical order.
+    /// Verifies that the registry has four entries in canonical order.
     #[test]
-    fn platforms_registry_has_three_entries_in_canonical_order() {
-        assert_eq!(PLATFORMS.len(), 3);
+    fn platforms_registry_has_four_entries_in_canonical_order() {
+        assert_eq!(PLATFORMS.len(), 4);
         assert_eq!(PLATFORMS[0].id, "claude-code");
         assert_eq!(PLATFORMS[1].id, "codex");
         assert_eq!(PLATFORMS[2].id, "opencode");
+        assert_eq!(PLATFORMS[3].id, "codeagent-cli");
     }
 
     /// Verifies `by_id` resolution and miss behavior.
@@ -405,6 +445,10 @@ mod tests {
         );
         assert_eq!(Platform::by_id("codex").map(|p| p.id), Some("codex"));
         assert_eq!(Platform::by_id("opencode").map(|p| p.id), Some("opencode"));
+        assert_eq!(
+            Platform::by_id("codeagent-cli").map(|p| p.id),
+            Some("codeagent-cli")
+        );
         assert!(Platform::by_id("unknown").is_none());
     }
 
@@ -419,6 +463,10 @@ mod tests {
         assert_eq!(
             Platform::by_cli_flag("opencode").map(|p| p.id),
             Some("opencode")
+        );
+        assert_eq!(
+            Platform::by_cli_flag("codeagent").map(|p| p.id),
+            Some("codeagent-cli")
         );
         assert!(Platform::by_cli_flag("nope").is_none());
     }
@@ -440,6 +488,34 @@ mod tests {
         assert_eq!(OPENCODE_PLATFORM.extra_files.len(), 1);
         assert_eq!(OPENCODE_PLATFORM.extra_files[0].0, OPENCODE_PLUGIN_FILE);
         assert_eq!(OPENCODE_PLATFORM.extra_files[0].1, OPENCODE_ARK_CONTEXT_TS);
+    }
+
+    /// Verifies the [`CODEAGENT_PLATFORM`] shape.
+    ///
+    /// `dest_dir` is the commands subtree (parallel to OpenCode's
+    /// `.opencode/commands/`); `removal_root` is the parent `.cac/` so
+    /// removal wipes `commands/`, `agents/`, and `settings.json`. The
+    /// hook file is `.cac/settings.json` with a `SessionStart` entry.
+    #[test]
+    fn codeagent_platform_shape() {
+        assert_eq!(CODEAGENT_PLATFORM.id, "codeagent-cli");
+        assert_eq!(CODEAGENT_PLATFORM.cli_flag, "codeagent");
+        assert_eq!(CODEAGENT_PLATFORM.dest_dir, CODEAGENT_COMMANDS_DIR);
+        assert_eq!(CODEAGENT_PLATFORM.removal_root, CODEAGENT_DIR);
+        assert_eq!(CODEAGENT_PLATFORM.managed_block_target, Some(AGENTS_MD));
+        assert!(CODEAGENT_PLATFORM.hook_file.is_some());
+        let spec = CODEAGENT_PLATFORM.hook_file.unwrap();
+        assert_eq!(spec.path, CODEAGENT_SETTINGS_FILE);
+        assert_eq!(spec.hooks_array_key, "SessionStart");
+        assert_eq!(spec.identity_key, "command");
+        assert_eq!(spec.identity_value, CODEAGENT_CONTEXT_HOOK_COMMAND);
+        assert!(CODEAGENT_PLATFORM.extra_files.is_empty());
+        assert!(CODEAGENT_PLATFORM.agents_templates.is_some());
+        assert_eq!(
+            CODEAGENT_PLATFORM.agents_dest_dir,
+            Some(CODEAGENT_AGENTS_DIR)
+        );
+        assert!(CODEAGENT_PLATFORM.extra_dirs.is_empty());
     }
 
     /// Verifies OpenCode managed-state application.
@@ -720,6 +796,93 @@ mod tests {
             entries[0]["hooks"][0]["command"],
             Value::String(CODEX_CONTEXT_HOOK_COMMAND.to_string()),
         );
+    }
+
+    /// Verifies the canonical CodeAgent CLI hook entry.
+    #[test]
+    fn codeagent_hook_entry_carries_canonical_command_in_seconds() {
+        let entry = ark_codeagent_hook_entry();
+        assert_eq!(
+            entry["hooks"][0]["command"],
+            Value::String(CODEAGENT_CONTEXT_HOOK_COMMAND.to_string()),
+        );
+        assert_eq!(entry["hooks"][0]["timeout"], serde_json::json!(30));
+    }
+
+    /// Verifies CodeAgent CLI managed-state application.
+    #[test]
+    fn codeagent_apply_managed_state_writes_block_and_hook() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+        let mut manifest = Manifest::new();
+
+        CODEAGENT_PLATFORM
+            .apply_managed_state(&layout, &mut manifest)
+            .unwrap();
+
+        // Managed block in AGENTS.md, recorded in the manifest.
+        let agents = std::fs::read_to_string(layout.agents_md()).unwrap();
+        assert!(agents.contains("<!-- ARK:START -->"));
+        assert!(
+            manifest
+                .managed_blocks
+                .iter()
+                .any(|b| b.marker == "ARK" && b.file.ends_with(AGENTS_MD))
+        );
+
+        // Hook file carries the canonical SessionStart entry.
+        let settings: Value =
+            serde_json::from_str(&std::fs::read_to_string(layout.codeagent_settings()).unwrap())
+                .unwrap();
+        assert_eq!(
+            settings["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            Value::String(CODEAGENT_CONTEXT_HOOK_COMMAND.to_string()),
+        );
+    }
+
+    /// Verifies CodeAgent CLI hook capture and removal.
+    #[test]
+    fn codeagent_capture_hook_captures_then_removes_only_ark_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::new(tmp.path());
+
+        // Set up a settings file with the Ark entry plus a user sibling.
+        let settings_path = layout.codeagent_settings();
+        std::fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&serde_json::json!({
+                "hooks": {
+                    "SessionStart": [
+                        ark_codeagent_hook_entry(),
+                        {
+                            "matcher": "",
+                            "hooks": [{ "type": "command", "command": "user-sibling" }]
+                        }
+                    ]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let mut snapshot = Snapshot::new();
+        let captured_path = CODEAGENT_PLATFORM
+            .capture_hook(&layout, &mut snapshot)
+            .unwrap();
+        assert_eq!(captured_path, Some(settings_path.clone()));
+        assert_eq!(snapshot.hook_bodies.len(), 1);
+        assert_eq!(
+            snapshot.hook_bodies[0].identity_value,
+            CODEAGENT_CONTEXT_HOOK_COMMAND
+        );
+
+        // The Ark entry is gone from disk; the user sibling survives.
+        let after: Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
+        let arr = after["hooks"]["SessionStart"].as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["hooks"][0]["command"], "user-sibling");
     }
 
     /// Enforces the source-scan invariant for `platforms.rs`.
