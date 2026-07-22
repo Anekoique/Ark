@@ -1063,7 +1063,7 @@ mod tests {
         let installed = [&CLAUDE_PLATFORM, &CODEX_PLATFORM, &OPENCODE_PLATFORM];
         let resolved =
             resolve_with_installed(&["init", "--no-opencode"], &installed, true).unwrap();
-        assert_eq!(ids(&resolved), ["claude-code", "codex"]);
+        assert_eq!(ids(&resolved), ["claude-code", "codex", "codeagent-cli"]);
     }
 
     /// Empty installed set falls through to the prompt branch on TTY.
