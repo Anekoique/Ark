@@ -924,3 +924,31 @@ Codex SessionStart hooks stop printing Ark context payloads into the visible ses
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 35: survey Pi agent harness for Ark and ArkOS
+
+**Date**: 2026-07-29
+**Slug**: pi-agent-survey
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `ce8dd56`
+**Closing Commit**: <PENDING:pi-agent-survey>
+
+### Summary
+
+Established Pi as a prototype runtime beneath Ark and ArkOS with explicit ownership and isolation boundaries.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| upstream | pinned Pi v0.81.1 architecture, APIs, security, stability, and governance |
+| Ark | mapped safe `.pi/extensions/ark/` integration and first-class blockers |
+| ArkOS | specified a sandboxed RPC adapter while retaining substrate ownership |
+| experiment | defined bounded validation criteria for both integration paths |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |
