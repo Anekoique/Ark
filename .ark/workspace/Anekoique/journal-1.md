@@ -952,3 +952,28 @@ Established Pi as a prototype runtime beneath Ark and ArkOS with explicit owners
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 36: require journal entries at EOF
+
+**Date**: 2026-07-29
+**Slug**: optimize-journal-write-prompt
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `382ef29`
+**Closing Commit**: <PENDING:optimize-journal-write-prompt>
+
+### Summary
+
+Ark commit prompts preserve workspace journal history by requiring new sessions at physical EOF.
+
+### Main Changes
+
+| Area | Description |
+| ---- | ----------- |
+| commit workflow | require EOF-only append and final-heading verification |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |

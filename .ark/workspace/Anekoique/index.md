@@ -42,6 +42,7 @@
 | 33 | 2026-06-26 | SPEC/PLAN architecture guidance asks for design | `polish-spec-arch-desc` | `main` | <PENDING:polish-spec-arch-desc> | `journal-1.md` |
 | 34 | 2026-07-02 | hide Codex session-start output | `hide-codex-session-output` | `main` | <PENDING:hide-codex-session-output> | `journal-1.md` |
 | 35 | 2026-07-29 | survey Pi agent harness for Ark and ArkOS | `pi-agent-survey` | `main` | <PENDING:pi-agent-survey> | `journal-1.md` |
+| 36 | 2026-07-29 | require journal entries at EOF | `optimize-journal-write-prompt` | `main` | <PENDING:optimize-journal-write-prompt> | `journal-1.md` |
 
 <!-- ARK:SESSIONS:END -->
 
