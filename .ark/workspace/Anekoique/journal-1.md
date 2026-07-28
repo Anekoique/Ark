@@ -977,3 +977,31 @@ Ark commit prompts preserve workspace journal history by requiring new sessions 
 | Hash | Message |
 |------|---------|
 | _(none)_ |   |
+
+## Session 37: survey session insight retention
+
+**Date**: 2026-07-29
+**Slug**: session-insight-retention
+**Branch**: `main`
+**Base Branch**: `main`
+**Start Head**: `cc93970`
+**Closing Commit**: <PENDING:session-insight-retention>
+
+### Summary
+
+Defined a gated path from task evidence to reusable Ark insights and skills.
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| evidence | surveyed Hermes, Stello, Oh My Pi, Devin, and recent research |
+| design | separated automatic candidate extraction from reviewed activation |
+| lifecycle | specified provenance, validation, retrieval, staleness, and rollback |
+| roadmap | proposed shadow extraction as the first follow-up design task |
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| _(none)_ |   |
